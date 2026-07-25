@@ -6,10 +6,13 @@ use chrono::{DateTime, Duration as ChronoDuration, Utc};
 
 use crate::types::{Bucket, BucketSeries, Confidence, QuotaWindow, TokenRollup, WindowKind};
 
-/// Identifies a usage record so the same record seen in two files is counted once.
+/// Identifies a usage record so the same record seen twice is counted once.
 ///
-/// Claude Code duplicates records across files on resume, fork and sidechain. Measured
-/// duplicate rate on real logs was 51% — without this, cost roughly doubles.
+/// The two parts are provider-defined; together they must be unique per real API call.
+/// Claude Code uses `(message.id, requestId)` — it duplicates records across files on
+/// resume, fork and sidechain, at a measured 51% duplicate rate. Codex has no message id
+/// and instead pairs its running session total with the turn's own total, which identifies
+/// a re-emitted record exactly.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct DedupKey {
     pub message_id: String,

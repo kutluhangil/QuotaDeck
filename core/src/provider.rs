@@ -52,10 +52,19 @@ pub trait Provider: Send + Sync {
 
     /// Parse exactly one line. Pure: no I/O, no panics, no global state.
     ///
-    /// A line that is not of interest returns `Ok(None)`. A malformed line also returns
-    /// `Ok(None)` — returning `Err` would let one corrupt line stop a whole file, and these
-    /// files are written by other programs while we read them.
-    fn parse_line(&self, source: &LineSource<'_>, line: &str) -> Result<Option<ParsedEvent>>;
+    /// Events are appended to `out`, which the caller owns and reuses across lines. One
+    /// line can carry several events: a Codex `token_count` record holds a usage total and
+    /// up to two limit windows at once.
+    ///
+    /// A line that is not of interest appends nothing. A malformed line also appends
+    /// nothing and still returns `Ok` — returning `Err` would let one corrupt line stop a
+    /// whole file, and these files are written by other programs while we read them.
+    fn parse_line(
+        &self,
+        source: &LineSource<'_>,
+        line: &str,
+        out: &mut Vec<ParsedEvent>,
+    ) -> Result<()>;
 
     /// Fold the accumulated events into what the UI renders.
     fn build_snapshot(&self, index: &EventIndex, now: DateTime<Utc>) -> ProviderSnapshot;

@@ -3,15 +3,14 @@
 //! One tool is one module here, registered in [`all`]. Nothing outside this crate should
 //! ever match on a specific provider.
 
+pub mod codex;
+
 use quotadeck_core::provider::Provider;
 use quotadeck_core::types::ProviderId;
 
 /// Every provider this build knows how to read.
-///
-/// Empty until Phase 2 lands Codex. Discovery still works against it: a machine with no
-/// registered provider reports nothing rather than guessing.
 pub fn all() -> Vec<Box<dyn Provider>> {
-    Vec::new()
+    vec![Box::new(codex::Codex)]
 }
 
 /// Providers whose root directories exist on this machine.

@@ -315,6 +315,66 @@ Use these totals as the correctness oracle for our L2 rollups. Our daily figures
 4. **The Horizon strip cannot assume a 5-hour span.** Its time axis is driven by the reported `window_minutes` and differs per provider (Codex 7 d or 30 d, Claude Code 5 h and 7 d).
 5. **Read budget is restated as relative**, not a fixed MB/hour figure.
 
+## 9b. Phase 2 addendum — how Codex tokens must be counted
+
+Phase 0 recorded that `total_token_usage` is a session running total and assumed differencing
+it per session was the way to count. Implementing the provider disproved that.
+
+**Two candidate methods, measured against all 99 real rollout files:**
+
+| Method | Result |
+|---|---|
+| Difference `total_token_usage` per file | Over-reported by 17% |
+| Sum `last_token_usage` | Reproduced the session's final running total **exactly in 79 of 99 files**; 19 over by ~3%, 1 under |
+
+Why differencing fails:
+
+- **The file is not the session.** Three `session_id` values were observed spanning several
+  rollout files. A resumed session opens a new file whose running total continues from the
+  old one — one file's first `token_count` record already showed **36,662,856** tokens.
+  Differencing against zero counts that entire history as fresh usage.
+- Ordering matters. Discovery returns files newest-first for progressive rendering, which is
+  the opposite of what differencing a running total requires.
+
+Why summing `last_token_usage` works:
+
+- Present in **all 2281** records measured; never null.
+- It is the current turn's own usage, so it is already a delta and needs no session state.
+- The 3% over-report in 19 files comes from Codex re-emitting a record verbatim. **37 of
+  2276** records were a repeat of their predecessor, and every single one carried both the
+  same running total and the same turn total, with **zero** cases where a repeated turn
+  usage came with a different running total.
+
+**Dedup key for Codex:** `(file + running total, turn total)`. Within a file, 42 running
+totals repeated; only 5 of those carried a different non-zero turn usage, and including the
+turn total in the key keeps those 5 while dropping the 37 true duplicates.
+
+**Field arithmetic:** `cached_input_tokens` is a subset of `input_tokens`, and
+`reasoning_output_tokens` a subset of `output_tokens`. Verified on 2216 records where
+`total_tokens == input_tokens + output_tokens`. Adding either back in inflates every figure.
+`cache_write_input_tokens` was zero in every record on this machine, so its relationship to
+the total is unverified.
+
+**All-zero turns:** 2.2% of records report every breakdown field as zero with a non-zero
+`total_tokens`. They contribute nothing and are dropped.
+
+### Residual difference against ccusage
+
+Same calendar day, same machine, our method against `ccusage daily`:
+
+```
+                ours          ccusage       delta
+input           6,178,286     5,696,689     +8.5%
+output            450,007       432,983     +3.9%
+cache read    127,206,144   123,639,808     +2.9%
+```
+
+Part of the uniform 3% is sampling skew — the logs grow while both tools read them, and the
+two runs were a minute apart. The extra ~5% on `input` alone is a genuine methodological
+difference that has not been traced. Treat ccusage as a cross-check, not as ground truth:
+our figures reconstruct each session's own final running total exactly, which is the
+strongest internal check available. Revisit if a user reports a discrepancy.
+
 ## 10. Open items carried into later phases
 
 - Windows path verification (`%USERPROFILE%\.codex`, `%APPDATA%`) — no Windows machine available here. Phase 10.

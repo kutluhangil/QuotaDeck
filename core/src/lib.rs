@@ -7,11 +7,13 @@
 //! - Log files are never read from byte zero on a warm start; reads resume from a stored cursor.
 
 pub mod cursor;
+pub mod discovery;
 pub mod error;
 pub mod events;
 pub mod paths;
 pub mod provider;
 pub mod reader;
+pub mod scan;
 pub mod store;
 pub mod tail;
 pub mod types;
