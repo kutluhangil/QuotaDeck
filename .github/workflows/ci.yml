@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -D warnings
+
+jobs:
+  check:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Format
+        run: cargo fmt --all -- --check
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Test
+        run: cargo test --workspace
+
+      # Ignored tests read the developer's own logs and cannot run here.
+      - name: Benches compile
+        run: cargo bench --workspace --no-run
+
+  # Architectural constraints from CLAUDE.md, enforced rather than trusted.
+  constraints:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: No HTTP client dependency
+        run: |
+          if cargo tree --workspace | grep -iE 'reqwest|hyper|ureq|isahc|surf|curl'; then
+            echo "::error::an HTTP client entered the dependency tree; see CLAUDE.md"
+            exit 1
+          fi
+
+      - name: No credential or auth-file access
+        run: |
+          if grep -rniE 'auth\.json|credentials|keychain|oauth|access_token' \
+              --include='*.rs' --include='*.toml' core providers app; then
+            echo "::error::credential handling is forbidden; see CLAUDE.md"
+            exit 1
+          fi

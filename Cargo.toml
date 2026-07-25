@@ -1,0 +1,29 @@
+[workspace]
+resolver = "2"
+members = ["core", "providers", "app"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.82"
+license = "UNLICENSED"
+publish = false
+
+[workspace.dependencies]
+quotadeck-core = { path = "core" }
+quotadeck-providers = { path = "providers" }
+
+chrono = { version = "0.4", default-features = false, features = ["std", "clock", "serde"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+notify = "8"
+redb = "2"
+criterion = "0.7"
+
+# No HTTP client is permitted anywhere in this tree. See CLAUDE.md.
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true
