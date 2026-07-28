@@ -94,6 +94,17 @@ export function formatPercent(percent: number): string {
   return `${Math.round(percent)}%`;
 }
 
+/**
+ * Equivalent API cost. Cents matter under a dollar and are noise above ten, so the precision
+ * follows the magnitude rather than being fixed.
+ */
+export function formatCost(usd: number): string {
+  if (usd >= 1_000) return `$${Math.round(usd).toLocaleString()}`;
+  if (usd >= 10) return `$${usd.toFixed(0)}`;
+  if (usd >= 0.01) return `$${usd.toFixed(2)}`;
+  return usd > 0 ? "<$0.01" : "$0";
+}
+
 export function formatRelative(iso: string | null, now: number): string | null {
   if (iso === null) return null;
   const at = Date.parse(iso);

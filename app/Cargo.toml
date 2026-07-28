@@ -20,6 +20,11 @@ path = "src/main.rs"
 name = "quotadeck-debug"
 path = "src/bin/debug.rs"
 
+# The opt-in Claude Code statusline shim. Runs inside Claude Code, not inside the tray app.
+[[bin]]
+name = "quotadeck-statusline"
+path = "src/bin/statusline.rs"
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 

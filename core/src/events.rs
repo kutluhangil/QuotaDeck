@@ -4,7 +4,9 @@ use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 
 use chrono::{DateTime, Duration as ChronoDuration, Utc};
 
-use crate::types::{Bucket, BucketSeries, Confidence, QuotaWindow, TokenRollup, WindowKind};
+use crate::types::{
+    Bucket, BucketSeries, Confidence, Cost, CostRange, QuotaWindow, TokenRollup, WindowKind,
+};
 
 /// Identifies a usage record so the same record seen twice is counted once.
 ///
@@ -67,6 +69,10 @@ pub struct UsageEvent {
     pub tokens: TokenRollup,
     /// Provider-native billing units, where one exists (Copilot premium requests).
     pub requests: f64,
+    /// Equivalent API cost of this record, matching whatever `accounting` says `tokens` is:
+    /// a delta for [`Accounting::Incremental`], the record's own share for a cumulative
+    /// provider. A provider that cannot price its models reports [`Cost::Unpriced`].
+    pub cost: Cost,
     pub accounting: Accounting,
 }
 
@@ -171,7 +177,8 @@ impl EventIndex {
         };
 
         if !delta.is_zero() || usage.requests != 0.0 {
-            self.series.add(usage.at, &delta, usage.requests);
+            self.series
+                .add(usage.at, &delta, usage.requests, usage.cost);
         }
 
         self.last_activity = Some(match self.last_activity {
@@ -213,6 +220,15 @@ impl EventIndex {
     /// Token total over `[now - window, now]`, the rolling-window sum used for L2 estimates.
     pub fn rolling(&self, now: DateTime<Utc>, window: ChronoDuration) -> TokenRollup {
         self.series.sum_range(now - window, now)
+    }
+
+    /// Equivalent API cost over `[now - window, now]`.
+    ///
+    /// The window runs back from now, not from a reported reset boundary: the two providers
+    /// disagree on whether their windows slide, and `resets_at - window` was measured to be
+    /// meaningless for Codex (Phase 4, `ui/src/horizon.ts`).
+    pub fn rolling_cost(&self, now: DateTime<Utc>, window: ChronoDuration) -> CostRange {
+        self.series.cost_range(now - window, now)
     }
 
     pub fn series(&self) -> impl Iterator<Item = &Bucket> {
@@ -266,6 +282,7 @@ mod tests {
                 ..Default::default()
             },
             requests: 0.0,
+            cost: Cost::Usd(0.01),
             accounting: Accounting::Incremental,
         }
     }
@@ -326,6 +343,7 @@ mod tests {
                     ..Default::default()
                 },
                 requests: 0.0,
+                cost: Cost::Unpriced,
                 accounting: Accounting::Cumulative,
             }));
         }
@@ -352,6 +370,7 @@ mod tests {
                     ..Default::default()
                 },
                 requests: 0.0,
+                cost: Cost::Unpriced,
                 accounting: Accounting::Cumulative,
             }));
         }
@@ -378,6 +397,7 @@ mod tests {
                         ..Default::default()
                     },
                     requests: 0.0,
+                    cost: Cost::Unpriced,
                     accounting: Accounting::Cumulative,
                 }));
             }
@@ -428,6 +448,33 @@ mod tests {
             }));
         }
         assert_eq!(index.windows(ts(1_785_000_010)).len(), 3);
+    }
+
+    #[test]
+    fn a_duplicate_costs_nothing_the_second_time() {
+        // The whole point of the dedup key: at a 51% duplicate rate, counting cost twice is
+        // what doubles a Claude Code bill (docs/DISCOVERY.md §5).
+        let mut index = index();
+        index.ingest(ParsedEvent::Usage(usage(1_785_000_000, "msg_a", 100)));
+        index.ingest(ParsedEvent::Usage(usage(1_785_000_000, "msg_a", 100)));
+
+        let cost = index.rolling_cost(ts(1_785_000_100), ChronoDuration::hours(5));
+        assert!((cost.usd - 0.01).abs() < 1e-12, "{cost:?}");
+        assert!(cost.is_complete());
+    }
+
+    #[test]
+    fn cost_from_an_unpriced_model_never_lands_in_the_dollar_total() {
+        let mut index = index();
+        let mut unpriced = usage(1_785_000_000, "msg_b", 250);
+        unpriced.cost = Cost::Unpriced;
+        index.ingest(ParsedEvent::Usage(usage(1_785_000_000, "msg_a", 100)));
+        index.ingest(ParsedEvent::Usage(unpriced));
+
+        let cost = index.rolling_cost(ts(1_785_000_100), ChronoDuration::hours(5));
+        assert!((cost.usd - 0.01).abs() < 1e-12);
+        assert_eq!(cost.unpriced_tokens, 250);
+        assert!(!cost.is_complete());
     }
 
     #[test]

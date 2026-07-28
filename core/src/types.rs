@@ -215,18 +215,58 @@ impl TokenRollup {
     }
 }
 
+/// What one usage record cost in equivalent API dollars, or that it could not be priced.
+///
+/// An unknown model is never billed at zero: that would make a heavy session look free and
+/// drag a plan estimate down without saying so. It is counted apart instead.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Cost {
+    Usd(f64),
+    Unpriced,
+}
+
+/// Cost summed over a slice of the series, with the part that could not be priced kept apart.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CostRange {
+    pub usd: f64,
+    pub unpriced_tokens: u64,
+}
+
+impl CostRange {
+    /// Whether every token in the range carried a known price. A `false` here is what stops an
+    /// estimate from being presented as if it saw everything.
+    pub fn is_complete(&self) -> bool {
+        self.unpriced_tokens == 0
+    }
+}
+
 /// Width of one point in a provider's time series. Chosen so a seven-day window is
 /// 2016 buckets: fine enough for the Horizon strip, small enough to keep in memory.
 pub const BUCKET_SECONDS: i64 = 5 * 60;
 
 /// One point of the time series behind the Horizon strip.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Bucket {
     /// Unix epoch seconds of the bucket start, always a multiple of [`BUCKET_SECONDS`].
     pub start: i64,
     pub tokens: TokenRollup,
     /// Provider-native billing units in this bucket, where one exists (Copilot premium requests).
     pub requests: f64,
+    /// Equivalent API cost of this bucket, in USD.
+    ///
+    /// The unit a plan ceiling can be compared against: token counts from different models are
+    /// not commensurable, cost is. Zero also means "nothing priced here", which is why
+    /// [`Bucket::unpriced_tokens`] is carried alongside rather than folded in.
+    ///
+    /// Defaulted on read so buckets persisted before this field existed still load.
+    #[serde(default)]
+    pub cost_usd: f64,
+    /// Tokens in this bucket whose model carried no price. Kept so an estimate built on
+    /// [`Bucket::cost_usd`] can say it is incomplete instead of quietly under-reporting.
+    #[serde(default)]
+    pub unpriced_tokens: u64,
 }
 
 impl Bucket {
@@ -246,15 +286,23 @@ impl BucketSeries {
         Self::default()
     }
 
-    pub fn add(&mut self, at: DateTime<Utc>, tokens: &TokenRollup, requests: f64) {
+    pub fn add(&mut self, at: DateTime<Utc>, tokens: &TokenRollup, requests: f64, cost: Cost) {
         let start = Bucket::start_for(at);
         let bucket = self.buckets.entry(start).or_insert(Bucket {
             start,
             tokens: TokenRollup::default(),
             requests: 0.0,
+            cost_usd: 0.0,
+            unpriced_tokens: 0,
         });
         bucket.tokens.add(tokens);
         bucket.requests += requests;
+        match cost {
+            Cost::Usd(usd) => bucket.cost_usd += usd,
+            Cost::Unpriced => {
+                bucket.unpriced_tokens = bucket.unpriced_tokens.saturating_add(tokens.total())
+            }
+        }
     }
 
     /// Drop buckets that start before `cutoff`.
@@ -272,6 +320,16 @@ impl BucketSeries {
         out
     }
 
+    /// Equivalent API cost over `[from, to)`, and how much of it went unpriced.
+    pub fn cost_range(&self, from: DateTime<Utc>, to: DateTime<Utc>) -> CostRange {
+        let mut out = CostRange::default();
+        for (_, bucket) in self.buckets.range(from.timestamp()..to.timestamp()) {
+            out.usd += bucket.cost_usd;
+            out.unpriced_tokens = out.unpriced_tokens.saturating_add(bucket.unpriced_tokens);
+        }
+        out
+    }
+
     pub fn iter(&self) -> impl Iterator<Item = &Bucket> {
         self.buckets.values()
     }
@@ -282,6 +340,44 @@ impl BucketSeries {
 
     pub fn is_empty(&self) -> bool {
         self.buckets.is_empty()
+    }
+}
+
+/// A ceiling one subscription tier is assumed to allow over one window.
+///
+/// Expressed in equivalent API dollars because that is the only unit comparable across models.
+/// This is a seed, not a published figure — Anthropic does not publish a numeric ceiling for
+/// Claude Code — so it is superseded by [`calibrate`](crate::plan::calibrate) as soon as a
+/// measured reading arrives, and anything derived from it carries the estimated badge.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlanCeiling {
+    pub window_minutes: u32,
+    pub cost_usd: f64,
+}
+
+/// One subscription tier a provider offers.
+///
+/// Providers declare their own tiers; nothing outside a provider module knows that
+/// "max-20x" exists. The panel renders whatever the provider returns.
+///
+/// Serialise-only: tiers travel out to the panel, and what comes back is a
+/// [`ProviderConfig::plan_id`](crate::provider::ProviderConfig), never a whole tier.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlanOption {
+    /// Stable key stored in settings. Not user-facing text.
+    pub id: &'static str,
+    /// Untranslated name. The UI localises from the id.
+    pub label: &'static str,
+    pub ceilings: &'static [PlanCeiling],
+}
+
+impl PlanOption {
+    pub fn ceiling_for(&self, window_minutes: u32) -> Option<&PlanCeiling> {
+        self.ceilings
+            .iter()
+            .find(|ceiling| ceiling.window_minutes == window_minutes)
     }
 }
 
@@ -324,6 +420,12 @@ pub struct ProviderSnapshot {
     pub installed: bool,
     pub windows: Vec<QuotaWindow>,
     pub today: TokenRollup,
+    /// Equivalent API cost over the same rolling day as `today`.
+    ///
+    /// Carries [`CostRange::unpriced_tokens`] so the panel can say the figure is partial. A
+    /// model released after this build has no price, and a dollar total that quietly omits it
+    /// is worse than one that admits the gap.
+    pub today_cost: CostRange,
     pub series: Vec<Bucket>,
     pub pace: Vec<PaceForecast>,
     pub last_activity: Option<DateTime<Utc>>,
@@ -338,6 +440,7 @@ impl ProviderSnapshot {
             installed: !matches!(reason, UnavailableReason::NotInstalled),
             windows: Vec::new(),
             today: TokenRollup::default(),
+            today_cost: CostRange::default(),
             series: Vec::new(),
             pace: Vec::new(),
             last_activity: None,
@@ -401,9 +504,9 @@ mod tests {
             output: 5,
             ..Default::default()
         };
-        series.add(ts(1_785_000_000), &tokens, 1.0);
-        series.add(ts(1_785_000_100), &tokens, 0.5);
-        series.add(ts(1_785_000_600), &tokens, 0.0);
+        series.add(ts(1_785_000_000), &tokens, 1.0, Cost::Usd(0.10));
+        series.add(ts(1_785_000_100), &tokens, 0.5, Cost::Usd(0.20));
+        series.add(ts(1_785_000_600), &tokens, 0.0, Cost::Usd(0.40));
 
         // First two land in the same bucket, the third in a later one.
         assert_eq!(series.len(), 2);
@@ -421,11 +524,88 @@ mod tests {
             ..Default::default()
         };
         for i in 0..10 {
-            series.add(ts(1_785_000_000 + i * BUCKET_SECONDS), &tokens, 0.0);
+            series.add(
+                ts(1_785_000_000 + i * BUCKET_SECONDS),
+                &tokens,
+                0.0,
+                Cost::Usd(0.01),
+            );
         }
         assert_eq!(series.len(), 10);
         series.trim_before(ts(1_785_000_000 + 5 * BUCKET_SECONDS));
         assert_eq!(series.len(), 5);
+    }
+
+    #[test]
+    fn cost_is_summed_over_the_same_range_as_tokens() {
+        let mut series = BucketSeries::new();
+        let tokens = TokenRollup {
+            input: 10,
+            ..Default::default()
+        };
+        series.add(ts(1_785_000_000), &tokens, 0.0, Cost::Usd(0.25));
+        series.add(ts(1_785_000_600), &tokens, 0.0, Cost::Usd(0.75));
+
+        let first = series.cost_range(ts(1_785_000_000), ts(1_785_000_300));
+        assert!((first.usd - 0.25).abs() < 1e-12);
+        let all = series.cost_range(ts(1_785_000_000), ts(1_785_001_000));
+        assert!((all.usd - 1.0).abs() < 1e-12);
+        assert!(all.is_complete());
+    }
+
+    #[test]
+    fn an_unpriced_model_is_counted_apart_rather_than_billed_at_zero() {
+        let mut series = BucketSeries::new();
+        let tokens = TokenRollup {
+            input: 400,
+            output: 100,
+            ..Default::default()
+        };
+        series.add(ts(1_785_000_000), &tokens, 0.0, Cost::Usd(0.50));
+        series.add(ts(1_785_000_000), &tokens, 0.0, Cost::Unpriced);
+
+        let range = series.cost_range(ts(1_785_000_000), ts(1_785_001_000));
+        assert!(
+            (range.usd - 0.50).abs() < 1e-12,
+            "unpriced tokens add no cost"
+        );
+        assert_eq!(range.unpriced_tokens, 500);
+        assert!(
+            !range.is_complete(),
+            "an estimate over this range must say it is partial"
+        );
+    }
+
+    #[test]
+    fn a_bucket_stored_before_costs_existed_still_loads() {
+        // redb holds buckets written by earlier builds; a missing field must not fail the read.
+        let bucket: Bucket = serde_json::from_str(
+            r#"{"start":1785000000,"tokens":{"input":1,"output":0,"cacheRead":0,"cacheCreation":0,"reasoning":0},"requests":0.0}"#,
+        )
+        .expect("an older bucket record");
+        assert_eq!(bucket.cost_usd, 0.0);
+        assert_eq!(bucket.unpriced_tokens, 0);
+    }
+
+    #[test]
+    fn a_plan_ceiling_is_matched_by_window_length_not_by_position() {
+        const CEILINGS: &[PlanCeiling] = &[
+            PlanCeiling {
+                window_minutes: 300,
+                cost_usd: 25.0,
+            },
+            PlanCeiling {
+                window_minutes: 10_080,
+                cost_usd: 175.0,
+            },
+        ];
+        let plan = PlanOption {
+            id: "max-5x",
+            label: "Max 5x",
+            ceilings: CEILINGS,
+        };
+        assert_eq!(plan.ceiling_for(10_080).map(|c| c.cost_usd), Some(175.0));
+        assert!(plan.ceiling_for(43_200).is_none());
     }
 
     #[test]

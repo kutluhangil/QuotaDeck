@@ -2,6 +2,19 @@
 
 ## 2026-07-28
 
+- Phase 5: added the Claude Code provider — reads `~/.claude/projects/**`, including subagent and workflow-agent transcripts, whose calls bill to the same subscription.
+- Phase 5: deduped usage on `(message.id, requestId)`. One API response is written as several rows, one per streamed content block, each repeating the whole `usage` object; 45.8% of 3412 real rows were repeats. Deduping on `uuid` instead would have caught none of them — it is regenerated per row.
+- Phase 5: quota estimates are denominated in equivalent API cost rather than tokens. At published rates an Opus output token and a Haiku cache read differ by 50x, so a rolling token count cannot be compared against one ceiling.
+- Phase 5: embedded a LiteLLM-derived Anthropic price table at build time. Lookup takes the longest matching model prefix, never the family — `claude-opus-4-1` bills at three times `claude-opus-4-5` and the shorter id prefixes the longer one.
+- Phase 5: a model with no known price is counted as unpriced, never as free. The remainder is carried to the UI and blocks calibration, because a numerator short by an unknown amount must not anchor a ceiling.
+- Phase 5: added the plan picker (Pro / Max 5x / Max 20x). "Not set" is the default and produces no estimate at all; a tier nobody picked would put an unrequested percentage under an estimated badge.
+- Phase 5: one measured window now calibrates the tiers the tool did not report. The seeded ceilings are assumptions — only the published 1 : 5 : 20 tier scaling is taken as given — and a real reading replaces them.
+- Phase 5: added the opt-in statusline shim, which reads Claude Code's real `five_hour` and `seven_day` percentages. It chains the user's existing command instead of replacing it, records `rate_limits` and the version only, preserves every other key in `settings.json`, and reverts in one click.
+- Phase 5: settings are now persisted to the app data directory, so a chosen plan survives a restart.
+- Phase 5: fixed the Horizon strip drawing a seven-day axis over one day of buckets. The series is trimmed to the longest window, and an estimated window added after the snapshot was built never reached that calculation — found on real logs, where a 91% weekly reading sat beside a near-empty strip.
+- Phase 5: `quotadeck-debug` gained `statusline` (the exact before and after of the settings change) and an optional plan argument on `debug`, so the estimate can be checked against real logs from a terminal.
+- Phase 5: CI now enforces that only the shim module touches `settings.json`, and that the shim records no payload field beyond the rate limits.
+
 - Phase 4: added the Horizon strip — the timeline behind each provider's headline window, drawn as SVG from the five-minute bucket series.
 - Phase 4: the strip's time axis comes from the reported `window_minutes`, so it is a week for a Codex weekly limit and five hours for a session one. No window length is assumed anywhere.
 - Phase 4: dropped the blueprint's "returning capacity" ghost layer. It only holds for a sliding window, and the two providers measured in Phase 0 disagree — Claude Code resets on clean half-hour boundaries while Codex resets at an arbitrary instant, and `resets_at - window_minutes` lands 3.6 hours before a reading that already showed 68% of a week. The strip now states only the span it can prove.

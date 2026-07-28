@@ -11,9 +11,36 @@ use std::path::{Path, PathBuf};
 
 use chrono::{DateTime, Utc};
 
+use serde::{Deserialize, Serialize};
+
 use crate::error::Result;
 use crate::events::{EventIndex, ParsedEvent};
-use crate::types::{ProviderId, ProviderSnapshot};
+use crate::types::{PlanOption, ProviderId, ProviderSnapshot};
+
+/// User settings a provider needs in order to fold its snapshot.
+///
+/// Deliberately provider-agnostic: it carries the id of a plan the provider itself declared,
+/// not a named tier. Nothing outside a provider module knows that "max-20x" exists.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderConfig {
+    /// The [`PlanOption::id`] the user picked, or `None` while they have picked nothing.
+    ///
+    /// `None` means no estimated window is produced at all. Guessing a tier would put a
+    /// fabricated percentage in front of the user, which is the one thing this app must not do.
+    pub plan_id: Option<String>,
+}
+
+impl ProviderConfig {
+    /// The declared plan matching this config, if the provider still offers it.
+    ///
+    /// A stored id that no longer exists — a tier that was renamed between releases —
+    /// resolves to `None` rather than to the first plan in the list.
+    pub fn resolve<'a>(&self, plans: &'a [PlanOption]) -> Option<&'a PlanOption> {
+        let wanted = self.plan_id.as_deref()?;
+        plans.iter().find(|plan| plan.id == wanted)
+    }
+}
 
 /// Where a line came from. Providers that report cumulative totals need this to tell
 /// sessions apart.
@@ -67,12 +94,26 @@ pub trait Provider: Send + Sync {
     ) -> Result<()>;
 
     /// Fold the accumulated events into what the UI renders.
-    fn build_snapshot(&self, index: &EventIndex, now: DateTime<Utc>) -> ProviderSnapshot;
+    fn build_snapshot(
+        &self,
+        index: &EventIndex,
+        now: DateTime<Utc>,
+        config: &ProviderConfig,
+    ) -> ProviderSnapshot;
 
     /// Whether this provider can produce L1 measured limits at all. Codex and Claude Code
     /// can; a token-only provider cannot and must never claim to.
     fn supports_measured(&self) -> bool {
         false
+    }
+
+    /// Subscription tiers this tool sells, for the panel to offer.
+    ///
+    /// Empty means the tool has no tier to pick — either it reports its own limits, or
+    /// nothing about it is estimable. A provider that returns tiers must also honour
+    /// [`ProviderConfig::plan_id`] in [`Provider::build_snapshot`].
+    fn plans(&self) -> &'static [PlanOption] {
+        &[]
     }
 }
 
@@ -87,12 +128,27 @@ pub fn default_snapshot(
     index: &EventIndex,
     now: DateTime<Utc>,
 ) -> ProviderSnapshot {
-    let windows = index.windows(now);
+    snapshot_with_windows(id, index, now, index.windows(now))
+}
+
+/// Snapshot over a window list the provider assembled itself.
+///
+/// A provider that adds windows the index does not hold — an estimate against a plan ceiling —
+/// must build through this rather than extending [`default_snapshot`]'s result. The series is
+/// trimmed to the longest window in the list, so adding a weekly window afterwards would leave
+/// the strip holding a day of buckets and drawing a week of axis.
+pub fn snapshot_with_windows(
+    id: ProviderId,
+    index: &EventIndex,
+    now: DateTime<Utc>,
+    windows: Vec<crate::types::QuotaWindow>,
+) -> ProviderSnapshot {
     let cutoff = (now - series_span(&windows)).timestamp();
     ProviderSnapshot {
         id,
         installed: true,
         today: index.rolling(now, chrono::Duration::days(1)),
+        today_cost: index.rolling_cost(now, chrono::Duration::days(1)),
         // Only the span the Horizon strip can draw. The index keeps a month of retention for
         // the rolling sums, and re-serialising all of it on every tick would put megabytes
         // per minute through the IPC channel for buckets nothing ever renders.
@@ -124,7 +180,7 @@ fn series_span(windows: &[crate::types::QuotaWindow]) -> chrono::Duration {
 mod tests {
     use super::*;
     use crate::events::{Accounting, LimitEvent, ParsedEvent, UsageEvent};
-    use crate::types::TokenRollup;
+    use crate::types::{Cost, PlanCeiling, TokenRollup};
 
     #[test]
     fn session_key_comes_from_the_file_stem() {
@@ -148,6 +204,7 @@ mod tests {
                     ..Default::default()
                 },
                 requests: 0.0,
+                cost: Cost::Usd(0.01),
                 accounting: Accounting::Incremental,
             }));
         }
@@ -221,6 +278,43 @@ mod tests {
         let snapshot = default_snapshot(ProviderId::Codex, &index, now);
         assert_eq!(snapshot.windows.len(), 2);
         assert_eq!(snapshot.series.len(), 1);
+    }
+
+    const CEILINGS: &[PlanCeiling] = &[PlanCeiling {
+        window_minutes: 300,
+        cost_usd: 25.0,
+    }];
+    const PLANS: &[PlanOption] = &[
+        PlanOption {
+            id: "pro",
+            label: "Pro",
+            ceilings: CEILINGS,
+        },
+        PlanOption {
+            id: "max-5x",
+            label: "Max 5x",
+            ceilings: CEILINGS,
+        },
+    ];
+
+    #[test]
+    fn no_chosen_plan_resolves_to_nothing_rather_than_to_a_default_tier() {
+        // Falling back to a tier the user never picked would put a fabricated percentage in
+        // front of them under an estimated badge, which reads as a real reading.
+        assert!(ProviderConfig::default().resolve(PLANS).is_none());
+    }
+
+    #[test]
+    fn a_plan_id_that_no_longer_exists_resolves_to_nothing() {
+        let config = ProviderConfig {
+            plan_id: Some("max-50x".into()),
+        };
+        assert!(config.resolve(PLANS).is_none());
+
+        let known = ProviderConfig {
+            plan_id: Some("max-5x".into()),
+        };
+        assert_eq!(known.resolve(PLANS).map(|plan| plan.id), Some("max-5x"));
     }
 
     #[test]

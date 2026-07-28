@@ -21,6 +21,8 @@ function bucket(start: number, input: number): Bucket {
     start,
     tokens: { input, output: 0, cacheRead: 0, cacheCreation: 0, reasoning: 0 },
     requests: 0,
+    costUsd: 0,
+    unpricedTokens: 0,
   };
 }
 
@@ -88,6 +90,8 @@ describe("columns", () => {
           start: 0,
           tokens: { input: 1, output: 2, cacheRead: 4, cacheCreation: 8, reasoning: 16 },
           requests: 0,
+          costUsd: 0,
+          unpricedTokens: 0,
         },
       ],
       HOUR,

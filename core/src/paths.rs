@@ -21,6 +21,32 @@ pub fn real_home() -> Option<PathBuf> {
     }
 }
 
+/// Our own data directory: the only place this app ever writes.
+///
+/// Everything a provider reads is opened read-only. The one write path outside this directory
+/// is the opt-in Claude Code statusline shim, which edits `settings.json` with explicit
+/// consent and is revertible (CLAUDE.md).
+pub fn data_dir() -> Option<PathBuf> {
+    #[cfg(target_os = "macos")]
+    {
+        real_home().map(|home| home.join("Library/Application Support/QuotaDeck"))
+    }
+    #[cfg(target_os = "windows")]
+    {
+        std::env::var_os("APPDATA")
+            .map(PathBuf::from)
+            .or_else(real_home)
+            .map(|base| base.join("QuotaDeck"))
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        std::env::var_os("XDG_DATA_HOME")
+            .map(PathBuf::from)
+            .or_else(|| real_home().map(|home| home.join(".local/share")))
+            .map(|base| base.join("QuotaDeck"))
+    }
+}
+
 /// `real_home()/relative`, or `None` when the home directory cannot be resolved.
 pub fn in_home(relative: &str) -> Option<PathBuf> {
     real_home().map(|home| home.join(relative))

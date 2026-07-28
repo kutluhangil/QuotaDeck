@@ -11,6 +11,7 @@ use quotadeck_app::icon;
 use quotadeck_core::discovery::{access, RootAccess};
 use quotadeck_core::engine::ProviderEngine;
 use quotadeck_core::horizon;
+use quotadeck_core::provider::ProviderConfig;
 use quotadeck_core::types::{Confidence, ProviderSnapshot, QuotaWindow, WindowKind};
 
 fn main() -> ExitCode {
@@ -19,8 +20,19 @@ fn main() -> ExitCode {
 
     match command {
         Some("list") => list(),
+        Some("statusline") => match args.get(1).map(String::as_str) {
+            // Both write to settings.json, so they are spelled out rather than defaulted into.
+            // Point HOME at a scratch directory to exercise them without touching a real one.
+            Some("install") => statusline_apply(quotadeck_app::statusline::install()),
+            Some("revert") => statusline_apply(quotadeck_app::statusline::revert()),
+            None => statusline_preview(),
+            Some(other) => {
+                eprintln!("unknown statusline command: {other}");
+                ExitCode::FAILURE
+            }
+        },
         Some("debug") => match args.get(1) {
-            Some(key) => debug_provider(key),
+            Some(key) => debug_provider(key, args.get(2).cloned()),
             None => {
                 eprintln!("debug requires a provider key; run `quotadeck list` to see them");
                 ExitCode::FAILURE
@@ -47,7 +59,7 @@ fn main() -> ExitCode {
 
 fn usage() {
     eprintln!(
-        "usage:\n  quotadeck list            detected providers on this machine\n  quotadeck debug <key>     parse one provider and print what it found\n  quotadeck tray <key>      draw the menu bar item for that provider"
+        "usage:\n  quotadeck list                  detected providers on this machine\n  quotadeck debug <key> [plan]    parse one provider and print what it found\n  quotadeck tray <key>            draw the menu bar item for that provider\n  quotadeck statusline            what connecting the Claude Code status line would change\n  quotadeck statusline install    write the shim into settings.json\n  quotadeck statusline revert     put settings.json back"
     );
 }
 
@@ -138,11 +150,81 @@ fn list() -> ExitCode {
             "derived"
         };
         println!("{:<14} {:<9} {}", provider.id().key(), level, status);
+        for plan in provider.plans() {
+            println!(
+                "{:<24} plan {} - {}",
+                "",
+                plan.id,
+                plan.ceilings
+                    .iter()
+                    .map(|c| format!("{}m ${:.0}", c.window_minutes, c.cost_usd))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
+        }
     }
     ExitCode::SUCCESS
 }
 
-fn debug_provider(key: &str) -> ExitCode {
+/// Report what an install or revert did, or why it did not happen.
+fn statusline_apply(
+    outcome: quotadeck_core::Result<quotadeck_app::statusline::StatuslineState>,
+) -> ExitCode {
+    match outcome {
+        Ok(_) => statusline_preview(),
+        Err(e) => {
+            eprintln!("statusline change failed: {e}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+/// What the panel's consent step would show, before anything is written.
+///
+/// The install path edits somebody else's config file, so being able to read the exact
+/// before and after from a terminal is worth a command of its own.
+fn statusline_preview() -> ExitCode {
+    let state = quotadeck_app::statusline::state();
+    if !state.supported {
+        println!("the Claude Code settings file could not be resolved on this machine");
+        return ExitCode::FAILURE;
+    }
+
+    println!(
+        "settings   {}",
+        state.settings_path.as_deref().unwrap_or("unknown")
+    );
+    println!("connected  {}", if state.installed { "yes" } else { "no" });
+    println!(
+        "now        {}",
+        state.current_command.as_deref().unwrap_or("(none)")
+    );
+    println!(
+        "after      {}",
+        state.proposed_command.as_deref().unwrap_or("(none)")
+    );
+    println!(
+        "revert to  {}",
+        state
+            .previous_command
+            .as_deref()
+            .unwrap_or("(nothing - the key is removed)")
+    );
+    println!(
+        "readings   {}{}",
+        state.readings,
+        state
+            .last_reading_at
+            .map(|at| format!(
+                ", last {}",
+                at.with_timezone(&Local).format("%Y-%m-%d %H:%M")
+            ))
+            .unwrap_or_default()
+    );
+    ExitCode::SUCCESS
+}
+
+fn debug_provider(key: &str, plan_id: Option<String>) -> ExitCode {
     let Some(provider) = quotadeck_providers::by_key(key) else {
         eprintln!("unknown provider: {key}");
         return ExitCode::FAILURE;
@@ -176,6 +258,12 @@ fn debug_provider(key: &str) -> ExitCode {
     }
 
     let mut engine = ProviderEngine::new(provider);
+    if let Some(plan) = &plan_id {
+        println!("  plan  {plan}");
+    }
+    engine.set_config(ProviderConfig {
+        plan_id: plan_id.clone(),
+    });
     let report = match engine.refresh(None) {
         Ok(report) => report,
         Err(e) => {
@@ -201,6 +289,19 @@ fn debug_provider(key: &str) -> ExitCode {
 
     let now = Utc::now();
     print_snapshot(&engine.snapshot(now), now);
+    if plan_id.is_none() && !engine.provider().plans().is_empty() {
+        println!();
+        println!(
+            "  this provider offers plans ({}); pass one to see the estimate",
+            engine
+                .provider()
+                .plans()
+                .iter()
+                .map(|plan| plan.id)
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+    }
     ExitCode::SUCCESS
 }
 
@@ -253,6 +354,16 @@ fn print_snapshot(snapshot: &ProviderSnapshot, now: DateTime<Utc>) {
         today.cache_read,
         today.cache_creation,
         today.total()
+    );
+    let cost = &snapshot.today_cost;
+    println!(
+        "  cost   ${:.2} equivalent API cost{}",
+        cost.usd,
+        if cost.is_complete() {
+            String::new()
+        } else {
+            format!(" · {} tokens at an unknown price", cost.unpriced_tokens)
+        }
     );
     println!(
         "  series {} buckets · last activity {}",

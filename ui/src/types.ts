@@ -62,6 +62,16 @@ export interface Bucket {
   start: number;
   tokens: TokenRollup;
   requests: number;
+  /** Equivalent API cost of this bucket, in USD. */
+  costUsd: number;
+  /** Tokens here whose model carried no known price. Never billed as zero. */
+  unpricedTokens: number;
+}
+
+/** Cost over a slice of the series, with the part that could not be priced kept apart. */
+export interface CostRange {
+  usd: number;
+  unpricedTokens: number;
 }
 
 export type PaceRisk = "healthy" | "at-risk" | "over";
@@ -78,10 +88,51 @@ export interface ProviderSnapshot {
   installed: boolean;
   windows: QuotaWindow[];
   today: TokenRollup;
+  /** Equivalent API cost over the same rolling day as `today`. */
+  todayCost: CostRange;
   series: Bucket[];
   pace: PaceForecast[];
   lastActivity: string | null;
   unavailable: UnavailableReason | null;
+}
+
+/** A ceiling one tier is assumed to allow over one window, in equivalent API dollars. */
+export interface PlanCeiling {
+  windowMinutes: number;
+  costUsd: number;
+}
+
+/**
+ * A subscription tier, as the provider itself declared it. The panel renders whatever comes
+ * back — no tier list is hardcoded here.
+ */
+export interface PlanOption {
+  id: string;
+  label: string;
+  ceilings: PlanCeiling[];
+}
+
+export interface ProviderPlans {
+  provider: ProviderId;
+  plans: PlanOption[];
+}
+
+/**
+ * State of the opt-in Claude Code statusline shim: the one thing this app writes outside its
+ * own data directory, and only with consent.
+ */
+export interface StatuslineState {
+  supported: boolean;
+  installed: boolean;
+  settingsPath: string | null;
+  /** What `statusLine.command` holds right now. */
+  currentCommand: string | null;
+  /** What installing would write. Shown beside `currentCommand` as the before/after. */
+  proposedCommand: string | null;
+  /** What reverting restores. Null means there was no statusline before us. */
+  previousCommand: string | null;
+  readings: number;
+  lastReadingAt: string | null;
 }
 
 /** What the backend pushes on every refresh. */
@@ -97,10 +148,27 @@ export type TrayMode = "glyph" | "compact" | "strip";
 export interface Settings {
   trayMode: TrayMode;
   theme: "system" | "dark" | "light";
+  /**
+   * Chosen tier per provider, keyed by provider id. A provider absent from this map has no
+   * tier picked, and therefore gets no estimated window at all.
+   */
+  plans: Partial<Record<ProviderId, string>>;
 }
 
 export function totalTokens(rollup: TokenRollup): number {
   return rollup.input + rollup.output + rollup.cacheRead + rollup.cacheCreation;
+}
+
+/**
+ * Whether a provider is installed and logging but has nothing to report yet — the state a
+ * plan pick or the statusline shim would resolve. Distinct from a tool that is simply absent.
+ */
+export function awaitingSetup(snapshot: ProviderSnapshot): boolean {
+  return (
+    snapshot.installed &&
+    snapshot.unavailable === "never-reported" &&
+    totalTokens(snapshot.today) > 0
+  );
 }
 
 /** Highest reported usage across every window a provider exposes. */

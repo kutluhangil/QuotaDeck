@@ -15,7 +15,7 @@ use crate::cursor::FileCursor;
 use crate::discovery::{access, find_files, RootAccess};
 use crate::error::Result;
 use crate::events::{EventIndex, ParsedEvent};
-use crate::provider::{LineSource, Provider};
+use crate::provider::{LineSource, Provider, ProviderConfig};
 use crate::reader::LineReader;
 use crate::types::ProviderSnapshot;
 
@@ -50,6 +50,7 @@ pub struct ProviderEngine {
     reader: LineReader,
     /// Reused across every line so parsing allocates nothing per record.
     scratch: Vec<ParsedEvent>,
+    config: ProviderConfig,
     duplicates_at_last_report: u64,
 }
 
@@ -65,12 +66,23 @@ impl ProviderEngine {
             index: EventIndex::new(retention),
             reader: LineReader::default(),
             scratch: Vec::new(),
+            config: ProviderConfig::default(),
             duplicates_at_last_report: 0,
         }
     }
 
     pub fn provider(&self) -> &dyn Provider {
         self.provider.as_ref()
+    }
+
+    /// Apply the user's current settings. Cheap and idempotent: the config only affects how
+    /// the next snapshot is folded, never what has already been read from disk.
+    pub fn set_config(&mut self, config: ProviderConfig) {
+        self.config = config;
+    }
+
+    pub fn config(&self) -> &ProviderConfig {
+        &self.config
     }
 
     /// Whether this tool's logs can be read, and if not, why.
@@ -159,7 +171,7 @@ impl ProviderEngine {
     }
 
     pub fn snapshot(&self, now: DateTime<Utc>) -> ProviderSnapshot {
-        self.provider.build_snapshot(&self.index, now)
+        self.provider.build_snapshot(&self.index, now, &self.config)
     }
 
     pub fn index(&self) -> &EventIndex {
@@ -270,11 +282,17 @@ mod tests {
                     ..Default::default()
                 },
                 requests: 0.0,
+                cost: crate::types::Cost::Unpriced,
                 accounting: Accounting::Incremental,
             }));
             Ok(())
         }
-        fn build_snapshot(&self, index: &EventIndex, now: DateTime<Utc>) -> ProviderSnapshot {
+        fn build_snapshot(
+            &self,
+            index: &EventIndex,
+            now: DateTime<Utc>,
+            _config: &ProviderConfig,
+        ) -> ProviderSnapshot {
             default_snapshot(self.id(), index, now)
         }
     }

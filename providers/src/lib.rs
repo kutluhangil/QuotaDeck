@@ -3,6 +3,7 @@
 //! One tool is one module here, registered in [`all`]. Nothing outside this crate should
 //! ever match on a specific provider.
 
+pub mod claude_code;
 pub mod codex;
 
 use quotadeck_core::provider::Provider;
@@ -10,7 +11,7 @@ use quotadeck_core::types::ProviderId;
 
 /// Every provider this build knows how to read.
 pub fn all() -> Vec<Box<dyn Provider>> {
-    vec![Box::new(codex::Codex)]
+    vec![Box::new(claude_code::ClaudeCode), Box::new(codex::Codex)]
 }
 
 /// Providers whose root directories exist on this machine.

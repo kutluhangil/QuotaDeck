@@ -7,7 +7,13 @@
  * inside the app before purchase.
  */
 
-import type { Bucket, DeckState, ProviderSnapshot } from "./types";
+import type {
+  Bucket,
+  DeckState,
+  ProviderPlans,
+  ProviderSnapshot,
+  StatuslineState,
+} from "./types";
 
 /**
  * Buckets shaped like real work rather than like a wave: sessions of an hour or two with long
@@ -35,17 +41,21 @@ function series(now: number, spanSeconds: number, seed: number): Bucket[] {
 
     const burst = random() > 0.97 ? 14 : 1;
     const base = (8_000 + random() * 26_000) * burst;
+    const tokens = {
+      input: Math.round(base),
+      output: Math.round(base / 12),
+      // Cache reads dominate every real total measured in Phase 0.
+      cacheRead: Math.round(base * 9),
+      cacheCreation: 0,
+      reasoning: 0,
+    };
     buckets.push({
       start: at,
-      tokens: {
-        input: Math.round(base),
-        output: Math.round(base / 12),
-        // Cache reads dominate every real total measured in Phase 0.
-        cacheRead: Math.round(base * 9),
-        cacheCreation: 0,
-        reasoning: 0,
-      },
+      tokens,
       requests: 0,
+      // Roughly Opus rates, so the demo's dollar figures land in a believable range.
+      costUsd: (tokens.input * 5e-6 + tokens.output * 2.5e-5 + tokens.cacheRead * 5e-7),
+      unpricedTokens: 0,
     });
   }
 
@@ -84,6 +94,9 @@ export function demoDeck(): DeckState {
       cacheCreation: 0,
       reasoning: 0,
     },
+    // Codex names no model in its records and the price table covers Anthropic only, so its
+    // tokens are counted and left unpriced rather than billed at zero.
+    todayCost: { usd: 0, unpricedTokens: 133_183_948 },
     // A weekly window, so the strip draws seven days.
     series: series(now, 7 * 86_400, 0x5eed),
     pace: [],
@@ -119,6 +132,7 @@ export function demoDeck(): DeckState {
       cacheCreation: 118_004,
       reasoning: 0,
     },
+    todayCost: { usd: 86.42, unpricedTokens: 0 },
     // The card leads with the fullest window, which here is the weekly one at 95%.
     series: series(now, 7 * 86_400, 0xc0ffee),
     pace: [],
@@ -131,6 +145,7 @@ export function demoDeck(): DeckState {
     installed: true,
     windows: [],
     today: { input: 0, output: 0, cacheRead: 0, cacheCreation: 0, reasoning: 0 },
+    todayCost: { usd: 0, unpricedTokens: 0 },
     series: [],
     pace: [],
     lastActivity: iso(-13 * 86_400_000),
@@ -141,5 +156,55 @@ export function demoDeck(): DeckState {
     providers: [claude, codex, copilot],
     updatedAt: iso(0),
     scanning: false,
+  };
+}
+
+/** Mirrors what `provider_plans` returns, so the settings view can be designed in a browser. */
+export function demoPlans(): ProviderPlans[] {
+  return [
+    {
+      provider: "claude-code",
+      plans: [
+        {
+          id: "pro",
+          label: "Pro",
+          ceilings: [
+            { windowMinutes: 300, costUsd: 5 },
+            { windowMinutes: 10_080, costUsd: 35 },
+          ],
+        },
+        {
+          id: "max-5x",
+          label: "Max 5x",
+          ceilings: [
+            { windowMinutes: 300, costUsd: 25 },
+            { windowMinutes: 10_080, costUsd: 175 },
+          ],
+        },
+        {
+          id: "max-20x",
+          label: "Max 20x",
+          ceilings: [
+            { windowMinutes: 300, costUsd: 100 },
+            { windowMinutes: 10_080, costUsd: 700 },
+          ],
+        },
+      ],
+    },
+  ];
+}
+
+/** The pre-install state, which is the one worth designing against. */
+export function demoStatusline(): StatuslineState {
+  return {
+    supported: true,
+    installed: false,
+    settingsPath: "/Users/you/.claude/settings.json",
+    currentCommand: "npx -y ccstatusline@latest",
+    proposedCommand:
+      "'/Applications/Quota Deck.app/Contents/MacOS/quotadeck-statusline' --log '/Users/you/Library/Application Support/QuotaDeck/claude-code/statusline' --chain 'npx -y ccstatusline@latest'",
+    previousCommand: "npx -y ccstatusline@latest",
+    readings: 0,
+    lastReadingAt: null,
   };
 }

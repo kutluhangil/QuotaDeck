@@ -175,6 +175,25 @@
   white-space: nowrap;
 }
 
+/* The part of a dollar figure that admits what it could not price. Recedes, but is there. */
+.card__foot-note {
+  color: var(--ink-tertiary);
+}
+
+.card__setup {
+  display: block;
+  margin-block-start: var(--step-2);
+  color: var(--ink-primary);
+  padding: var(--step-1) var(--step-2);
+  border: var(--hairline) solid var(--rule);
+  border-radius: var(--radius);
+}
+
+.card__setup:hover {
+  border-color: var(--ink-tertiary);
+  background: var(--surface-raised);
+}
+
 .bar {
   block-size: 6px;
   inline-size: 100%;
@@ -505,4 +524,55 @@
 .settings__chip:hover {
   color: var(--ink-primary);
   border-color: var(--ink-tertiary);
+}
+
+.settings__button {
+  align-self: flex-start;
+  color: var(--ink-primary);
+  padding: var(--step-2) var(--step-3);
+  border: var(--hairline) solid var(--rule);
+  border-radius: var(--radius);
+}
+
+.settings__button:hover {
+  border-color: var(--ink-tertiary);
+  background: var(--surface-raised);
+}
+
+/*
+ * The before/after of someone else's config file. Shown in full — a truncated command is a
+ * change the user cannot actually inspect before agreeing to it.
+ */
+.settings__diff {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--step-1);
+}
+
+.settings__diff dt {
+  color: var(--ink-tertiary);
+}
+
+.settings__command {
+  margin: 0 0 var(--step-2);
+  padding: var(--step-2);
+  color: var(--ink-secondary);
+  background: var(--surface-raised);
+  border-radius: var(--radius);
+  /* Long paths wrap rather than scroll: the panel is 380px and this has to be readable. */
+  overflow-wrap: anywhere;
+  line-height: 1.5;
+}
+
+/*
+ * Deliberately not red. The level ramp means one thing in this app — a quota running out —
+ * and a failed settings write is not that.
+ */
+.settings__error {
+  color: var(--ink-primary);
+  padding: var(--step-2);
+  background: var(--surface-raised);
+  border-inline-start: 2px solid var(--ink-tertiary);
+  border-radius: var(--radius);
 }

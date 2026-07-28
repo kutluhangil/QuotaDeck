@@ -204,6 +204,8 @@ mod tests {
                 ..Default::default()
             },
             requests: 0.0,
+            cost_usd: 0.0,
+            unpriced_tokens: 0,
         }
     }
 

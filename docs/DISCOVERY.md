@@ -375,6 +375,90 @@ difference that has not been traced. Treat ccusage as a cross-check, not as grou
 our figures reconstruct each session's own final running total exactly, which is the
 strongest internal check available. Revisit if a user reports a discrepancy.
 
+## 9c. Phase 5 addendum — what implementing Claude Code corrected
+
+### The duplicates are not what Phase 0 assumed
+
+Phase 0 measured a 51% duplicate rate and attributed it to "resume, fork and sidechain".
+Implementing the parser located the actual mechanism, which is simpler and more constant:
+
+**One API response is written as several rows**, one per streamed content block, chained
+through `parentUuid`. Each row carries a different `uuid` and `timestamp` and repeats the
+response's *whole* `usage` object verbatim, with the same `message.id` and `requestId`.
+
+Re-measured over 24 real files spanning main sessions, subagents and workflow agents:
+
+```
+usage rows                3412
+repeats                   1561   (45.8%)
+rows missing an id pair      1
+```
+
+Two consequences the blueprint did not state:
+
+1. **`uuid` is a trap.** It looks like the row's natural identity and it is regenerated on
+   every repeat — deduping on it caught **0 of 1179** repeats in the same sample.
+   `(message.id, requestId)` caught all of them.
+2. **A row missing either half is counted, not dropped.** It was 1 row in 3412, and dropping
+   real usage is the worse of the two errors.
+
+### Three file shapes, not one
+
+`~/.claude/projects/**` holds three fixed layouts on this machine, all reachable with the
+single-`*` glob engine and none needing a recursive walk:
+
+```
+<project>/<session>.jsonl                                    97 files
+<project>/<session>/subagents/agent-*.jsonl                   9 files
+<project>/<session>/subagents/workflows/<run>/*.jsonl        27 files
+```
+
+Subagent and workflow-agent calls bill to the same subscription. Reading only the top level
+would under-report a heavy day by whatever ran in parallel.
+
+### `sessionId` and `session_id` are different values
+
+Rows carry both. `sessionId` matches the file; the lower-cased `session_id` holds the session a
+resumed transcript was copied from. Reading the wrong one merges unrelated sessions.
+
+### Tokens cannot be compared against a plan; cost can
+
+A quota ceiling in tokens is meaningless across models — at published rates an Opus output
+token and a Haiku cache read differ by 50x. The estimate is therefore built on equivalent API
+cost, from a LiteLLM-derived table embedded at build time (`core/prices/anthropic.json`).
+
+Two things this exposed:
+
+- **Family-wide pricing would be wrong.** `claude-opus-4-1` bills at 15/75 and
+  `claude-opus-4-5` and later at 5/25, and the first is a prefix of neither. Lookup takes the
+  longest matching key; an unmatched id is left **unpriced**, never billed at zero.
+- **The table was incomplete on first run.** A full scan reported 51,128,576 tokens over 7 days
+  with no price — all `claude-fable-5`, which the first pass had missed. After adding it: **0
+  unpriced tokens, $623.91 over 7 days.**
+
+An unpriced remainder is carried through to the UI rather than swallowed, and it blocks
+calibration outright: a numerator short by an unknown amount must not anchor a ceiling.
+
+### The plan seeds check out against a real reading
+
+Anthropic publishes no numeric ceiling, so the seeds are assumptions with only the 1 : 5 : 20
+tier scaling taken as given. Against this machine's real logs on 2026-07-28, the Max 20x seed
+put the weekly window at **91%**; the live statusline capture on 2026-07-25 read **95%**. Close
+enough to ship as an estimate, and not close enough to present as a measurement — which is why
+one measured window recalibrates the rest (`core/src/plan.rs`).
+
+### Performance
+
+Claude Code parses ~47% of its lines fully, against Codex's 0.49%, because a `usage` object
+sits on every assistant row rather than on a rare record type. Release build, real logs:
+
+```
+Claude Code   133 files   446.3 MB   625 ms   714 MB/s   11 931 duplicates skipped
+Codex         127 files   949.1 MB   ~1.1 s   ~860 MB/s
+```
+
+No regression against the Phase 4 baseline.
+
 ## 10. Open items carried into later phases
 
 - Windows path verification (`%USERPROFILE%\.codex`, `%APPDATA%`) — no Windows machine available here. Phase 10.

@@ -29,8 +29,8 @@ use quotadeck_core::events::{
     Accounting, DedupKey, EventIndex, LimitEvent, ParsedEvent, UsageEvent,
 };
 use quotadeck_core::paths;
-use quotadeck_core::provider::{default_snapshot, LineSource, Provider};
-use quotadeck_core::types::{ProviderId, ProviderSnapshot, TokenRollup, UnavailableReason};
+use quotadeck_core::provider::{default_snapshot, LineSource, Provider, ProviderConfig};
+use quotadeck_core::types::{Cost, ProviderId, ProviderSnapshot, TokenRollup, UnavailableReason};
 use serde::Deserialize;
 
 /// Cheap pre-filter. Only ~0.5% of log volume is a `token_count` record, so this guard
@@ -191,6 +191,10 @@ impl Provider for Codex {
                     model: None,
                     tokens,
                     requests: 0.0,
+                    // A `token_count` record names no model, and the embedded price table
+                    // covers Anthropic models only. Pricing these at zero would make a
+                    // Codex-heavy day look free; they are counted as unpriced instead.
+                    cost: Cost::Unpriced,
                     accounting: Accounting::Incremental,
                 }));
             }
@@ -218,7 +222,12 @@ impl Provider for Codex {
         Ok(())
     }
 
-    fn build_snapshot(&self, index: &EventIndex, now: DateTime<Utc>) -> ProviderSnapshot {
+    fn build_snapshot(
+        &self,
+        index: &EventIndex,
+        now: DateTime<Utc>,
+        _config: &ProviderConfig,
+    ) -> ProviderSnapshot {
         let mut snapshot = default_snapshot(self.id(), index, now);
         if snapshot.windows.is_empty() {
             // Codex reports a percentage against a ceiling it never publishes, so there is
@@ -488,11 +497,19 @@ mod tests {
             .parse::<DateTime<Utc>>()
             .expect("fixture timestamp");
 
-        let fresh = Codex.build_snapshot(&index, observed + Duration::minutes(5));
+        let fresh = Codex.build_snapshot(
+            &index,
+            observed + Duration::minutes(5),
+            &ProviderConfig::default(),
+        );
         assert!(fresh.windows[0].confidence.is_measured());
         assert!(fresh.unavailable.is_none());
 
-        let stale = Codex.build_snapshot(&index, observed + Duration::hours(2));
+        let stale = Codex.build_snapshot(
+            &index,
+            observed + Duration::hours(2),
+            &ProviderConfig::default(),
+        );
         assert!(matches!(
             stale.windows[0].confidence,
             Confidence::Stale { .. }
@@ -502,7 +519,7 @@ mod tests {
     #[test]
     fn a_provider_that_never_reported_a_limit_says_so_rather_than_estimating() {
         let index = index_of(&["token_count_premium_no_window.jsonl"]);
-        let snapshot = Codex.build_snapshot(&index, Utc::now());
+        let snapshot = Codex.build_snapshot(&index, Utc::now(), &ProviderConfig::default());
         assert!(snapshot.windows.is_empty());
         assert_eq!(snapshot.unavailable, Some(UnavailableReason::NeverReported));
         assert!(

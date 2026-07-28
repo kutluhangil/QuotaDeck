@@ -1,10 +1,15 @@
 //! Shared state between the read loop, the tray and the panel.
 
+use std::collections::BTreeMap;
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use chrono::{DateTime, Utc};
-use quotadeck_core::types::{ProviderSnapshot, QuotaWindow};
+use quotadeck_core::error::{Error, Result};
+use quotadeck_core::paths;
+use quotadeck_core::provider::ProviderConfig;
+use quotadeck_core::types::{ProviderId, ProviderSnapshot, QuotaWindow};
 use serde::{Deserialize, Serialize};
 
 /// What the panel renders. Raw log lines never appear here — only folded snapshots.
@@ -75,11 +80,17 @@ pub enum Theme {
     Light,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
 pub struct Settings {
     pub tray_mode: TrayMode,
     pub theme: Theme,
+    /// Chosen subscription tier per provider, keyed by [`ProviderId::key`].
+    ///
+    /// A provider missing from this map has no tier picked, which means no estimated window is
+    /// produced for it at all. There is deliberately no default tier: an unpicked plan must
+    /// read as "tell me your plan", never as a percentage the user never asked for.
+    pub plans: BTreeMap<String, String>,
 }
 
 impl Default for Settings {
@@ -87,7 +98,59 @@ impl Default for Settings {
         Settings {
             tray_mode: TrayMode::Glyph,
             theme: Theme::System,
+            plans: BTreeMap::new(),
         }
+    }
+}
+
+impl Settings {
+    pub fn config_for(&self, id: ProviderId) -> ProviderConfig {
+        ProviderConfig {
+            plan_id: self.plans.get(id.key()).cloned(),
+        }
+    }
+
+    fn path() -> Option<PathBuf> {
+        paths::data_dir().map(|dir| dir.join("settings.json"))
+    }
+
+    /// Load the stored settings, falling back to defaults.
+    ///
+    /// A settings file that cannot be parsed is reported and then ignored rather than
+    /// stopping the app: the worst case is a user re-picking their tray mode, and refusing to
+    /// start over a malformed preference file would be worse.
+    pub fn load() -> Self {
+        let Some(path) = Self::path() else {
+            return Settings::default();
+        };
+        match std::fs::read_to_string(&path) {
+            Ok(text) => match serde_json::from_str(&text) {
+                Ok(settings) => settings,
+                Err(e) => {
+                    eprintln!(
+                        "quotadeck: {} is not valid settings, starting from defaults: {e}",
+                        path.display()
+                    );
+                    Settings::default()
+                }
+            },
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Settings::default(),
+            Err(e) => {
+                eprintln!("quotadeck: could not read {}: {e}", path.display());
+                Settings::default()
+            }
+        }
+    }
+
+    pub fn save(&self) -> Result<()> {
+        let path = Self::path()
+            .ok_or_else(|| Error::Invalid("cannot resolve the app data directory".into()))?;
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| Error::io(parent, e))?;
+        }
+        let mut text = serde_json::to_string_pretty(self)?;
+        text.push('\n');
+        std::fs::write(&path, text).map_err(|e| Error::io(&path, e))
     }
 }
 
@@ -103,7 +166,7 @@ impl Deck {
     pub fn new() -> Self {
         Deck {
             state: Arc::new(Mutex::new(DeckState::empty())),
-            settings: Arc::new(Mutex::new(Settings::default())),
+            settings: Arc::new(Mutex::new(Settings::load())),
             panel_open: Arc::new(AtomicBool::new(false)),
         }
     }
@@ -126,15 +189,45 @@ impl Deck {
 
     pub fn settings(&self) -> Settings {
         match self.settings.lock() {
-            Ok(guard) => *guard,
-            Err(poisoned) => *poisoned.into_inner(),
+            Ok(guard) => guard.clone(),
+            Err(poisoned) => poisoned.into_inner().clone(),
         }
     }
 
     pub fn set_tray_mode(&self, mode: TrayMode) {
-        match self.settings.lock() {
-            Ok(mut guard) => guard.tray_mode = mode,
-            Err(poisoned) => poisoned.into_inner().tray_mode = mode,
+        self.update_settings(|settings| settings.tray_mode = mode);
+    }
+
+    /// Record the tier the user picked for one provider, or clear it.
+    pub fn set_plan(&self, provider: ProviderId, plan_id: Option<String>) {
+        self.update_settings(|settings| match plan_id {
+            Some(id) => {
+                settings.plans.insert(provider.key().to_string(), id);
+            }
+            None => {
+                settings.plans.remove(provider.key());
+            }
+        });
+    }
+
+    /// Mutate the settings and persist them.
+    ///
+    /// A failed write is reported and the in-memory change stands: losing a preference on the
+    /// next launch is a smaller harm than refusing the change the user just made.
+    fn update_settings(&self, apply: impl FnOnce(&mut Settings)) {
+        let snapshot = match self.settings.lock() {
+            Ok(mut guard) => {
+                apply(&mut guard);
+                guard.clone()
+            }
+            Err(poisoned) => {
+                let mut guard = poisoned.into_inner();
+                apply(&mut guard);
+                guard.clone()
+            }
+        };
+        if let Err(e) = snapshot.save() {
+            eprintln!("quotadeck: settings were changed but not saved: {e}");
         }
     }
 
@@ -177,6 +270,7 @@ mod tests {
                 })
                 .collect(),
             today: TokenRollup::default(),
+            today_cost: Default::default(),
             series: Vec::new(),
             pace: Vec::new(),
             last_activity: None,
@@ -242,19 +336,59 @@ mod tests {
     }
 
     #[test]
-    fn settings_start_on_the_quiet_tray_mode() {
+    fn settings_start_on_the_quiet_tray_mode_and_with_no_plan_picked() {
         let settings = Settings::default();
         assert_eq!(settings.tray_mode, TrayMode::Glyph);
         assert_eq!(settings.theme, Theme::System);
+        assert!(
+            settings.plans.is_empty(),
+            "a default tier would put an unrequested percentage in front of the user"
+        );
+        assert!(settings
+            .config_for(ProviderId::ClaudeCode)
+            .plan_id
+            .is_none());
     }
 
     #[test]
     fn settings_serialise_in_the_shape_the_panel_expects() {
-        let json = serde_json::to_string(&Settings {
+        let mut settings = Settings {
             tray_mode: TrayMode::Compact,
             theme: Theme::Dark,
-        })
-        .expect("serialise settings");
-        assert_eq!(json, r#"{"trayMode":"compact","theme":"dark"}"#);
+            plans: BTreeMap::new(),
+        };
+        settings
+            .plans
+            .insert("claude-code".into(), "max-20x".into());
+
+        let json = serde_json::to_string(&settings).expect("serialise settings");
+        assert_eq!(
+            json,
+            r#"{"trayMode":"compact","theme":"dark","plans":{"claude-code":"max-20x"}}"#
+        );
+    }
+
+    #[test]
+    fn a_settings_file_written_before_plans_existed_still_loads() {
+        let stored: Settings = serde_json::from_str(r#"{"trayMode":"strip","theme":"light"}"#)
+            .expect("an older settings file");
+        assert_eq!(stored.tray_mode, TrayMode::Strip);
+        assert!(stored.plans.is_empty());
+    }
+
+    #[test]
+    fn a_chosen_plan_reaches_the_provider_that_declared_it() {
+        let mut settings = Settings::default();
+        settings.plans.insert("claude-code".into(), "pro".into());
+
+        assert_eq!(
+            settings
+                .config_for(ProviderId::ClaudeCode)
+                .plan_id
+                .as_deref(),
+            Some("pro")
+        );
+        // One provider's tier must never leak into another's estimate.
+        assert!(settings.config_for(ProviderId::Codex).plan_id.is_none());
     }
 }

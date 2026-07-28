@@ -57,8 +57,17 @@ export const strings = {
     resetsIn: (duration: string) => `Frees up in ${duration}`,
     noReset: "Reset time not reported",
     todayTokens: (tokens: string) => `${tokens} tokens today`,
+    todayCost: (amount: string) => `${amount} today`,
+    /** Says outright that a dollar figure is short, rather than quietly under-reporting. */
+    costPartial: (tokens: string) => `plus ${tokens} tokens at an unknown price`,
     lastActivity: (when: string) => `Last used ${when}`,
     neverUsed: "No usage recorded yet",
+    /**
+     * Shown when a tool is logging but no tier has been picked. The app will not guess one:
+     * an unrequested percentage reads as a real reading.
+     */
+    pickPlan: "Pick your plan to see an estimate",
+    pickPlanAction: "Choose plan",
   },
 
   quiet: {
@@ -124,5 +133,34 @@ export const strings = {
     themeDark: "Dark",
     themeLight: "Light",
     back: "Done",
+
+    planTitle: (provider: string) => `${provider} plan`,
+    /**
+     * The honest framing. No vendor publishes a numeric ceiling for a coding subscription, so
+     * the tier drives an estimate — and the shim below turns that estimate into a measurement.
+     */
+    planHint:
+      "Used to estimate how full your limits are. Anthropic does not publish a number for these, so this is an estimate until you connect the statusline below.",
+    planNone: "Not set",
+    planNoneHint: "No estimate is shown. Nothing is guessed.",
+
+    statuslineTitle: "Measured limits",
+    statuslineBody:
+      "Claude Code hands its status line the real percentage for your 5-hour and weekly limits. Connecting it replaces the estimate with the measurement. Nothing leaves this device and no credentials are read.",
+    statuslineUnsupported: "Claude Code settings were not found on this machine.",
+    statuslineConnect: "Connect status line",
+    statuslineRevert: "Disconnect",
+    statuslineInstalled: "Connected",
+    statuslineFile: (path: string) => `Edits ${path}`,
+    statuslineBefore: "Now",
+    statuslineAfter: "After connecting",
+    statuslineNoPrevious: "You have no status line set. Disconnecting removes the setting again.",
+    /** The commitment that makes this safe to accept. */
+    statuslineChains: "Your existing status line keeps running — ours passes its output through.",
+    statuslineWaiting:
+      "No reading yet. Claude Code sends this only in an interactive session, after its first reply.",
+    statuslineReadings: (count: number, when: string) =>
+      count === 1 ? `1 reading, last ${when}` : `${count} readings, last ${when}`,
+    statuslineFailed: (reason: string) => `Could not change the setting: ${reason}`,
   },
 } as const;

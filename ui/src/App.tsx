@@ -7,11 +7,19 @@ import { SettingsView } from "./components/SettingsView";
 import { formatClock } from "./format";
 import { strings } from "./strings";
 import { reportPanelHeight, useDeck } from "./store";
-import type { ProviderSnapshot } from "./types";
+import { awaitingSetup, type ProviderSnapshot } from "./types";
 
-/** A provider earns a card once it has a window to show. Everything else is quiet. */
 function hasReading(snapshot: ProviderSnapshot): boolean {
   return snapshot.windows.some((window) => window.usedPercent !== null);
+}
+
+/**
+ * A provider earns a card once it has a window to show — or once it is working but waiting on
+ * something the user can supply. Folding "pick your plan" into the quiet section would hide
+ * the one action that turns a blank card into a reading.
+ */
+function earnsCard(snapshot: ProviderSnapshot): boolean {
+  return hasReading(snapshot) || awaitingSetup(snapshot);
 }
 
 export function App() {
@@ -45,8 +53,9 @@ export function App() {
     return () => observer.disconnect();
   }, [view, deck]);
 
-  const active = deck.providers.filter(hasReading);
-  const quiet = deck.providers.filter((snapshot) => !hasReading(snapshot));
+  const active = deck.providers.filter(earnsCard);
+  const quiet = deck.providers.filter((snapshot) => !earnsCard(snapshot));
+  const reporting = deck.providers.filter(hasReading).length;
   const updated = formatClock(deck.updatedAt);
 
   return (
@@ -68,7 +77,7 @@ export function App() {
 
       <main className="panel__body" ref={bodyRef}>
         {view === "settings" ? (
-          <SettingsView />
+          <SettingsView now={now} />
         ) : deck.providers.length === 0 ? (
           deck.scanning ? (
             <EmptyState title={strings.appName} body={strings.empty.scanning} />
@@ -78,7 +87,12 @@ export function App() {
         ) : (
           <>
             {active.map((snapshot) => (
-              <ProviderCard key={snapshot.id} snapshot={snapshot} now={now} />
+              <ProviderCard
+                key={snapshot.id}
+                snapshot={snapshot}
+                now={now}
+                onSetUp={() => setView("settings")}
+              />
             ))}
             <QuietTools snapshots={quiet} />
           </>
@@ -93,7 +107,7 @@ export function App() {
               ? strings.footer.updated(updated)
               : ""}
         </span>
-        <span>{strings.footer.reporting(active.length, deck.providers.length)}</span>
+        <span>{strings.footer.reporting(reporting, deck.providers.length)}</span>
       </footer>
     </div>
   );

@@ -107,3 +107,23 @@ jobs:
             echo "::error::the frontend must never be granted filesystem access; see CLAUDE.md"
             exit 1
           fi
+
+      # The statusline shim is the single sanctioned write outside our own data directory.
+      # Keeping it to one module is what makes that claim checkable.
+      - name: Only the shim module touches Claude Code settings
+        run: |
+          if grep -rn '\.claude/settings\.json' --include='*.rs' core providers app \
+              | grep -v '^app/src/statusline.rs:'; then
+            echo "::error::settings.json may only be written from app/src/statusline.rs; see CLAUDE.md"
+            exit 1
+          fi
+
+      # The statusline payload also carries the working directory, the transcript path and the
+      # session id. None of it is quota data and none of it may be persisted.
+      - name: The shim records no payload field beyond rate limits
+        run: |
+          if grep -nE '"(cwd|transcript_path|session_id|workspace|prompt_id|model)"' \
+              app/src/bin/statusline.rs; then
+            echo "::error::the shim must record rate_limits and version only; see docs/DISCOVERY.md §4"
+            exit 1
+          fi

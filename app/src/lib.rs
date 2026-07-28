@@ -6,6 +6,7 @@
 
 pub mod deck;
 pub mod icon;
+pub mod statusline;
 pub mod tray;
 
 use std::thread;
@@ -14,10 +15,12 @@ use std::time::Duration;
 use chrono::Utc;
 use quotadeck_core::discovery::RootAccess;
 use quotadeck_core::engine::ProviderEngine;
-use quotadeck_core::types::{ProviderSnapshot, UnavailableReason};
+use quotadeck_core::types::{PlanOption, ProviderId, ProviderSnapshot, UnavailableReason};
+use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager};
 
 use crate::deck::{Deck, DeckState, Settings, TrayMode};
+use crate::statusline::StatuslineState;
 
 /// Event the panel subscribes to.
 pub const STATE_EVENT: &str = "deck://state";
@@ -40,8 +43,13 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             current_state,
             current_settings,
+            provider_plans,
             set_tray_mode,
+            set_plan,
             set_panel_height,
+            statusline_state,
+            install_statusline,
+            revert_statusline,
         ])
         .setup(move |app| {
             // No dock icon and no menu bar takeover: this is an accessory, not an app the
@@ -74,6 +82,51 @@ fn current_state(deck: tauri::State<'_, Deck>) -> DeckState {
 #[tauri::command]
 fn current_settings(deck: tauri::State<'_, Deck>) -> Settings {
     deck.settings()
+}
+
+/// Subscription tiers, as each provider declares them.
+///
+/// The panel renders this list rather than a hardcoded one, so adding a tier to a provider is
+/// a change in that provider's file and nowhere else.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ProviderPlans {
+    provider: ProviderId,
+    plans: &'static [PlanOption],
+}
+
+#[tauri::command]
+fn provider_plans() -> Vec<ProviderPlans> {
+    quotadeck_providers::all()
+        .iter()
+        .filter(|provider| !provider.plans().is_empty())
+        .map(|provider| ProviderPlans {
+            provider: provider.id(),
+            plans: provider.plans(),
+        })
+        .collect()
+}
+
+#[tauri::command]
+fn set_plan(deck: tauri::State<'_, Deck>, provider: ProviderId, plan_id: Option<String>) {
+    deck.set_plan(provider, plan_id);
+}
+
+#[tauri::command]
+fn statusline_state() -> StatuslineState {
+    statusline::state()
+}
+
+/// Write the statusline shim. Called only after the panel has shown the exact before and
+/// after and the user has agreed to it.
+#[tauri::command]
+fn install_statusline() -> std::result::Result<StatuslineState, String> {
+    statusline::install().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn revert_statusline() -> std::result::Result<StatuslineState, String> {
+    statusline::revert().map_err(|e| e.to_string())
 }
 
 /// Smallest useful panel: header, footer and one card.
@@ -137,9 +190,14 @@ fn publish(
     scanning: bool,
 ) {
     let now = Utc::now();
+    let settings = deck.settings();
     let mut providers = Vec::with_capacity(engines.len());
 
     for engine in engines.iter_mut() {
+        // Picked up every tick, so a plan chosen in the panel shows on the next refresh
+        // without re-reading a byte of log.
+        engine.set_config(settings.config_for(engine.provider().id()));
+
         match engine.access() {
             RootAccess::Readable => {}
             RootAccess::Missing => {
@@ -186,6 +244,6 @@ fn publish(
         scanning,
     };
     deck.set_state(state.clone());
-    tray::refresh(app, &state, deck.settings());
+    tray::refresh(app, &state, settings);
     let _ = app.emit(STATE_EVENT, &state);
 }
