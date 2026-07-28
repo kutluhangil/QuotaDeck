@@ -1,0 +1,15 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "The panel window's only privileges: show and hide itself, and place itself under the tray icon. Filesystem access is deliberately absent — every file read happens in Rust behind the provider layer, and the frontend never sees a path.",
+  "windows": ["panel"],
+  "permissions": [
+    "core:default",
+    "core:window:allow-hide",
+    "core:window:allow-show",
+    "core:window:allow-set-focus",
+    "core:window:allow-set-size",
+    "core:window:allow-start-dragging",
+    "positioner:default"
+  ]
+}

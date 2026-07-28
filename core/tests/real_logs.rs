@@ -18,7 +18,7 @@ use quotadeck_core::reader::LineReader;
 use quotadeck_core::tail::{tail_lines, DEFAULT_TAIL_BYTES};
 
 fn newest_codex_rollout() -> Option<PathBuf> {
-    let root = quotadeck_core::paths::existing_in_home(".codex/sessions")?;
+    let root = quotadeck_core::paths::present_in_home(".codex/sessions")?;
     let mut newest: Option<(std::time::SystemTime, PathBuf)> = None;
     let mut stack = vec![root];
 

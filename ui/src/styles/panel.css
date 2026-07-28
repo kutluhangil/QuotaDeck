@@ -1,0 +1,400 @@
+/*
+ * Panel layout. One file so selector specificity stays flat and predictable: every rule
+ * here is a single class, and no rule overrides another.
+ */
+
+.panel {
+  inline-size: 100%;
+  block-size: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-abyss);
+  border-radius: 10px;
+  overflow: hidden;
+  border: var(--hairline) solid var(--rule);
+}
+
+.panel__head {
+  block-size: var(--header-height);
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-inline: var(--step-4);
+  border-block-end: var(--hairline) solid var(--rule);
+}
+
+.panel__title {
+  display: flex;
+  align-items: center;
+  gap: var(--step-2);
+  color: var(--ink-primary);
+}
+
+/*
+ * The mark: bands of usage resting on a horizon, the newest at the right and the oldest
+ * dissolving off the left edge. The app's own glyph, drawn from the product idea rather
+ * than borrowed from any vendor.
+ */
+.panel__glyph {
+  inline-size: 16px;
+  block-size: 12px;
+  display: block;
+  border-block-end: 1.5px solid var(--ink-primary);
+  background-repeat: no-repeat;
+  background-position: bottom left;
+  background-image:
+    linear-gradient(var(--ink-tertiary) 0 0),
+    linear-gradient(var(--ink-secondary) 0 0),
+    linear-gradient(var(--ink-primary) 0 0);
+  background-size:
+    3px 4px,
+    3px 7px,
+    4px 10px;
+  background-position:
+    0 calc(100% - 1.5px),
+    5px calc(100% - 1.5px),
+    10px calc(100% - 1.5px);
+  opacity: 0.9;
+}
+
+.panel__action {
+  color: var(--ink-secondary);
+  padding: var(--step-1) var(--step-2);
+  border-radius: var(--radius);
+}
+
+.panel__action:hover {
+  color: var(--ink-primary);
+  background: var(--surface-raised);
+}
+
+.panel__foot {
+  block-size: var(--footer-height);
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-inline: var(--step-4);
+  border-block-start: var(--hairline) solid var(--rule);
+  color: var(--ink-tertiary);
+}
+
+.panel__body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: var(--step-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--step-2);
+}
+
+.card {
+  background: var(--surface-hull);
+  border: var(--hairline) solid var(--rule);
+  border-radius: var(--radius);
+  padding: var(--step-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--step-2);
+}
+
+.card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--step-2);
+}
+
+.card__name {
+  margin: 0;
+  color: var(--ink-secondary);
+}
+
+.card__reading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--step-2);
+}
+
+.card__percent {
+  color: var(--ink-primary);
+}
+
+/* The one place the ramp touches type, and only when the quota is genuinely at risk. */
+.card__percent[data-critical="true"] {
+  color: var(--level-critical);
+}
+
+.card__window {
+  color: var(--ink-tertiary);
+}
+
+.card__quiet {
+  margin: 0;
+  color: var(--ink-tertiary);
+}
+
+.card__others {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--step-1);
+}
+
+.card__other {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: var(--step-2);
+}
+
+.card__other-label {
+  color: var(--ink-tertiary);
+}
+
+.card__other-value {
+  color: var(--ink-secondary);
+}
+
+.card__foot {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--step-2);
+  color: var(--ink-tertiary);
+  padding-block-start: var(--step-1);
+  border-block-start: var(--hairline) solid var(--rule);
+}
+
+.card__foot-right {
+  text-align: end;
+  white-space: nowrap;
+}
+
+.bar {
+  block-size: 6px;
+  inline-size: 100%;
+  background: var(--track);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.bar__fill {
+  block-size: 100%;
+  border-radius: 3px;
+  transition: inline-size 240ms ease-out;
+}
+
+.bar__fill[data-level="ample"] {
+  background: var(--level-ample);
+}
+
+.bar__fill[data-level="tight"] {
+  background: var(--level-tight);
+}
+
+.bar__fill[data-level="critical"] {
+  background: var(--level-critical);
+}
+
+/*
+ * Pattern carries the level alongside colour. Roughly 8% of men cannot separate the amber
+ * from the green, and a greyscale screenshot loses the hue entirely.
+ */
+.bar__fill[data-pattern="hatched"] {
+  background-image: repeating-linear-gradient(
+    135deg,
+    rgb(0 0 0 / 0.28) 0 2px,
+    transparent 2px 5px
+  );
+}
+
+.bar__fill[data-pattern="dense"] {
+  background-image: repeating-linear-gradient(
+    135deg,
+    rgb(0 0 0 / 0.34) 0 2px,
+    transparent 2px 4px
+  );
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--ink-tertiary);
+  white-space: nowrap;
+}
+
+.badge__mark {
+  inline-size: 7px;
+  block-size: 7px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+}
+
+/* Filled blue dot: the provider stated this itself. */
+.badge--measured .badge__mark {
+  background: var(--measured);
+}
+
+.badge--measured {
+  color: var(--measured);
+}
+
+/* Hollow ring: we worked it out, so the centre is empty. */
+.badge--derived .badge__mark {
+  border: 1.5px solid var(--ink-tertiary);
+}
+
+/* Half-filled: it was measured once, but that was a while ago. */
+.badge--stale .badge__mark {
+  border: 1.5px solid var(--ink-tertiary);
+  background: linear-gradient(to right, var(--ink-tertiary) 0 50%, transparent 50%);
+}
+
+.badge--idle .badge__mark {
+  border: 1.5px solid var(--rule);
+}
+
+.quiet {
+  border: var(--hairline) solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--surface-hull);
+}
+
+.quiet__summary {
+  padding: var(--step-3);
+  color: var(--ink-tertiary);
+  cursor: default;
+}
+
+.quiet__summary:hover {
+  color: var(--ink-secondary);
+}
+
+.quiet__list {
+  list-style: none;
+  margin: 0;
+  padding: 0 var(--step-3) var(--step-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--step-2);
+}
+
+.quiet__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--step-2);
+}
+
+.quiet__name {
+  color: var(--ink-secondary);
+}
+
+.quiet__reason {
+  color: var(--ink-tertiary);
+}
+
+.empty {
+  margin: auto;
+  padding: var(--step-5) var(--step-4);
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: var(--step-2);
+  align-items: center;
+}
+
+.empty__title {
+  margin: 0;
+  color: var(--ink-secondary);
+}
+
+.empty__body {
+  margin: 0;
+  color: var(--ink-tertiary);
+  max-inline-size: 30ch;
+}
+
+.empty__action {
+  margin-block-start: var(--step-2);
+  padding: var(--step-2) var(--step-3);
+  border: var(--hairline) solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--surface-raised);
+  color: var(--ink-primary);
+}
+
+.empty__action:hover {
+  border-color: var(--ink-tertiary);
+}
+
+.settings {
+  display: flex;
+  flex-direction: column;
+  gap: var(--step-4);
+  padding: var(--step-2);
+}
+
+.settings__group {
+  border: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--step-2);
+}
+
+.settings__legend {
+  color: var(--ink-tertiary);
+  padding: 0;
+  margin-block-end: var(--step-1);
+}
+
+.settings__option {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--step-2);
+  padding: var(--step-2);
+  border-radius: var(--radius);
+}
+
+.settings__option:hover {
+  background: var(--surface-raised);
+}
+
+.settings__option-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  color: var(--ink-primary);
+}
+
+.settings__hint {
+  color: var(--ink-tertiary);
+}
+
+.settings__row {
+  display: flex;
+  gap: var(--step-2);
+}
+
+.settings__chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: var(--step-2) var(--step-3);
+  border: var(--hairline) solid var(--rule);
+  border-radius: var(--radius);
+  color: var(--ink-secondary);
+}
+
+.settings__chip:hover {
+  color: var(--ink-primary);
+  border-color: var(--ink-tertiary);
+}

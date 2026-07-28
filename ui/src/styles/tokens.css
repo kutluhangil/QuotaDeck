@@ -1,0 +1,139 @@
+/*
+ * Design tokens. Single source of truth for the panel's visual language.
+ *
+ * The level ramp is reserved for real fullness indicators — bars, percentages, tray glyph.
+ * Never a button, heading, icon or border. When the user sees red it means one thing: the
+ * quota is running out.
+ */
+
+:root {
+  /* Dark is the default: the panel floats over an arbitrary desktop and has to build its
+     own closed surface rather than borrow the wallpaper's. */
+  --surface-abyss: #0a0e17;
+  --surface-hull: #131a26;
+  --surface-raised: #1a2331;
+  --rule: #232e40;
+
+  --ink-primary: #e6ebf4;
+  --ink-secondary: #8a99b0;
+  --ink-tertiary: #55637a;
+
+  --level-ample: #45c4a0;
+  --level-tight: #e3a83c;
+  --level-critical: #ff5e5b;
+
+  /* Capacity that is about to come back as the window slides. */
+  --ghost: #2b3a52;
+  /* Blue reads as certainty: it marks a value the provider reported itself. */
+  --measured: #6ba8ff;
+
+  --track: #1f2937;
+
+  --face-data: "Martian Mono", ui-monospace, SFMono-Regular, monospace;
+  --face-ui: "Inter Variable", "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
+
+  --step-1: 4px;
+  --step-2: 8px;
+  --step-3: 12px;
+  --step-4: 16px;
+  --step-5: 24px;
+
+  --header-height: 48px;
+  --footer-height: 40px;
+  --panel-width: 380px;
+
+  --radius: 6px;
+  --hairline: 1px;
+}
+
+:root[data-theme="light"] {
+  --surface-abyss: #f2f4f8;
+  --surface-hull: #ffffff;
+  --surface-raised: #e9edf3;
+  --rule: #dce2eb;
+
+  --ink-primary: #10151f;
+  --ink-secondary: #55637a;
+  --ink-tertiary: #8a99b0;
+
+  /* The same ramp darkened 8% so it holds contrast against a white card. */
+  --level-ample: #3fb493;
+  --level-tight: #d19b37;
+  --level-critical: #eb5654;
+
+  --ghost: #cbd5e4;
+  --measured: #2f76d6;
+
+  --track: #e2e7ef;
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --surface-abyss: #f2f4f8;
+    --surface-hull: #ffffff;
+    --surface-raised: #e9edf3;
+    --rule: #dce2eb;
+
+    --ink-primary: #10151f;
+    --ink-secondary: #55637a;
+    --ink-tertiary: #8a99b0;
+
+    --level-ample: #3fb493;
+    --level-tight: #d19b37;
+    --level-critical: #eb5654;
+
+    --ghost: #cbd5e4;
+    --measured: #2f76d6;
+
+    --track: #e2e7ef;
+  }
+}
+
+/*
+ * Type scale, sized for a 380px panel.
+ *
+ * Numbers are set in Martian Mono for its tabular figures: a percentage that ticks from
+ * 79 to 80 must not shift the layout. That is a functional requirement, not a taste one.
+ */
+
+.type-display {
+  font-family: var(--face-data);
+  font-size: 28px;
+  line-height: 32px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.type-metric {
+  font-family: var(--face-data);
+  font-size: 15px;
+  line-height: 20px;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+}
+
+.type-label {
+  font-family: var(--face-ui);
+  font-size: 11px;
+  line-height: 14px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.type-body {
+  font-family: var(--face-ui);
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 400;
+}
+
+.type-caption {
+  font-family: var(--face-ui);
+  font-size: 11px;
+  line-height: 14px;
+  font-weight: 400;
+  letter-spacing: 0.02em;
+}

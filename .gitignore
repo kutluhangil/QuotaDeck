@@ -1,3 +1,13 @@
 /target
 **/*.rs.bk
 .DS_Store
+
+# Frontend build outputs
+/ui/node_modules
+/ui/dist
+
+# Tauri generated schemas
+/app/gen
+
+# Intermediate icon directory; the .icns and .png files it produces are committed.
+/app/icons/icon.iconset

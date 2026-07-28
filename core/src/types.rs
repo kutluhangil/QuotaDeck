@@ -62,7 +62,11 @@ impl ProviderId {
 /// How much a number can be trusted. Rendered as a visible badge; an estimate is never
 /// allowed to look like a measurement.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "level", rename_all = "kebab-case")]
+#[serde(
+    tag = "level",
+    rename_all = "kebab-case",
+    rename_all_fields = "camelCase"
+)]
 pub enum Confidence {
     /// The provider reported this itself.
     Measured { reported_at: DateTime<Utc> },
@@ -148,6 +152,7 @@ impl WindowKind {
 
 /// One quota window as reported or derived for a provider.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct QuotaWindow {
     /// Groups windows that belong to the same limit. Codex emits `"codex"` and `"premium"`;
     /// Claude Code's five-hour and seven-day windows share one id.
@@ -179,6 +184,7 @@ impl QuotaWindow {
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TokenRollup {
     pub input: u64,
     pub output: u64,
@@ -300,6 +306,7 @@ impl PaceRisk {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PaceForecast {
     pub limit_id: String,
     /// Projected usage percentage at the end of the window.
@@ -311,6 +318,7 @@ pub struct PaceForecast {
 
 /// Everything the UI needs about one provider. The UI never sees a raw log line.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ProviderSnapshot {
     pub id: ProviderId,
     pub installed: bool,

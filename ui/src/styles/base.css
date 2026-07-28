@@ -1,0 +1,61 @@
+@import "@fontsource-variable/inter/index.css";
+@import "@fontsource/martian-mono/400.css";
+@import "@fontsource/martian-mono/500.css";
+@import "./tokens.css";
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  /* The window itself is transparent; the panel paints the only visible surface. */
+  background: transparent;
+  color: var(--ink-primary);
+  font-family: var(--face-ui);
+  -webkit-font-smoothing: antialiased;
+  /* A tray panel is chrome, not a document. Selecting its text is never the intent. */
+  user-select: none;
+  cursor: default;
+  overflow: hidden;
+}
+
+input[type="radio"] {
+  /* Native control, project colour: the panel has one blue and this is it. */
+  accent-color: var(--measured);
+  margin: 0;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: default;
+}
+
+:focus-visible {
+  outline: 2px solid var(--measured);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+/* Nothing here is load-bearing motion; if the user asked for stillness, give it. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

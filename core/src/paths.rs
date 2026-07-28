@@ -26,8 +26,11 @@ pub fn in_home(relative: &str) -> Option<PathBuf> {
     real_home().map(|home| home.join(relative))
 }
 
-/// Like [`in_home`], but only when the path exists. Used by `discover_roots`, where a
-/// missing directory means the tool is not installed.
-pub fn existing_in_home(relative: &str) -> Option<PathBuf> {
-    in_home(relative).filter(|path| path.exists())
+/// Like [`in_home`], but only when the directory is actually there.
+///
+/// A directory that exists but cannot be read still counts: reporting a tool as missing
+/// when the real problem is a permission the user can grant sends them the wrong way.
+pub fn present_in_home(relative: &str) -> Option<PathBuf> {
+    in_home(relative)
+        .filter(|path| crate::discovery::access(path) != crate::discovery::RootAccess::Missing)
 }

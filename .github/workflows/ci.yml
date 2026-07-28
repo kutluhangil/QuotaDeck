@@ -10,7 +10,31 @@ env:
   RUSTFLAGS: -D warnings
 
 jobs:
+  ui:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+
+      - name: Install
+        run: npm ci --prefix ui
+
+      - name: Typecheck and build
+        run: npm run build --prefix ui
+
+      - name: Upload panel build
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-dist
+          path: ui/dist
+          retention-days: 1
+
   check:
+    needs: ui
     strategy:
       fail-fast: false
       matrix:
@@ -22,6 +46,13 @@ jobs:
         with:
           components: clippy, rustfmt
       - uses: Swatinem/rust-cache@v2
+
+      # The Tauri build embeds the panel, so the Rust crates cannot compile without it.
+      - name: Fetch panel build
+        uses: actions/download-artifact@v4
+        with:
+          name: ui-dist
+          path: ui/dist
 
       - name: Format
         run: cargo fmt --all -- --check
@@ -38,7 +69,8 @@ jobs:
 
   # Architectural constraints from CLAUDE.md, enforced rather than trusted.
   constraints:
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
+    needs: ui
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
@@ -50,10 +82,24 @@ jobs:
             exit 1
           fi
 
+      - name: No network entitlement
+        run: |
+          if grep -rn 'security.network' app/ 2>/dev/null; then
+            echo "::error::a network entitlement was added; the privacy claim depends on its absence"
+            exit 1
+          fi
+
       - name: No credential or auth-file access
         run: |
           if grep -rniE 'auth\.json|credentials|keychain|oauth|access_token' \
               --include='*.rs' --include='*.toml' core providers app; then
             echo "::error::credential handling is forbidden; see CLAUDE.md"
+            exit 1
+          fi
+
+      - name: The panel gets no filesystem capability
+        run: |
+          if grep -riE '"fs:|tauri-plugin-fs' app/capabilities app/Cargo.toml; then
+            echo "::error::the frontend must never be granted filesystem access; see CLAUDE.md"
             exit 1
           fi

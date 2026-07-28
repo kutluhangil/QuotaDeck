@@ -8,12 +8,12 @@
 
 pub mod cursor;
 pub mod discovery;
+pub mod engine;
 pub mod error;
 pub mod events;
 pub mod paths;
 pub mod provider;
 pub mod reader;
-pub mod scan;
 pub mod store;
 pub mod tail;
 pub mod types;

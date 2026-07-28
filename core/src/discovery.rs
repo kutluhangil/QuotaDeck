@@ -8,6 +8,32 @@
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
+/// Whether a provider root can actually be read.
+///
+/// `Path::exists` cannot answer this: on a directory the process is denied, `stat` fails and
+/// `exists` reports false, which would make a permission problem look like a missing tool.
+/// Under the macOS App Sandbox that is the state every user starts in, so the two must never
+/// be confused.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RootAccess {
+    Readable,
+    /// The directory is there but this process may not read it.
+    Denied,
+    Missing,
+}
+
+pub fn access(path: &Path) -> RootAccess {
+    match std::fs::read_dir(path) {
+        Ok(_) => RootAccess::Readable,
+        Err(e) => match e.kind() {
+            std::io::ErrorKind::NotFound => RootAccess::Missing,
+            // Anything else that stops us reading is reported as denied rather than
+            // silently swallowed, so the UI can offer the user a way to fix it.
+            _ => RootAccess::Denied,
+        },
+    }
+}
+
 /// One discovered log file, with the metadata the scheduler orders work by.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FoundFile {
@@ -175,6 +201,23 @@ mod tests {
         assert!(names.contains(&"rollout-a.jsonl".to_string()));
         assert!(names.contains(&"rollout-b.jsonl".to_string()));
         assert_eq!(found.iter().map(|f| f.size).sum::<u64>(), 5);
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn an_unreadable_root_is_not_reported_as_missing() {
+        let root = std::env::temp_dir().join(format!("quotadeck-access-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        assert_eq!(access(&root), RootAccess::Missing);
+
+        std::fs::create_dir_all(&root).expect("create root");
+        assert_eq!(access(&root), RootAccess::Readable);
+
+        // A file is not a directory, which is a real failure rather than an absence.
+        let file = root.join("not-a-dir");
+        std::fs::write(&file, b"x").expect("write");
+        assert_eq!(access(&file), RootAccess::Denied);
 
         let _ = std::fs::remove_dir_all(&root);
     }

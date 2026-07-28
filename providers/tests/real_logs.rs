@@ -7,8 +7,8 @@
 //! ```
 
 use chrono::Utc;
+use quotadeck_core::engine::ProviderEngine;
 use quotadeck_core::provider::Provider;
-use quotadeck_core::scan::{scan, ScanOptions};
 use quotadeck_core::types::WindowKind;
 use quotadeck_providers::codex::Codex;
 
@@ -20,14 +20,15 @@ fn codex_parses_every_real_rollout_and_reports_a_measured_window() {
         panic!("Codex is not installed here; this test needs its session logs");
     }
 
-    let (index, report) = scan(&provider, &ScanOptions::default()).expect("scan");
+    let mut engine = ProviderEngine::new(Box::new(Codex));
+    let report = engine.refresh(None).expect("scan");
     println!(
         "{} files, {} lines, {:.1} MB, {} ms, {} duplicates skipped, {} invalid lines",
         report.files_read,
         report.lines,
         report.bytes as f64 / 1e6,
         report.elapsed_ms,
-        report.duplicates_skipped,
+        engine.take_duplicate_count(),
         report.invalid_lines
     );
 
@@ -38,7 +39,7 @@ fn codex_parses_every_real_rollout_and_reports_a_measured_window() {
     );
 
     let now = Utc::now();
-    let snapshot = provider.build_snapshot(&index, now);
+    let snapshot = engine.snapshot(now);
     for window in &snapshot.windows {
         println!(
             "  {} {:?} {}m {:?}% {:?}",
@@ -81,13 +82,14 @@ fn scanning_twice_gives_the_same_totals() {
         panic!("Codex is not installed here; this test needs its session logs");
     }
 
-    let options = ScanOptions::default();
-    let (first, _) = scan(&provider, &options).expect("first scan");
-    let (second, _) = scan(&provider, &options).expect("second scan");
+    let mut first = ProviderEngine::new(Box::new(Codex));
+    first.refresh(None).expect("first scan");
+    let mut second = ProviderEngine::new(Box::new(Codex));
+    second.refresh(None).expect("second scan");
 
     let now = Utc::now();
-    let a = provider.build_snapshot(&first, now);
-    let b = provider.build_snapshot(&second, now);
+    let a = first.snapshot(now);
+    let b = second.snapshot(now);
     assert_eq!(a.today, b.today);
     assert_eq!(a.series.len(), b.series.len());
 }

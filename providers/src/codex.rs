@@ -134,7 +134,7 @@ impl Provider for Codex {
 
     fn discover_roots(&self) -> Vec<PathBuf> {
         // Same relative path on both platforms; `paths` resolves the home directory.
-        paths::existing_in_home(".codex/sessions")
+        paths::present_in_home(".codex/sessions")
             .into_iter()
             .collect()
     }
