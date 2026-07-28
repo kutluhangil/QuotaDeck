@@ -285,6 +285,7 @@ Token usage appears **only** on `session.shutdown` (171 of 186 sessions):
 Notes:
 
 - `totalPremiumRequests` is Copilot's **actual billing unit** — plans are capped in premium requests per month, not tokens. Summing it over the calendar month against the user's plan cap gives a far more meaningful figure than token counts.
+  **Corrected in Phase 6 (§11.1):** premium requests are the *legacy* unit. GitHub moved to AI credits on 2026-06-01, and `totalNanoAiu` in the same record is the meter that now matters.
 - Usage is written **at shutdown only**, so a live session is invisible until it ends. Mark in-flight sessions explicitly rather than showing a stale total as current.
 - 15 sessions (186 − 171) ended without a shutdown record — crash or kill. Never assume the record exists.
 
@@ -462,5 +463,108 @@ No regression against the Phase 4 baseline.
 ## 10. Open items carried into later phases
 
 - Windows path verification (`%USERPROFILE%\.codex`, `%APPDATA%`) — no Windows machine available here. Phase 10.
-- Kimi, Qwen, OpenCode, Amp, Droid, Goose and the rest are absent on this machine; their schemas cannot be verified from real data. Phase 6 must acquire real fixtures before implementing each one — no parser ships against a guessed schema.
-- Copilot's premium-request plan caps (300 / 1500 / unlimited per tier) need a source before we render a percentage.
+- Kimi, Qwen, OpenCode, Amp, Droid, Goose and the rest are absent on this machine; their schemas cannot be verified from real data. Phase 6 must acquire real fixtures before implementing each one — no parser ships against a guessed schema. **Still open after Phase 6:** none of them appeared, so none of them shipped.
+- ~~Copilot's premium-request plan caps (300 / 1500 / unlimited per tier) need a source before we render a percentage.~~ Closed in Phase 6, and the premise turned out to be stale — see §11.
+
+---
+
+## 11. Phase 6 — Copilot CLI, corrections to §7
+
+### 11.1 The billing unit changed, and the logs already show the new one
+
+§7 read `totalPremiumRequests` as "Copilot's actual billing unit". That was true of
+request-based billing, which GitHub retired on **2026-06-01** in favour of usage-based billing
+in **GitHub AI Credits**. The field `totalNanoAiu` sitting next to it in every shutdown record
+is the new meter: nano-AI-units, and GitHub publishes the conversion — **1 AI credit =
+$0.01 USD**.
+
+That makes Copilot the only provider here whose *cost* is metered by the vendor. Codex names
+no model at all and Claude Code has to be priced against an embedded table; Copilot hands over
+a number that needs no lookup and leaves nothing unpriced.
+
+Checked against this machine's 37 `claude-haiku-4.5` sessions, the reported credits track a
+list-price computation from `modelMetrics.usage` at a constant **0.51–0.54** ratio across a
+20x spread of session sizes. GitHub's rate card is its own; what the constant ratio establishes
+is that the field is linear in token usage — a cost measure, not a token count.
+
+`totalPremiumRequests` is still emitted and is still carried into `Bucket::requests`, but no
+ceiling is built on it: request billing now survives only for subscribers who stayed on a
+legacy annual plan.
+
+### 11.2 Published allowances, which is what §10 was missing
+
+| Plan | Price | Base credits | Flex | Included per month | Ceiling used |
+|---|---|---|---|---|---|
+| Pro | $10 | 1 000 | 500 | **1 500** | $15 |
+| Pro+ | $39 | 3 900 | 3 100 | **7 000** | $70 |
+| Max | $100 | 10 000 | 10 000 | **20 000** | $200 |
+| Business | $19/user | 1 900 | — | **1 900** | $19 |
+| Enterprise | $39/user | 3 900 | — | **3 900** | $39 |
+
+Business and Enterprise carry a promotional 3 000 / 7 000 between 2026-06-01 and 2026-09-01.
+It is deliberately **not** encoded: it expires, and a ceiling that silently lapses starts
+over-reporting on the day it does.
+
+Allowances reset on the **1st of each month at 00:00:00 UTC** and unused credits do not carry
+over. The window is therefore a calendar month, not a rolling thirty days — a rolling sum
+would report spend that has already been forgiven. The window is still *declared* as 43 200
+minutes so that the estimate and a measured exhaustion describe one window; `resets_at`
+carries the real boundary.
+
+Sources: `docs.github.com` — usage-based billing for individuals, and for organizations and
+enterprises.
+
+### 11.3 `session.error` is the one thing Copilot measures
+
+13 error records here, in three shapes:
+
+```
+9  errorType "quota"          errorCode "quota_exceeded"  status 402  "You have exceeded your monthly quota"
+2  errorType "query"          (no code)                               retry exhaustion
+2  errorType "context_limit"  (no code)                               context window full
+```
+
+A `quota_exceeded` is a measurement: at that instant the allowance was gone. It is emitted as
+a 100% monthly window with `Confidence::Measured`, and **discarded once the calendar month it
+was observed in has ended** — carrying last month's exhaustion past a reset would be a stale
+measurement rendered as a current one, the worst failure this app has.
+
+This matters more than it looks. On real logs the CLI's own month-to-date spend is **$2.21**
+against Pro's $15 — 15% — while the account was in fact exhausted. Credits spent in the editor
+and on the web never reach this machine, so the derived percentage is a **floor**, and the
+exhaustion event is the only thing that reveals the rest.
+
+### 11.4 Read `modelMetrics`, not `tokenDetails`
+
+Both are present in a shutdown record. `tokenDetails.input.tokenCount` excludes cache reads
+*and* cache writes, so it reconstructs `usage.inputTokens` in only some records — **33 of 171
+disagreed**, one reporting 9 against a real 27 758. Summing `modelMetrics` reproduced
+`totalNanoAiu` and `totalPremiumRequests` **exactly in all 171 sessions**, so it is the
+lossless view.
+
+Within `modelMetrics.usage`: `cacheReadTokens` is a subset of `inputTokens` and
+`reasoningTokens` a subset of `outputTokens` — verified with no exceptions across all 171.
+
+### 11.5 Other measured facts
+
+- **186 session directories, one `session.shutdown` each.** No file carried two, so the record
+  is incremental rather than a running total. Dedup on `(session-uuid, record-uuid, model)`
+  guards a re-read.
+- **The session id is the directory, not the file.** Every session writes a file called
+  `events.jsonl`, so the default file-stem identity would collapse all 186 into one.
+- **15 of 186 sessions (8%) reported no model call at all** — empty `modelMetrics`, zero
+  credits, zero requests. They produce nothing rather than a zero-token event.
+- **Usage lands at the shutdown instant**, because that is the only moment Copilot writes any
+  of it. An in-flight session is invisible, and a session killed before it wrote its shutdown
+  record is lost outright.
+
+### 11.6 Performance
+
+```
+Copilot CLI   186 files   50.1 MB   188 ms   266 MB/s
+```
+
+Below Codex's 858 MB/s and Claude Code's 714 MB/s, and the cause is file count rather than
+parsing: 186 files averaging 270 KB against Codex's 127 averaging 7.5 MB. Only 1 298 lines
+exist across the whole 50 MB — 38 KB per line — so the single-pass `"session.` pre-filter
+admits 385 small lifecycle records and keeps the JSON parser off the rest.

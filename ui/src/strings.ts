@@ -7,6 +7,16 @@
 
 import type { ProviderId, UnavailableReason, WindowKind } from "./types";
 
+const planHintDefault =
+  "Used to estimate how full your limits are. Nothing is sent anywhere to work it out.";
+
+const planHints: Partial<Record<ProviderId, string>> = {
+  "claude-code":
+    "Used to estimate how full your limits are. Anthropic does not publish a number for these, so this is an estimate until you connect the status line below.",
+  "copilot-cli":
+    "GitHub publishes the credit allowance for each plan, so the ceiling is exact. The estimate is in the spend: only command-line sessions count here, and only once they have ended. Credits used in your editor or on the web are not visible from this machine.",
+};
+
 export const strings = {
   appName: "Quota Deck",
 
@@ -136,11 +146,12 @@ export const strings = {
 
     planTitle: (provider: string) => `${provider} plan`,
     /**
-     * The honest framing. No vendor publishes a numeric ceiling for a coding subscription, so
-     * the tier drives an estimate — and the shim below turns that estimate into a measurement.
+     * Why the number is an estimate, said in the provider's own terms. The reason differs:
+     * Anthropic publishes no ceiling at all, while GitHub publishes an exact one and the
+     * doubt sits in what we can see of the spend against it. A single sentence covering both
+     * would be vague enough to be useless.
      */
-    planHint:
-      "Used to estimate how full your limits are. Anthropic does not publish a number for these, so this is an estimate until you connect the statusline below.",
+    planHint: (provider: ProviderId) => planHints[provider] ?? planHintDefault,
     planNone: "Not set",
     planNoneHint: "No estimate is shown. Nothing is guessed.",
 

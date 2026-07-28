@@ -829,18 +829,20 @@ Bu faz atlanamaz. Bütün planın varsayımlarını kendi makinende doğrular.
 
 ### Faz 6 — Sağlayıcı Genişletme
 
-Her biri ayrı dosya, ayrı test, ayrı commit:
+Her biri ayrı dosya, ayrı test, ayrı commit. Faz 0 (`docs/DISCOVERY.md` §1) bu makinede yalnızca
+Copilot CLI ve Hermes'i buldu; geri kalanı kurulu değil. Tahmin edilen şemayla parser yazılmaz,
+o yüzden bunlar gerçek fixture edinilene kadar açık kalıyor (§10).
 
-- [ ] Kimi (`~/.kimi`, `~/.kimi-code`, `KIMI_DATA_DIR`; turn-scoped kayıt filtresi)
-- [ ] Gemini CLI
-- [ ] GitHub Copilot CLI
-- [ ] Qwen Code
-- [ ] OpenCode
-- [ ] Amp
-- [ ] Droid
-- [ ] Goose
-- [ ] Codebuff, Hermes, pi-agent, Kilo
-- [ ] "Sessiz araçlar" katlanır bölümü
+- [ ] Kimi (`~/.kimi`, `~/.kimi-code`, `KIMI_DATA_DIR`; turn-scoped kayıt filtresi) — makinede yok
+- [ ] Gemini CLI — makinede yok (`~/.gemini` var ama oturum logu tutmuyor)
+- [x] GitHub Copilot CLI — kredi sayacı, takvim ayı penceresi, `quota_exceeded` ölçümü (§11)
+- [ ] Qwen Code — makinede yok
+- [ ] OpenCode — makinede yok
+- [ ] Amp — makinede yok
+- [ ] Droid — makinede yok
+- [ ] Goose — makinede yok
+- [ ] Codebuff, pi-agent, Kilo — makinede yok. Hermes kurulu ama `~/.hermes/logs` hiç token kaydı tutmuyor, ayrıştıracak bir şey yok.
+- [x] "Sessiz araçlar" katlanır bölümü — `ui/src/components/QuietTools.tsx`
 
 ### Faz 7 — Tahmin, Geçmiş, Bildirimler
 

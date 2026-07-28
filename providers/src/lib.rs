@@ -5,13 +5,18 @@
 
 pub mod claude_code;
 pub mod codex;
+pub mod copilot_cli;
 
 use quotadeck_core::provider::Provider;
 use quotadeck_core::types::ProviderId;
 
 /// Every provider this build knows how to read.
 pub fn all() -> Vec<Box<dyn Provider>> {
-    vec![Box::new(claude_code::ClaudeCode), Box::new(codex::Codex)]
+    vec![
+        Box::new(claude_code::ClaudeCode),
+        Box::new(codex::Codex),
+        Box::new(copilot_cli::CopilotCli),
+    ]
 }
 
 /// Providers whose root directories exist on this machine.

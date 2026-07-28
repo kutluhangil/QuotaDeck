@@ -506,8 +506,11 @@
   color: var(--ink-tertiary);
 }
 
+/* Wraps because a provider decides how many tiers it sells: Claude Code offers three and
+   Copilot six with "Not set". Without this the extra chips run off the panel edge. */
 .settings__row {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--step-2);
 }
 

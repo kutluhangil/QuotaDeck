@@ -54,7 +54,9 @@ function PlanGroup({ entry }: { entry: ProviderPlans }) {
         ))}
       </div>
       <p className="type-caption settings__hint">
-        {chosen === undefined ? strings.settings.planNoneHint : strings.settings.planHint}
+        {chosen === undefined
+          ? strings.settings.planNoneHint
+          : strings.settings.planHint(entry.provider)}
       </p>
     </fieldset>
   );

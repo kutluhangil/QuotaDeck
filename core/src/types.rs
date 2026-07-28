@@ -86,7 +86,8 @@ pub enum Confidence {
 pub enum DerivationBasis {
     /// Rolling-window sum of locally counted tokens against a user-selected plan ceiling.
     TokenWindow,
-    /// Provider-native billing unit counted locally (e.g. Copilot premium requests).
+    /// Provider-native billing unit counted locally, against a ceiling the vendor publishes.
+    /// Copilot's AI credits, and the premium requests they replaced.
     RequestCount,
 }
 

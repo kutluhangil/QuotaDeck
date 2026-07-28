@@ -2,6 +2,16 @@
 
 ## 2026-07-28
 
+- Phase 6: added the GitHub Copilot CLI provider — reads `~/.copilot/session-state/<uuid>/events.jsonl`, where usage is written once per session at shutdown and an in-flight session is invisible until it exits.
+- Phase 6: cost comes from Copilot's own credit meter (`totalNanoAiu`) at GitHub's published 1 credit = $0.01, so this is the one provider that needs no price table and leaves nothing unpriced. `totalPremiumRequests` is the retired unit and is carried through but never used as a ceiling.
+- Phase 6: corrected `docs/DISCOVERY.md` §7 — premium requests stopped being the billing unit on 2026-06-01, when GitHub moved to AI credits.
+- Phase 6: token counts are read from `modelMetrics`, not `tokenDetails`. The latter excludes cache reads and writes and disagreed with the real input total in 33 of 171 sessions, once reporting 9 against 27 758.
+- Phase 6: added the Copilot plan picker (Pro / Pro+ / Max / Business / Enterprise) against GitHub's published credit allowances. The promotional Business and Enterprise amounts are deliberately not encoded — they expire on 2026-09-01 and a ceiling that silently lapses starts over-reporting.
+- Phase 6: the Copilot window is a calendar month resetting on the 1st at 00:00 UTC, not a rolling thirty days. A rolling sum would report spend the user has already been forgiven.
+- Phase 6: a `quota_exceeded` session error is read as a measured 100%, and dropped once the month it was observed in has ended. On real logs the CLI's own spend reads 15% of a Pro plan while the account was in fact exhausted — editor and web credits never reach this machine, so the derived figure is a floor and this event is the only thing that reveals the rest.
+- Phase 6: the plan hint is now per provider. GitHub publishes an exact ceiling and Anthropic publishes none, so one sentence covering both would say nothing.
+- Phase 6: Kimi, Gemini CLI, Qwen, OpenCode, Amp, Droid, Goose and the rest remain unimplemented — none are installed on this machine and no parser ships against a guessed schema (`docs/DISCOVERY.md` §10).
+
 - Phase 5: added the Claude Code provider — reads `~/.claude/projects/**`, including subagent and workflow-agent transcripts, whose calls bill to the same subscription.
 - Phase 5: deduped usage on `(message.id, requestId)`. One API response is written as several rows, one per streamed content block, each repeating the whole `usage` object; 45.8% of 3412 real rows were repeats. Deduping on `uuid` instead would have caught none of them — it is regenerated per row.
 - Phase 5: quota estimates are denominated in equivalent API cost rather than tokens. At published rates an Opus output token and a Haiku cache read differ by 50x, so a rolling token count cannot be compared against one ceiling.

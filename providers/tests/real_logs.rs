@@ -12,6 +12,7 @@ use quotadeck_core::provider::{Provider, ProviderConfig};
 use quotadeck_core::types::{Confidence, WindowKind};
 use quotadeck_providers::claude_code::ClaudeCode;
 use quotadeck_providers::codex::Codex;
+use quotadeck_providers::copilot_cli::CopilotCli;
 
 #[test]
 #[ignore = "requires Codex logs on this machine"]
@@ -149,6 +150,80 @@ fn claude_code_dedups_real_sessions_and_prices_them() {
         assert!(
             matches!(window.confidence, Confidence::Derived { .. }),
             "without the statusline shim every window here is an estimate"
+        );
+    }
+}
+
+/// Copilot writes its usage once per session, at shutdown, so the thing to verify against
+/// real logs is that the sessions add up and that the parser reads GitHub's own credit meter
+/// rather than the `tokenDetails` summary that disagrees with it.
+#[test]
+#[ignore = "requires Copilot CLI logs on this machine"]
+fn copilot_reads_metered_credits_from_every_finished_session() {
+    if CopilotCli.discover_roots().is_empty() {
+        panic!("Copilot CLI is not installed here; this test needs its session logs");
+    }
+
+    let mut engine = ProviderEngine::new(Box::new(CopilotCli));
+    let report = engine.refresh(None).expect("scan");
+    println!(
+        "{} files, {} lines, {:.1} MB, {} ms, {} duplicates skipped, {} invalid lines",
+        report.files_read,
+        report.lines,
+        report.bytes as f64 / 1e6,
+        report.elapsed_ms,
+        engine.take_duplicate_count(),
+        report.invalid_lines
+    );
+
+    assert!(report.files_read > 0, "no session files were read");
+    assert_eq!(
+        report.invalid_lines, 0,
+        "real session files must be valid UTF-8"
+    );
+
+    let now = Utc::now();
+    let month = engine.index().rolling_cost(now, Duration::days(30));
+    println!(
+        "  last 30 days: ${:.4} of metered credits, {} tokens unpriced",
+        month.usd, month.unpriced_tokens
+    );
+    assert_eq!(
+        month.unpriced_tokens, 0,
+        "Copilot meters its own credits; nothing it reports should need a price table"
+    );
+
+    // Nothing is estimated until a tier is picked, exactly as for Claude Code.
+    let bare = engine.snapshot(now);
+    assert!(
+        bare.windows.iter().all(|window| matches!(
+            window.confidence,
+            Confidence::Measured { .. } | Confidence::Stale { .. }
+        )),
+        "with no plan picked the only window that may appear is a measured exhaustion"
+    );
+
+    engine.set_config(ProviderConfig {
+        plan_id: Some("pro".into()),
+    });
+    let snapshot = engine.snapshot(now);
+    for window in &snapshot.windows {
+        println!(
+            "  {:?} {}m {:?}% {:?} resets {:?}",
+            window.kind,
+            window.window_minutes,
+            window.used_percent,
+            window.confidence,
+            window.resets_at
+        );
+        assert_eq!(
+            window.kind,
+            WindowKind::Monthly,
+            "the allowance is a calendar month"
+        );
+        assert!(
+            window.resets_at.is_some(),
+            "GitHub publishes the reset boundary; it is never unknown"
         );
     }
 }
