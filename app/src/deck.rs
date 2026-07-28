@@ -4,7 +4,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use chrono::{DateTime, Utc};
-use quotadeck_core::types::ProviderSnapshot;
+use quotadeck_core::types::{ProviderSnapshot, QuotaWindow};
 use serde::{Deserialize, Serialize};
 
 /// What the panel renders. Raw log lines never appear here — only folded snapshots.
@@ -28,13 +28,31 @@ impl DeckState {
 
     /// The single number the menu bar shows: the fullest window across every provider.
     pub fn peak_percent(&self) -> Option<f32> {
+        self.headline().and_then(|(_, window)| window.used_percent)
+    }
+
+    /// The provider and window the menu bar is speaking for.
+    ///
+    /// The strip mode has to draw one provider's history against one window's duration, and
+    /// the only defensible choice is the quota closest to running out — the same reading the
+    /// glyph and the percentage already show.
+    pub fn headline(&self) -> Option<(&ProviderSnapshot, &QuotaWindow)> {
         self.providers
             .iter()
-            .flat_map(|snapshot| snapshot.windows.iter())
-            .filter_map(|window| window.used_percent)
-            .fold(None, |peak: Option<f32>, percent| {
-                Some(peak.map_or(percent, |best| best.max(percent)))
+            .flat_map(|snapshot| {
+                snapshot
+                    .windows
+                    .iter()
+                    .filter(|window| window.used_percent.is_some())
+                    .map(move |window| (snapshot, window))
             })
+            .fold(
+                None::<(&ProviderSnapshot, &QuotaWindow)>,
+                |peak, candidate| match peak {
+                    Some((_, best)) if best.used_percent >= candidate.1.used_percent => peak,
+                    _ => Some(candidate),
+                },
+            )
     }
 }
 
@@ -174,6 +192,43 @@ mod tests {
             scanning: false,
         };
         assert_eq!(state.peak_percent(), Some(95.0));
+    }
+
+    #[test]
+    fn the_strip_draws_the_provider_holding_the_worst_reading() {
+        let mut busy = snapshot(&[95.0]);
+        busy.id = ProviderId::ClaudeCode;
+        let state = DeckState {
+            providers: vec![snapshot(&[12.0, 80.0]), busy],
+            updated_at: Utc::now(),
+            scanning: false,
+        };
+
+        let (provider, window) = state.headline().expect("a headline reading");
+        assert_eq!(provider.id, ProviderId::ClaudeCode);
+        assert_eq!(window.used_percent, Some(95.0));
+    }
+
+    #[test]
+    fn a_window_with_no_reading_never_becomes_the_headline() {
+        let mut unreported = snapshot(&[]);
+        unreported.windows.push(QuotaWindow {
+            limit_id: "codex".into(),
+            kind: WindowKind::Weekly,
+            window_minutes: 10_080,
+            used_percent: None,
+            resets_at: None,
+            confidence: Confidence::Measured {
+                reported_at: Utc::now(),
+            },
+        });
+        let state = DeckState {
+            providers: vec![unreported, snapshot(&[3.0])],
+            updated_at: Utc::now(),
+            scanning: false,
+        };
+
+        assert_eq!(state.peak_percent(), Some(3.0));
     }
 
     #[test]

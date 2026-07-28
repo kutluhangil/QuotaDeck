@@ -76,6 +76,10 @@ pub trait Provider: Send + Sync {
     }
 }
 
+/// Least history a snapshot carries, so a provider that has never reported a window still
+/// has a day of timeline to draw.
+const MIN_SERIES_SPAN: chrono::Duration = chrono::Duration::days(1);
+
 /// Snapshot built purely from what the index holds. Providers with nothing extra to add
 /// can return this directly.
 pub fn default_snapshot(
@@ -83,21 +87,44 @@ pub fn default_snapshot(
     index: &EventIndex,
     now: DateTime<Utc>,
 ) -> ProviderSnapshot {
+    let windows = index.windows(now);
+    let cutoff = (now - series_span(&windows)).timestamp();
     ProviderSnapshot {
         id,
         installed: true,
-        windows: index.windows(now),
         today: index.rolling(now, chrono::Duration::days(1)),
-        series: index.series().copied().collect(),
+        // Only the span the Horizon strip can draw. The index keeps a month of retention for
+        // the rolling sums, and re-serialising all of it on every tick would put megabytes
+        // per minute through the IPC channel for buckets nothing ever renders.
+        series: index
+            .series()
+            .filter(|bucket| bucket.start >= cutoff)
+            .copied()
+            .collect(),
+        windows,
         pace: Vec::new(),
         last_activity: index.last_activity(),
         unavailable: None,
     }
 }
 
+/// How much history the strip can show: the longest window the provider reported, since the
+/// axis runs from the window boundary to now. Window lengths are read from the payload and
+/// are not assumed (`docs/DISCOVERY.md` §2.2).
+fn series_span(windows: &[crate::types::QuotaWindow]) -> chrono::Duration {
+    windows
+        .iter()
+        .map(|window| chrono::Duration::minutes(i64::from(window.window_minutes)))
+        .max()
+        .unwrap_or(MIN_SERIES_SPAN)
+        .max(MIN_SERIES_SPAN)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::events::{Accounting, LimitEvent, ParsedEvent, UsageEvent};
+    use crate::types::TokenRollup;
 
     #[test]
     fn session_key_comes_from_the_file_stem() {
@@ -106,5 +133,106 @@ mod tests {
             LineSource::new(&path).session_key(),
             "rollout-2026-07-25T21-04-40-019f9a73"
         );
+    }
+
+    fn index_with_usage_at(now: DateTime<Utc>, ages: &[chrono::Duration]) -> EventIndex {
+        let mut index = EventIndex::new(chrono::Duration::days(32));
+        for (i, age) in ages.iter().enumerate() {
+            index.ingest(ParsedEvent::Usage(UsageEvent {
+                at: now - *age,
+                session: format!("s{i}"),
+                dedup: None,
+                model: None,
+                tokens: TokenRollup {
+                    input: 10,
+                    ..Default::default()
+                },
+                requests: 0.0,
+                accounting: Accounting::Incremental,
+            }));
+        }
+        index
+    }
+
+    fn with_window(mut index: EventIndex, now: DateTime<Utc>, minutes: u32) -> EventIndex {
+        index.ingest(ParsedEvent::Limit(LimitEvent {
+            limit_id: "test".into(),
+            observed_at: now,
+            window_minutes: minutes,
+            used_percent: 40.0,
+            resets_at: None,
+        }));
+        index
+    }
+
+    #[test]
+    fn the_snapshot_carries_the_longest_reported_window_of_history() {
+        let now = Utc::now();
+        let index = with_window(
+            index_with_usage_at(
+                now,
+                &[
+                    chrono::Duration::hours(1),
+                    chrono::Duration::days(3),
+                    chrono::Duration::days(20),
+                ],
+            ),
+            now,
+            // A weekly window, so the three-week-old bucket is outside the axis.
+            10_080,
+        );
+
+        let snapshot = default_snapshot(ProviderId::Codex, &index, now);
+        assert_eq!(snapshot.series.len(), 2);
+        assert!(snapshot
+            .series
+            .iter()
+            .all(|bucket| bucket.start >= (now - chrono::Duration::days(7)).timestamp()));
+    }
+
+    #[test]
+    fn a_provider_with_no_window_still_gets_a_day_of_timeline() {
+        let now = Utc::now();
+        let index = index_with_usage_at(
+            now,
+            &[chrono::Duration::hours(2), chrono::Duration::days(4)],
+        );
+
+        let snapshot = default_snapshot(ProviderId::Codex, &index, now);
+        assert!(snapshot.windows.is_empty());
+        assert_eq!(snapshot.series.len(), 1);
+    }
+
+    #[test]
+    fn the_span_follows_the_widest_window_when_several_are_reported() {
+        let now = Utc::now();
+        // Claude Code reports a session and a weekly window at once; the strip has to be able
+        // to draw either, so the series must cover the wider one.
+        let index = with_window(
+            with_window(
+                index_with_usage_at(now, &[chrono::Duration::days(3)]),
+                now,
+                300,
+            ),
+            now,
+            10_080,
+        );
+
+        let snapshot = default_snapshot(ProviderId::Codex, &index, now);
+        assert_eq!(snapshot.windows.len(), 2);
+        assert_eq!(snapshot.series.len(), 1);
+    }
+
+    #[test]
+    fn a_monthly_window_is_not_truncated_to_a_week() {
+        let now = Utc::now();
+        let index = with_window(
+            index_with_usage_at(now, &[chrono::Duration::days(20)]),
+            now,
+            43_200,
+        );
+
+        let snapshot = default_snapshot(ProviderId::Codex, &index, now);
+        assert_eq!(snapshot.series.len(), 1);
     }
 }

@@ -46,6 +46,22 @@ export function formatDuration(seconds: number): string {
   return `${minutes}m`;
 }
 
+/**
+ * A window length rather than a countdown: "7d", "30d", "5h", "90m".
+ *
+ * Distinct from `formatDuration` on purpose. A countdown has to keep its second component —
+ * "6d 19h" is the useful form when something is running out — but a window length is a round
+ * number the provider chose, and rendering a weekly limit as "7d 0h" buries that.
+ */
+export function formatSpan(seconds: number): string {
+  const total = Math.max(0, Math.floor(seconds));
+  const days = total / 86400;
+  if (days >= 1 && Number.isInteger(days)) return `${days}d`;
+  const hours = total / 3600;
+  if (hours >= 1 && Number.isInteger(hours)) return `${hours}h`;
+  return formatDuration(total);
+}
+
 export function secondsUntil(iso: string | null, now: number): number | null {
   if (iso === null) return null;
   const at = Date.parse(iso);

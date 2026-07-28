@@ -4,6 +4,7 @@
 //! accessory activation policy there is no dock icon, so that menu is the sole way to quit
 //! and it must always be reachable.
 
+use quotadeck_core::horizon;
 use tauri::image::Image;
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
@@ -65,15 +66,35 @@ pub fn refresh<R: Runtime>(app: &AppHandle<R>, state: &DeckState, settings: Sett
             let _ = tray.set_title(title.as_deref());
             let _ = tray.set_icon(None);
         }
-        // Strip is the miniature Horizon and arrives with the strip itself in Phase 4.
-        // Until then it renders as the glyph rather than as an empty menu bar item.
-        TrayMode::Glyph | TrayMode::Strip => {
-            let glyph = icon::bar(peak);
-            let _ = tray.set_title(None::<&str>);
-            let _ = tray.set_icon_as_template(glyph.template);
-            let _ = tray.set_icon(Some(glyph_image(&glyph)));
-        }
+        TrayMode::Glyph => set_icon(&tray, &icon::bar(peak)),
+        TrayMode::Strip => set_icon(&tray, &strip_for(state)),
     }
+}
+
+/// Fold the headline provider's series into the tray's column count.
+///
+/// The span is the headline window's own duration, so the item shows a week for a weekly
+/// limit and five hours for a session one. `updated_at` is the instant the snapshot was
+/// taken; using it rather than the wall clock keeps the icon consistent with the numbers in
+/// the panel beside it.
+fn strip_for(state: &DeckState) -> icon::Glyph {
+    let Some((snapshot, window)) = state.headline() else {
+        return icon::strip(&[], None);
+    };
+    let columns = horizon::columns(
+        &snapshot.series,
+        chrono::Duration::minutes(i64::from(window.window_minutes)),
+        state.updated_at,
+        icon::STRIP_COLUMNS,
+    );
+    let heights: Vec<f32> = columns.iter().map(|column| column.height).collect();
+    icon::strip(&heights, window.used_percent)
+}
+
+fn set_icon<R: Runtime>(tray: &tauri::tray::TrayIcon<R>, glyph: &icon::Glyph) {
+    let _ = tray.set_title(None::<&str>);
+    let _ = tray.set_icon_as_template(glyph.template);
+    let _ = tray.set_icon(Some(glyph_image(glyph)));
 }
 
 fn glyph_image(glyph: &icon::Glyph) -> Image<'static> {

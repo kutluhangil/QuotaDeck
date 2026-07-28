@@ -10,6 +10,7 @@ import {
 import { strings } from "../strings";
 import { totalTokens, type ProviderSnapshot, type QuotaWindow } from "../types";
 import { ConfidenceBadge } from "./ConfidenceBadge";
+import { HorizonStrip } from "./HorizonStrip";
 import { UsageBar } from "./UsageBar";
 
 /**
@@ -75,6 +76,9 @@ export function ProviderCard({
             <span className="type-caption card__window">{windowLabel(headline)}</span>
           </div>
           <UsageBar percent={percent} label={windowLabel(headline)} />
+          {snapshot.series.length > 0 && (
+            <HorizonStrip window={headline} series={snapshot.series} now={now} />
+          )}
         </>
       ) : (
         <p className="type-body card__quiet">

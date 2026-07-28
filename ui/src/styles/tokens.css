@@ -29,6 +29,9 @@
 
   --track: #1f2937;
 
+  /* How far the Horizon strip's oldest end fades. Lower means it recedes further. */
+  --strip-fade: 0.22;
+
   --face-data: "Martian Mono", ui-monospace, SFMono-Regular, monospace;
   --face-ui: "Inter Variable", "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
 
@@ -65,6 +68,9 @@
   --measured: #2f76d6;
 
   --track: #e2e7ef;
+
+  /* A pale column on a white card vanishes long before it does on a dark one. */
+  --strip-fade: 0.42;
 }
 
 @media (prefers-color-scheme: light) {
@@ -86,6 +92,7 @@
     --measured: #2f76d6;
 
     --track: #e2e7ef;
+    --strip-fade: 0.42;
   }
 }
 

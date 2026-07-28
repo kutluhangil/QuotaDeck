@@ -11,6 +11,7 @@ pub mod discovery;
 pub mod engine;
 pub mod error;
 pub mod events;
+pub mod horizon;
 pub mod paths;
 pub mod provider;
 pub mod reader;

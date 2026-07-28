@@ -38,6 +38,20 @@ export const strings = {
     other: (minutes: number) => `${minutes} min`,
   } satisfies Record<WindowKind, string | ((minutes: number) => string)>,
 
+  strip: {
+    /**
+     * Leading axis label. This is the strip's main lesson: almost nobody knows their Codex
+     * limit is counted over a week rather than over an afternoon.
+     */
+    ago: (duration: string) => `${duration} ago`,
+    now: "now",
+    /** Hover readout for one slice of the timeline. */
+    tokens: (tokens: string) => `${tokens} tokens`,
+    quiet: "no usage",
+    summary: (duration: string, tokens: string) =>
+      `Usage over the last ${duration}: ${tokens} tokens`,
+  },
+
   card: {
     resetsAt: (time: string) => `Resets ${time}`,
     resetsIn: (duration: string) => `Frees up in ${duration}`,

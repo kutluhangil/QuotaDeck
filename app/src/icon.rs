@@ -18,6 +18,15 @@ const CRITICAL_RGB: (u8, u8, u8) = (0xFF, 0x5E, 0x5B);
 const LOGICAL: u32 = 16;
 const SCALE: u32 = 2;
 
+/// Logical width of the strip mode. Wide enough to read as a timeline, narrow enough that the
+/// item is not the widest thing in the menu bar.
+const STRIP_LOGICAL_WIDTH: u32 = 44;
+/// Columns the tray asks [`quotadeck_core::horizon::columns`] for.
+///
+/// Each column is 2 logical pixels wide with 1 between them, which is the finest grain that
+/// still separates on a non-Retina display.
+pub const STRIP_COLUMNS: usize = 14;
+
 pub struct Glyph {
     pub rgba: Vec<u8>,
     pub width: u32,
@@ -100,6 +109,89 @@ pub fn bar(percent: Option<f32>) -> Glyph {
     }
 }
 
+/// Oldest and newest column opacity in the strip.
+///
+/// A template image can only vary alpha, so the recency ramp the panel draws with a gradient
+/// mask is carried here by opacity alone — which is the same statement either way: the left of
+/// the strip is the oldest work still being counted, and it should not compete with now.
+const STRIP_OLDEST_ALPHA: u8 = 0x55;
+const STRIP_NEWEST_ALPHA: u8 = 0xFF;
+/// The horizon line itself, drawn whether or not there is any usage above it, so an idle
+/// item still shows the app is running.
+const HORIZON_ALPHA: u8 = 0x66;
+
+/// A miniature of the panel's Horizon strip: usage resting on a horizon line, oldest at the
+/// left, now at the right.
+///
+/// `columns` comes from [`quotadeck_core::horizon::columns`], so the tray and the panel fold
+/// the same series by the same rule. Missing entries are drawn as empty rather than as an
+/// error: a provider with no history still gets a horizon.
+pub fn strip(columns: &[f32], percent: Option<f32>) -> Glyph {
+    let width = STRIP_LOGICAL_WIDTH * SCALE;
+    let height = LOGICAL * SCALE;
+    let critical = percent.unwrap_or(0.0) > CRITICAL_PERCENT;
+    let (r, g, b) = if critical { CRITICAL_RGB } else { (0, 0, 0) };
+
+    let mut rgba = vec![0u8; (width * height * 4) as usize];
+
+    let pitch = SCALE * 3;
+    let bar_width = SCALE * 2;
+    let ink = pitch * STRIP_COLUMNS as u32 - (pitch - bar_width);
+    let left = (width - ink) / 2;
+
+    // Bars stand on the horizon line, and never reach the very top: a column touching the
+    // menu bar's edge reads as clipped rather than as full.
+    let horizon_top = height - SCALE;
+    let ceiling = SCALE * 2;
+    let span = horizon_top - ceiling;
+
+    let mut plot = |x: u32, y: u32, alpha: u8| {
+        let offset = ((y * width + x) * 4) as usize;
+        rgba[offset] = r;
+        rgba[offset + 1] = g;
+        rgba[offset + 2] = b;
+        rgba[offset + 3] = alpha;
+    };
+
+    for x in left..left + ink {
+        for y in horizon_top..height {
+            plot(x, y, HORIZON_ALPHA);
+        }
+    }
+
+    for index in 0..STRIP_COLUMNS {
+        let value = columns.get(index).copied().unwrap_or(0.0).clamp(0.0, 1.0);
+        if value <= 0.0 {
+            continue;
+        }
+        let bar_height = ((span as f32) * value).round().max(1.0) as u32;
+        let alpha = ramp(index);
+        let x0 = left + index as u32 * pitch;
+        for x in x0..x0 + bar_width {
+            for y in horizon_top - bar_height..horizon_top {
+                plot(x, y, alpha);
+            }
+        }
+    }
+
+    Glyph {
+        rgba,
+        width,
+        height,
+        template: !critical,
+    }
+}
+
+/// Opacity for column `index`, oldest to newest.
+fn ramp(index: usize) -> u8 {
+    if STRIP_COLUMNS <= 1 {
+        return STRIP_NEWEST_ALPHA;
+    }
+    let t = index as f32 / (STRIP_COLUMNS - 1) as f32;
+    let span = f32::from(STRIP_NEWEST_ALPHA - STRIP_OLDEST_ALPHA);
+    STRIP_OLDEST_ALPHA + (span * t).round() as u8
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -162,5 +254,110 @@ mod tests {
             "the item must remain visible before the first reading"
         );
         assert_eq!(filled_rows(&glyph), 0, "nothing may be shown as used");
+    }
+
+    /// Tallest opaque run of pixels in the column that holds strip index `index`.
+    fn column_height(glyph: &Glyph, index: usize) -> u32 {
+        let pitch = SCALE * 3;
+        let bar_width = SCALE * 2;
+        let ink = pitch * STRIP_COLUMNS as u32 - (pitch - bar_width);
+        let left = (glyph.width - ink) / 2;
+        let x = left + index as u32 * pitch;
+        // The horizon line runs under every column and is not part of the bar.
+        (0..glyph.height - SCALE)
+            .filter(|y| alpha_at(glyph, x, *y) > 0)
+            .count() as u32
+    }
+
+    #[test]
+    fn the_strip_is_wider_than_it_is_tall() {
+        let glyph = strip(&[], None);
+        assert_eq!(glyph.width, 88);
+        assert_eq!(glyph.height, 32);
+        assert_eq!(glyph.rgba.len(), 88 * 32 * 4);
+    }
+
+    #[test]
+    fn an_empty_strip_still_draws_its_horizon() {
+        let glyph = strip(&[], None);
+        assert!(
+            glyph.rgba.chunks(4).any(|px| px[3] > 0),
+            "an idle tool must still show the app is running"
+        );
+        for index in 0..STRIP_COLUMNS {
+            assert_eq!(column_height(&glyph, index), 0);
+        }
+    }
+
+    #[test]
+    fn column_height_tracks_the_folded_value() {
+        let values: Vec<f32> = (0..STRIP_COLUMNS)
+            .map(|i| i as f32 / (STRIP_COLUMNS - 1) as f32)
+            .collect();
+        let glyph = strip(&values, None);
+
+        assert_eq!(column_height(&glyph, 0), 0, "a zero column is left empty");
+        assert!(
+            column_height(&glyph, STRIP_COLUMNS - 1) > column_height(&glyph, STRIP_COLUMNS / 2)
+        );
+    }
+
+    #[test]
+    fn a_short_series_draws_what_it_has_instead_of_failing() {
+        let glyph = strip(&[1.0], None);
+        assert!(column_height(&glyph, 0) > 0);
+        assert_eq!(column_height(&glyph, STRIP_COLUMNS - 1), 0);
+    }
+
+    #[test]
+    fn recent_columns_are_drawn_more_strongly_than_old_ones() {
+        let values = vec![1.0f32; STRIP_COLUMNS];
+        let glyph = strip(&values, None);
+        let pitch = SCALE * 3;
+        let ink = pitch * STRIP_COLUMNS as u32 - pitch + SCALE * 2;
+        let left = (glyph.width - ink) / 2;
+        let y = glyph.height - SCALE - 1;
+
+        let oldest = alpha_at(&glyph, left, y);
+        let newest = alpha_at(&glyph, left + (STRIP_COLUMNS as u32 - 1) * pitch, y);
+        assert!(
+            newest > oldest,
+            "now must read louder than the capacity about to return ({newest} vs {oldest})"
+        );
+        assert_eq!(newest, STRIP_NEWEST_ALPHA);
+    }
+
+    #[test]
+    fn the_strip_obeys_the_same_colour_rule_as_the_glyph() {
+        let values = vec![1.0f32; STRIP_COLUMNS];
+        for percent in [0.0, 50.0, 85.0] {
+            let glyph = strip(&values, Some(percent));
+            assert!(glyph.template, "{percent}% must stay a template image");
+            assert!(
+                glyph
+                    .rgba
+                    .chunks(4)
+                    .all(|px| px[0] == 0 && px[1] == 0 && px[2] == 0),
+                "{percent}% must carry no colour of its own"
+            );
+        }
+
+        let critical = strip(&values, Some(85.1));
+        assert!(!critical.template);
+        assert!(critical
+            .rgba
+            .chunks(4)
+            .any(|px| (px[0], px[1], px[2]) == CRITICAL_RGB));
+    }
+
+    #[test]
+    fn a_value_too_small_to_round_up_is_still_drawn() {
+        let mut values = vec![0.0f32; STRIP_COLUMNS];
+        values[3] = 0.001;
+        let glyph = strip(&values, None);
+        assert!(
+            column_height(&glyph, 3) >= 1,
+            "a gap has to mean nothing happened"
+        );
     }
 }

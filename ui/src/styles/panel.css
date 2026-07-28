@@ -221,6 +221,114 @@
   );
 }
 
+/*
+ * The Horizon strip.
+ *
+ * Level reaches the strip because the strip *is* the window's fullness, drawn over time —
+ * the same reading as the bar above it. It stops there: the surrounding rules, labels and
+ * hover states stay ink-toned.
+ */
+.strip {
+  display: flex;
+  flex-direction: column;
+  gap: var(--step-1);
+  --strip-ink: var(--level-ample);
+}
+
+.strip[data-level="tight"] {
+  --strip-ink: var(--level-tight);
+}
+
+.strip[data-level="critical"] {
+  --strip-ink: var(--level-critical);
+}
+
+.strip__plot {
+  inline-size: 100%;
+  block-size: 40px;
+  display: block;
+  /*
+   * The tide, in one declaration. Weight falls away towards the left edge, so recent work
+   * reads loudest and the oldest dissolves out of the window rather than being cut off by it.
+   * Doing it here rather than per column keeps the ramp smooth, keeps it out of the render
+   * path, and lets each theme set its own floor — the same opacity that recedes on a dark
+   * card disappears entirely on a white one.
+   */
+  /* Prefixed as well: the panel runs in whatever WKWebView the user's macOS ships, and an
+     unprefixed-only mask silently draws nothing on the older ones. */
+  -webkit-mask-image: linear-gradient(
+    to right,
+    rgb(0 0 0 / 0) 0,
+    rgb(0 0 0 / var(--strip-fade)) 32px,
+    rgb(0 0 0 / 1) 100%
+  );
+  mask-image: linear-gradient(
+    to right,
+    rgb(0 0 0 / 0) 0,
+    rgb(0 0 0 / var(--strip-fade)) 32px,
+    rgb(0 0 0 / 1) 100%
+  );
+}
+
+.strip__bar {
+  fill: var(--strip-ink);
+  transform-box: fill-box;
+  transform-origin: bottom;
+  transition: transform 420ms cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+/*
+ * The extent of the window, stated rather than implied by where the columns happen to fall.
+ * Kept to a whisper: at any real weight this becomes a filled chart panel, and the rest of
+ * the design is hairlines on a flat card.
+ */
+.strip__track {
+  fill: var(--ghost);
+  opacity: 0.16;
+}
+
+/* Ink-toned, not level-toned: this marks where the pointer is, not how full anything is. */
+.strip__cursor {
+  fill: var(--surface-raised);
+}
+
+.strip__horizon {
+  stroke: var(--rule);
+  stroke-width: 1;
+}
+
+.strip__axis {
+  margin: 0;
+  display: flex;
+  justify-content: space-between;
+  gap: var(--step-2);
+  color: var(--ink-tertiary);
+  /* Fixed height: the hover readout replaces the axis labels in place, and a card that
+     changes height under the cursor is a card that is hard to point at. */
+  block-size: 14px;
+}
+
+.strip__axis-end {
+  text-align: end;
+  white-space: nowrap;
+}
+
+.strip__reading {
+  font-family: var(--face-data);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-secondary);
+}
+
+/*
+ * The strip moves only when a snapshot arrives, but movement is still movement. Anyone who
+ * has asked the system for less of it gets the same data with none.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .strip__bar {
+    transition: none;
+  }
+}
+
 .badge {
   display: inline-flex;
   align-items: center;

@@ -9,22 +9,47 @@
 
 import type { Bucket, DeckState, ProviderSnapshot } from "./types";
 
-function series(now: number, count: number): Bucket[] {
-  const start = Math.floor(now / 1000 / 300) * 300 - count * 300;
-  return Array.from({ length: count }, (_, i) => {
-    const wave = Math.abs(Math.sin(i / 4)) * 40_000;
-    return {
-      start: start + i * 300,
+/**
+ * Buckets shaped like real work rather than like a wave: sessions of an hour or two with long
+ * quiet stretches between them, and the occasional burst an order of magnitude above the
+ * rest. A smooth series would make the strip look good and hide exactly the cases it has to
+ * survive — a single spike, a week of gaps, one lonely bucket at the left edge.
+ *
+ * Deterministic, so the panel looks the same on every reload while it is being designed.
+ */
+function series(now: number, spanSeconds: number, seed: number): Bucket[] {
+  const end = Math.floor(now / 1000 / 300) * 300;
+  const start = end - spanSeconds;
+  const buckets: Bucket[] = [];
+
+  const random = () => {
+    seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+    return seed / 0x7fffffff;
+  };
+
+  for (let at = start; at <= end; at += 300) {
+    // Working hours, roughly: nothing overnight, and not every day.
+    const hour = new Date(at * 1000).getHours();
+    const active = hour >= 9 && hour <= 23 && random() > 0.55;
+    if (!active) continue;
+
+    const burst = random() > 0.97 ? 14 : 1;
+    const base = (8_000 + random() * 26_000) * burst;
+    buckets.push({
+      start: at,
       tokens: {
-        input: Math.round(wave),
-        output: Math.round(wave / 12),
-        cacheRead: Math.round(wave * 9),
+        input: Math.round(base),
+        output: Math.round(base / 12),
+        // Cache reads dominate every real total measured in Phase 0.
+        cacheRead: Math.round(base * 9),
         cacheCreation: 0,
         reasoning: 0,
       },
       requests: 0,
-    };
-  });
+    });
+  }
+
+  return buckets;
 }
 
 export function demoDeck(): DeckState {
@@ -59,7 +84,8 @@ export function demoDeck(): DeckState {
       cacheCreation: 0,
       reasoning: 0,
     },
-    series: series(now, 60),
+    // A weekly window, so the strip draws seven days.
+    series: series(now, 7 * 86_400, 0x5eed),
     pace: [],
     lastActivity: iso(-9 * 60_000),
     unavailable: null,
@@ -93,7 +119,8 @@ export function demoDeck(): DeckState {
       cacheCreation: 118_004,
       reasoning: 0,
     },
-    series: series(now, 60),
+    // The card leads with the fullest window, which here is the weekly one at 95%.
+    series: series(now, 7 * 86_400, 0xc0ffee),
     pace: [],
     lastActivity: iso(-30_000),
     unavailable: null,
