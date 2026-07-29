@@ -85,9 +85,32 @@
   color: var(--ink-primary);
 }
 
-.board__range[aria-pressed="true"] {
+.board__range[aria-checked="true"] {
   color: var(--ink-primary);
   background: var(--surface-raised);
+}
+
+/*
+ * The chosen range is not carried by the tint alone. A filled surface at this contrast is the
+ * first thing to disappear on a dimmed display or in a greyscale screenshot, and the group has
+ * no other visible state.
+ *
+ * The dot is always in the box and only ever changes colour, so choosing a range never moves
+ * the row it sits in.
+ */
+.board__range::before {
+  content: "";
+  display: inline-block;
+  inline-size: 4px;
+  block-size: 4px;
+  margin-inline-end: 6px;
+  border-radius: 50%;
+  background: transparent;
+  vertical-align: middle;
+}
+
+.board__range[aria-checked="true"]::before {
+  background: currentColor;
 }
 
 .board__body {

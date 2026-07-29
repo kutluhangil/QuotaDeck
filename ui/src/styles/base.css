@@ -50,6 +50,31 @@ button {
   border-radius: 3px;
 }
 
+/*
+ * A native radio is 13px across, and a ring that size inside a chip is easy to lose. The ring
+ * goes on the chip so the focused thing looks like the thing you would click.
+ */
+.settings__chip:focus-within,
+.settings__option:focus-within {
+  outline: 2px solid var(--measured);
+  outline-offset: 2px;
+}
+
+.settings__chip:focus-within :focus-visible,
+.settings__option:focus-within :focus-visible {
+  outline: none;
+}
+
+/*
+ * The scrolling body takes focus when the view changes, so a keyboard user lands in the new
+ * screen rather than at the top of the old one. It is a destination, not a control, and
+ * outlining the whole panel would read as an error state.
+ */
+.panel__body:focus,
+.panel__body:focus-visible {
+  outline: none;
+}
+
 /* Nothing here is load-bearing motion; if the user asked for stillness, give it. */
 @media (prefers-reduced-motion: reduce) {
   *,

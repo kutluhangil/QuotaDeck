@@ -168,9 +168,18 @@ export interface DeckState {
 
 export type TrayMode = "glyph" | "compact" | "strip";
 
+/**
+ * Which catalogue the copy comes from. `system` follows the browser's own language list.
+ *
+ * Stored in the backend rather than only here because the notifications are raised from the
+ * read loop, which runs whether or not the panel has ever been opened.
+ */
+export type Locale = "system" | "en" | "tr";
+
 export interface Settings {
   trayMode: TrayMode;
   theme: "system" | "dark" | "light";
+  locale: Locale;
   /**
    * Chosen tier per provider, keyed by provider id. A provider absent from this map has no
    * tier picked, and therefore gets no estimated window at all.

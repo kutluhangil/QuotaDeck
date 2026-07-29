@@ -1,3 +1,5 @@
+import { useId } from "react";
+
 import {
   formatClock,
   formatCost,
@@ -9,11 +11,13 @@ import {
   secondsUntil,
   windowLabel,
 } from "../format";
-import { strings } from "../strings";
+import type { Catalogue } from "../i18n";
+import { useLocale, useStrings } from "../store";
 import {
   awaitingSetup,
   paceFor,
   totalTokens,
+  type Locale,
   type PaceForecast,
   type ProviderSnapshot,
   type QuotaWindow,
@@ -36,14 +40,16 @@ function headlineWindow(windows: QuotaWindow[]): QuotaWindow | null {
 }
 
 function ResetLine({ window, now }: { window: QuotaWindow; now: number }) {
-  const clock = formatClock(window.resetsAt);
+  const strings = useStrings();
+  const locale = useLocale();
+  const clock = formatClock(window.resetsAt, locale);
   if (clock === null) return <span>{strings.card.noReset}</span>;
 
   const at = Date.parse(window.resetsAt ?? "");
   const seconds = Number.isNaN(at) ? null : Math.floor((at - now) / 1000);
   if (seconds === null || seconds <= 0) return <span>{strings.card.resetsAt(clock)}</span>;
 
-  return <span>{`${strings.card.resetsAt(clock)} · ${formatDuration(seconds)}`}</span>;
+  return <span>{`${strings.card.resetsAt(clock)} · ${formatDuration(seconds, strings)}`}</span>;
 }
 
 /**
@@ -54,7 +60,9 @@ function ResetLine({ window, now }: { window: QuotaWindow; now: number }) {
  * a reading — the copy says "at this pace" and the badge is a projection of a bar, not a bar.
  */
 function PaceLine({ pace, now }: { pace: PaceForecast; now: number }) {
-  const clock = formatClock(pace.exhaustedAt);
+  const strings = useStrings();
+  const locale = useLocale();
+  const clock = formatClock(pace.exhaustedAt, locale);
   const seconds = secondsUntil(pace.exhaustedAt, now);
 
   return (
@@ -62,8 +70,8 @@ function PaceLine({ pace, now }: { pace: PaceForecast; now: number }) {
       <PaceBadge pace={pace} />
       <span className="card__pace-text">
         {clock !== null && seconds !== null
-          ? strings.pace.exhausted(clock, formatDuration(seconds))
-          : strings.pace.projected(formatPercent(pace.projectedPercent))}
+          ? strings.pace.exhausted(clock, formatDuration(seconds, strings))
+          : strings.pace.projected(formatPercent(pace.projectedPercent, locale))}
       </span>
     </p>
   );
@@ -75,24 +83,26 @@ function PaceLine({ pace, now }: { pace: PaceForecast; now: number }) {
  * silently omits it is worse than one that admits the gap.
  */
 function TodayLine({ snapshot, now }: { snapshot: ProviderSnapshot; now: number }) {
+  const strings = useStrings();
+  const locale = useLocale();
   const today = totalTokens(snapshot.today);
   const { usd, unpricedTokens } = snapshot.todayCost;
 
   if (usd > 0) {
     return (
       <span>
-        {strings.card.todayCost(formatCost(usd))}
+        {strings.card.todayCost(formatCost(usd, locale))}
         {unpricedTokens > 0 && (
           <span className="card__foot-note">
-            {` · ${strings.card.costPartial(formatTokens(unpricedTokens))}`}
+            {` · ${strings.card.costPartial(formatTokens(unpricedTokens, locale))}`}
           </span>
         )}
       </span>
     );
   }
-  if (today > 0) return <span>{strings.card.todayTokens(formatTokens(today))}</span>;
+  if (today > 0) return <span>{strings.card.todayTokens(formatTokens(today, locale))}</span>;
 
-  const last = formatRelative(snapshot.lastActivity, now);
+  const last = formatRelative(snapshot.lastActivity, now, strings);
   return <span>{last ? strings.card.lastActivity(last) : strings.card.neverUsed}</span>;
 }
 
@@ -106,6 +116,9 @@ export function ProviderCard({
   /** Opens settings, where the plan and the status line live. */
   onSetUp?: () => void;
 }) {
+  const strings: Catalogue = useStrings();
+  const locale: Locale = useLocale();
+  const nameId = useId();
   const headline = headlineWindow(snapshot.windows);
   const others = snapshot.windows.filter((window) => window !== headline);
   const pace = headline === null ? null : paceFor(snapshot, headline);
@@ -118,9 +131,11 @@ export function ProviderCard({
   const critical = percent !== null && levelFor(percent) === "critical";
 
   return (
-    <article className="card">
+    <article className="card" aria-labelledby={nameId}>
       <header className="card__head">
-        <h2 className="type-label card__name">{strings.provider[snapshot.id]}</h2>
+        <h2 className="type-label card__name" id={nameId}>
+          {strings.provider[snapshot.id]}
+        </h2>
         {headline ? (
           <ConfidenceBadge confidence={headline.confidence} />
         ) : (
@@ -135,13 +150,15 @@ export function ProviderCard({
 
       {headline && percent !== null ? (
         <>
-          <div className="card__reading">
+          {/* Hidden from assistive technology, not from anyone else: the meter below states
+              the same window and the same percentage, with the bounds this pair cannot. */}
+          <div className="card__reading" aria-hidden="true">
             <span className="type-display card__percent" data-critical={critical}>
-              {formatPercent(percent)}
+              {formatPercent(percent, locale)}
             </span>
-            <span className="type-caption card__window">{windowLabel(headline)}</span>
+            <span className="type-caption card__window">{windowLabel(headline, strings)}</span>
           </div>
-          <UsageBar percent={percent} label={windowLabel(headline)} />
+          <UsageBar percent={percent} windowName={windowLabel(headline, strings)} />
           {snapshot.series.length > 0 && (
             <HorizonStrip window={headline} series={snapshot.series} now={now} />
           )}
@@ -168,9 +185,11 @@ export function ProviderCard({
             const otherPace = paceFor(snapshot, window);
             return (
               <li key={`${window.limitId}-${window.windowMinutes}`} className="card__other">
-                <span className="type-caption card__other-label">{windowLabel(window)}</span>
+                <span className="type-caption card__other-label">
+                  {windowLabel(window, strings)}
+                </span>
                 <span className="type-metric card__other-value">
-                  {window.usedPercent === null ? "—" : formatPercent(window.usedPercent)}
+                  {window.usedPercent === null ? "—" : formatPercent(window.usedPercent, locale)}
                 </span>
                 <span className="card__other-badges">
                   {/* The risk word only. A second percentage on the same row would put four

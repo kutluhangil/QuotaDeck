@@ -12,15 +12,14 @@ use tauri::{AppHandle, Manager, Runtime};
 use tauri_plugin_positioner::{Position, WindowExt};
 
 use crate::deck::{Deck, DeckState, Settings, TrayMode};
+use crate::i18n::Language;
 use crate::icon;
 
 const TRAY_ID: &str = "deck";
 const PANEL: &str = "panel";
 
 pub fn install<R: Runtime>(app: &AppHandle<R>, deck: Deck) -> tauri::Result<()> {
-    let open = MenuItem::with_id(app, "open", "Open Quota Deck", true, None::<&str>)?;
-    let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&open, &PredefinedMenuItem::separator(app)?, &quit])?;
+    let menu = build_menu(app, deck.settings().locale.language())?;
 
     let handler_deck = deck.clone();
     TrayIconBuilder::with_id(TRAY_ID)
@@ -50,6 +49,29 @@ pub fn install<R: Runtime>(app: &AppHandle<R>, deck: Deck) -> tauri::Result<()> 
         .build(app)?;
 
     Ok(())
+}
+
+fn build_menu<R: Runtime>(app: &AppHandle<R>, language: Language) -> tauri::Result<Menu<R>> {
+    let open = MenuItem::with_id(app, "open", language.tray_open(), true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "quit", language.tray_quit(), true, None::<&str>)?;
+    Menu::with_items(app, &[&open, &PredefinedMenuItem::separator(app)?, &quit])
+}
+
+/// Rebuild the menu in the language the user just picked.
+///
+/// With the accessory activation policy there is no dock icon and no app menu, so this menu is
+/// the only way to quit. Leaving it in a language the user has just said they cannot read
+/// would strand them in the app.
+pub fn relanguage<R: Runtime>(app: &AppHandle<R>, language: Language) {
+    let Some(tray) = app.tray_by_id(TRAY_ID) else {
+        return;
+    };
+    match build_menu(app, language) {
+        Ok(menu) => {
+            let _ = tray.set_menu(Some(menu));
+        }
+        Err(e) => eprintln!("quotadeck: could not rebuild the tray menu: {e}"),
+    }
 }
 
 /// Redraw the item for the current reading and tray mode.

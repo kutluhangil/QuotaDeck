@@ -9,6 +9,7 @@ import {
   type Column,
 } from "./horizon";
 import { formatSpan } from "./format";
+import { en } from "./i18n/en";
 import type { Bucket, QuotaWindow } from "./types";
 
 /**
@@ -148,14 +149,14 @@ describe("historySeconds", () => {
 
 describe("formatSpan", () => {
   it("renders a window length as the round number the provider chose", () => {
-    expect(formatSpan(7 * 86_400)).toBe("7d");
-    expect(formatSpan(30 * 86_400)).toBe("30d");
-    expect(formatSpan(5 * 3_600)).toBe("5h");
+    expect(formatSpan(7 * 86_400, en)).toBe("7d");
+    expect(formatSpan(30 * 86_400, en)).toBe("30d");
+    expect(formatSpan(5 * 3_600, en)).toBe("5h");
   });
 
   it("falls back to the countdown form when the span is not round", () => {
     // One column of a weekly strip is 1h 58m, and rounding that to "1h" would be a lie.
-    expect(formatSpan(7_080)).toBe("1h 58m");
-    expect(formatSpan(90)).toBe("1m");
+    expect(formatSpan(7_080, en)).toBe("1h 58m");
+    expect(formatSpan(90, en)).toBe("1m");
   });
 });

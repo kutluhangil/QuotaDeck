@@ -1,8 +1,10 @@
 import { create } from "zustand";
 
 import { demoDeck, demoHistory, demoPlans, demoStatusline } from "./demo";
+import { catalogueFor, languageFor, type Catalogue } from "./i18n";
 import type {
   DeckState,
+  Locale,
   ProviderHistory,
   ProviderId,
   ProviderPlans,
@@ -32,6 +34,7 @@ interface DeckStore {
   setView: (view: "panel" | "settings") => void;
   setTrayMode: (mode: TrayMode) => void;
   setTheme: (theme: Settings["theme"]) => void;
+  setLocale: (locale: Locale) => void;
   setPlan: (provider: ProviderId, planId: string | null) => void;
   toggleThreshold: (provider: ProviderId, threshold: number) => void;
   /** `null` lifts the mute; otherwise the number of minutes to stay quiet for. */
@@ -39,6 +42,8 @@ interface DeckStore {
   installStatusline: () => Promise<void>;
   revertStatusline: () => Promise<void>;
   openDashboard: () => Promise<void>;
+  /** Dismiss the popover from the keyboard, the way clicking away already does. */
+  hidePanel: () => Promise<void>;
   start: () => Promise<void>;
 }
 
@@ -47,7 +52,14 @@ const emptyDeck: DeckState = { providers: [], updatedAt: new Date(0).toISOString
 export const useDeck = create<DeckStore>((set, get) => ({
   deck: emptyDeck,
   history: [],
-  settings: { trayMode: "glyph", theme: "system", plans: {}, alerts: {}, mutedUntil: null },
+  settings: {
+    trayMode: "glyph",
+    theme: "system",
+    locale: "system",
+    plans: {},
+    alerts: {},
+    mutedUntil: null,
+  },
   plans: [],
   statusline: null,
   statuslineError: null,
@@ -63,6 +75,14 @@ export const useDeck = create<DeckStore>((set, get) => ({
   setTheme: (theme) => {
     set({ settings: { ...get().settings, theme } });
     applyTheme(theme);
+  },
+
+  setLocale: (locale) => {
+    set({ settings: { ...get().settings, locale } });
+    applyLocale(locale);
+    // The backend keeps its own copy: notifications are raised from the read loop, which runs
+    // whether or not this panel has ever been opened.
+    void send("set_locale", { locale });
   },
 
   setPlan: (provider, planId) => {
@@ -109,6 +129,10 @@ export const useDeck = create<DeckStore>((set, get) => ({
     await send("open_dashboard", {});
   },
 
+  hidePanel: async () => {
+    await send("hide_panel", {});
+  },
+
   start: async () => {
     if (!inShell) {
       // Design work runs against a fixture so the panel can be built without the shell.
@@ -119,6 +143,7 @@ export const useDeck = create<DeckStore>((set, get) => ({
         statusline: demoStatusline(),
       });
       applyTheme(get().settings.theme);
+      applyLocale(get().settings.locale);
       return;
     }
 
@@ -143,8 +168,25 @@ export const useDeck = create<DeckStore>((set, get) => ({
     ]);
     set({ deck, history, settings, plans, statusline });
     applyTheme(settings.theme);
+    applyLocale(settings.locale);
   },
 }));
+
+/**
+ * The catalogue the panel is currently reading from.
+ *
+ * A selector rather than a module-level global, so a language change re-renders every
+ * component that shows copy. The catalogues are module constants, so the returned reference is
+ * stable and zustand does not see a new snapshot on every render.
+ */
+export function useStrings(): Catalogue {
+  return useDeck((state) => catalogueFor(state.settings.locale));
+}
+
+/** The locale the number and date formatters should follow. */
+export function useLocale(): Locale {
+  return useDeck((state) => state.settings.locale);
+}
 
 async function send(command: string, args: Record<string, unknown>): Promise<void> {
   if (!inShell) return;
@@ -192,4 +234,14 @@ export function applyTheme(theme: Settings["theme"]): void {
   const root = document.documentElement;
   if (theme === "system") root.removeAttribute("data-theme");
   else root.setAttribute("data-theme", theme);
+}
+
+/**
+ * Stamp the resolved language on the document.
+ *
+ * This is what a screen reader reads the pronunciation rules off; the same sentence in the
+ * wrong `lang` is announced with the wrong phonemes and is genuinely hard to follow.
+ */
+export function applyLocale(locale: Locale): void {
+  document.documentElement.lang = languageFor(locale);
 }

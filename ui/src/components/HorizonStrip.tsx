@@ -2,8 +2,9 @@ import { useMemo, useState } from "react";
 
 import { formatClock, formatSpan, formatTokens, levelFor } from "../format";
 import { axisFor, columns, historySeconds, type Column } from "../horizon";
-import { strings } from "../strings";
-import type { Bucket, QuotaWindow } from "../types";
+import { useLocale, useStrings } from "../store";
+import type { Catalogue } from "../i18n";
+import type { Bucket, Locale, QuotaWindow } from "../types";
 
 /**
  * The signature element: one horizontal band per provider showing where the quota went.
@@ -39,6 +40,8 @@ export function HorizonStrip({
   /** Milliseconds, as the rest of the panel counts time. */
   now: number;
 }) {
+  const strings = useStrings();
+  const locale = useLocale();
   const [hovered, setHovered] = useState<number | null>(null);
 
   const { axis, drawn } = useMemo(() => {
@@ -65,10 +68,12 @@ export function HorizonStrip({
         // The panel has one fixed width, so the horizontal stretch is imperceptible; letting
         // it scale keeps the strip correct in the wider dashboard window of Phase 7.
         preserveAspectRatio="none"
+        // Eighty-five columns are a shape, not eighty-five facts. The summary is what a reader
+        // who cannot see the shape actually needs, and it says the same thing the axis does.
         role="img"
         aria-label={strings.strip.summary(
-          formatSpan(historySeconds(axis)),
-          formatTokens(spent),
+          formatSpan(historySeconds(axis), strings),
+          formatTokens(spent, locale),
         )}
         onMouseMove={track}
         onMouseLeave={() => setHovered(null)}
@@ -106,17 +111,17 @@ export function HorizonStrip({
         {active === null ? (
           <>
             <span className="strip__axis-start">
-              {strings.strip.ago(formatSpan(historySeconds(axis)))}
+              {strings.relative.ago(formatSpan(historySeconds(axis), strings))}
             </span>
             <span className="strip__axis-end">{strings.strip.now}</span>
           </>
         ) : (
           <>
-            <span className="strip__axis-start">{sliceLabel(active)}</span>
+            <span className="strip__axis-start">{sliceLabel(active, strings, locale)}</span>
             <span className="strip__axis-end strip__reading">
               {active.tokens === 0
                 ? strings.strip.quiet
-                : strings.strip.tokens(formatTokens(active.tokens))}
+                : strings.strip.tokens(formatTokens(active.tokens, locale))}
             </span>
           </>
         )}
@@ -129,10 +134,10 @@ export function HorizonStrip({
  * A column is a slice, not an instant. Over a weekly window one column is nearly two hours,
  * and showing a bare clock time there would claim a precision the column does not have.
  */
-function sliceLabel(column: Column): string {
-  const clock = formatClock(new Date(column.start * 1000).toISOString()) ?? "";
+function sliceLabel(column: Column, strings: Catalogue, locale: Locale): string {
+  const clock = formatClock(new Date(column.start * 1000).toISOString(), locale) ?? "";
   if (column.seconds < 3_600) return clock;
-  return `${clock} + ${formatSpan(column.seconds)}`;
+  return `${clock} + ${formatSpan(column.seconds, strings)}`;
 }
 
 function ColumnBar({ column, x }: { column: Column; x: number }) {

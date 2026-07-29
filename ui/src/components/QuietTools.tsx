@@ -1,11 +1,15 @@
-import { strings } from "../strings";
+import { useStrings } from "../store";
 import type { ProviderSnapshot } from "../types";
 
 /**
  * Installed tools with nothing to report. Collapsed by default: they are evidence that
  * detection worked, not something to spend panel height on.
+ *
+ * A native `<details>`, so the disclosure is already in the tab order and already answers the
+ * space bar and the Enter key without a line of script.
  */
 export function QuietTools({ snapshots }: { snapshots: ProviderSnapshot[] }) {
+  const strings = useStrings();
   if (snapshots.length === 0) return null;
 
   return (

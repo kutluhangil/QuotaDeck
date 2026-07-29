@@ -1,21 +1,47 @@
 import { formatClock } from "../format";
-import { strings } from "../strings";
-import { useDeck } from "../store";
+import type { Catalogue } from "../i18n";
+import { useDeck, useLocale, useStrings } from "../store";
 import { DEFAULT_THRESHOLDS, thresholdsFor } from "../types";
-import type { ProviderId, ProviderPlans, Settings, TrayMode } from "../types";
+import type { Locale, ProviderId, ProviderPlans, Settings, TrayMode } from "../types";
 import { StatuslineCard } from "./StatuslineCard";
 
-const trayModes: { mode: TrayMode; label: string; hint: string }[] = [
-  { mode: "glyph", label: strings.settings.trayGlyph, hint: strings.settings.trayGlyphHint },
-  { mode: "compact", label: strings.settings.trayCompact, hint: strings.settings.trayCompactHint },
-  { mode: "strip", label: strings.settings.trayStrip, hint: strings.settings.trayStripHint },
-];
+/**
+ * The option lists are built per render rather than held as module constants: their labels
+ * come from the catalogue, and a constant would freeze whichever language was loaded first.
+ */
+function trayModes(strings: Catalogue): { mode: TrayMode; label: string; hint: string }[] {
+  return [
+    { mode: "glyph", label: strings.settings.trayGlyph, hint: strings.settings.trayGlyphHint },
+    {
+      mode: "compact",
+      label: strings.settings.trayCompact,
+      hint: strings.settings.trayCompactHint,
+    },
+    { mode: "strip", label: strings.settings.trayStrip, hint: strings.settings.trayStripHint },
+  ];
+}
 
-const themes: { theme: Settings["theme"]; label: string }[] = [
-  { theme: "system", label: strings.settings.themeSystem },
-  { theme: "dark", label: strings.settings.themeDark },
-  { theme: "light", label: strings.settings.themeLight },
-];
+function themes(strings: Catalogue): { theme: Settings["theme"]; label: string }[] {
+  return [
+    { theme: "system", label: strings.settings.themeSystem },
+    { theme: "dark", label: strings.settings.themeDark },
+    { theme: "light", label: strings.settings.themeLight },
+  ];
+}
+
+/**
+ * Every language names itself, in its own language.
+ *
+ * Someone who has landed in a language they cannot read has to be able to find their way back
+ * out of it, and "Turkish" written in Turkish is the only label that works for both directions.
+ */
+function locales(strings: Catalogue): { locale: Locale; label: string }[] {
+  return [
+    { locale: "system", label: strings.settings.languageSystem },
+    { locale: "en", label: strings.settings.languageEnglish },
+    { locale: "tr", label: strings.settings.languageTurkish },
+  ];
+}
 
 /**
  * Tier picker for one provider.
@@ -25,6 +51,7 @@ const themes: { theme: Settings["theme"]; label: string }[] = [
  * as a measurement. Nothing is picked on their behalf.
  */
 function PlanGroup({ entry }: { entry: ProviderPlans }) {
+  const strings = useStrings();
   const chosen = useDeck((state) => state.settings.plans[entry.provider]);
   const setPlan = useDeck((state) => state.setPlan);
   const name = strings.provider[entry.provider];
@@ -73,6 +100,7 @@ function PlanGroup({ entry }: { entry: ProviderPlans }) {
  * system asks its own permission before the first interruption.
  */
 function AlertGroup({ provider }: { provider: ProviderId }) {
+  const strings = useStrings();
   const chosen = useDeck((state) => thresholdsFor(state.settings, provider));
   const toggleThreshold = useDeck((state) => state.toggleThreshold);
   const name = strings.provider[provider];
@@ -111,6 +139,8 @@ function minutesUntilTomorrow(now: number): number {
 }
 
 function MuteGroup({ now }: { now: number }) {
+  const strings = useStrings();
+  const locale = useLocale();
   const mutedUntil = useDeck((state) => state.settings.mutedUntil);
   const setMute = useDeck((state) => state.setMute);
   const until = mutedUntil === null ? null : Date.parse(mutedUntil);
@@ -141,7 +171,7 @@ function MuteGroup({ now }: { now: number }) {
       </div>
       <p className="type-caption settings__hint">
         {muted
-          ? strings.settings.mutedUntil(formatClock(mutedUntil) ?? "")
+          ? strings.settings.mutedUntil(formatClock(mutedUntil, locale) ?? "")
           : strings.settings.alertsHint}
       </p>
     </fieldset>
@@ -149,9 +179,11 @@ function MuteGroup({ now }: { now: number }) {
 }
 
 export function SettingsView({ now }: { now: number }) {
+  const strings = useStrings();
   const settings = useDeck((state) => state.settings);
   const setTrayMode = useDeck((state) => state.setTrayMode);
   const setTheme = useDeck((state) => state.setTheme);
+  const setLocale = useDeck((state) => state.setLocale);
   const plans = useDeck((state) => state.plans);
   // Selected whole and filtered here: a selector returning a fresh array every call gives
   // zustand a new snapshot on every render and the component never settles.
@@ -162,7 +194,7 @@ export function SettingsView({ now }: { now: number }) {
     <div className="settings">
       <fieldset className="settings__group">
         <legend className="type-label settings__legend">{strings.settings.trayTitle}</legend>
-        {trayModes.map(({ mode, label, hint }) => (
+        {trayModes(strings).map(({ mode, label, hint }) => (
           <label key={mode} className="settings__option">
             <input
               type="radio"
@@ -182,7 +214,7 @@ export function SettingsView({ now }: { now: number }) {
       <fieldset className="settings__group">
         <legend className="type-label settings__legend">{strings.settings.themeTitle}</legend>
         <div className="settings__row">
-          {themes.map(({ theme, label }) => (
+          {themes(strings).map(({ theme, label }) => (
             <label key={theme} className="settings__chip">
               <input
                 type="radio"
@@ -195,6 +227,30 @@ export function SettingsView({ now }: { now: number }) {
             </label>
           ))}
         </div>
+      </fieldset>
+
+      <fieldset className="settings__group">
+        <legend className="type-label settings__legend">{strings.settings.languageTitle}</legend>
+        <div className="settings__row">
+          {locales(strings).map(({ locale, label }) => (
+            <label key={locale} className="settings__chip">
+              <input
+                type="radio"
+                name="locale"
+                value={locale}
+                checked={settings.locale === locale}
+                onChange={() => setLocale(locale)}
+                // The label is in the language it names, so the control has to say so or a
+                // screen reader announces "Türkçe" with English phonemes.
+                lang={locale === "system" ? undefined : locale}
+              />
+              <span className="type-body" lang={locale === "system" ? undefined : locale}>
+                {label}
+              </span>
+            </label>
+          ))}
+        </div>
+        <p className="type-caption settings__hint">{strings.settings.languageHint}</p>
       </fieldset>
 
       {plans.map((entry) => (

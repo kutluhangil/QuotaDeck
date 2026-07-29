@@ -1,11 +1,15 @@
 /**
- * Every user-facing string, in one place.
+ * The English catalogue, and the shape every other language is held to.
  *
- * Phase 8 turns this into the English catalogue of a two-language bundle. Keeping the copy
- * here from the start means that phase swaps a module rather than hunting through JSX.
+ * `Catalogue` is derived from this object rather than declared separately, so a key added here
+ * is a compile error in `tr.ts` until it is translated. That is the point: a half-translated
+ * panel that silently falls back to English is worse than one that will not build.
+ *
+ * Numbers, dates and clock times are not in here. They are formatted by `Intl` from the
+ * viewer's own conventions — see `intlLocale` in `./index.ts`.
  */
 
-import type { PaceRisk, ProviderId, UnavailableReason, WindowKind } from "./types";
+import type { PaceRisk, ProviderId, UnavailableReason, WindowKind } from "../types";
 
 const planHintDefault =
   "Used to estimate how full your limits are. Nothing is sent anywhere to work it out.";
@@ -17,7 +21,7 @@ const planHints: Partial<Record<ProviderId, string>> = {
     "GitHub publishes the credit allowance for each plan, so the ceiling is exact. The estimate is in the spend: only command-line sessions count here, and only once they have ended. Credits used in your editor or on the web are not visible from this machine.",
 };
 
-export const strings = {
+export const en = {
   appName: "Quota Deck",
 
   header: {
@@ -32,12 +36,26 @@ export const strings = {
       total === 0 ? "" : `${reporting} of ${total} reporting`,
   },
 
+  /**
+   * Duration units, as the compact forms the panel sets them in. Kept to one or two letters:
+   * these appear inside a 380px row beside a number and must not push it around.
+   */
+  units: {
+    day: "d",
+    hour: "h",
+    minute: "m",
+  },
+
+  relative: {
+    justNow: "just now",
+    /** Rendered as "2h ago". */
+    ago: (duration: string) => `${duration} ago`,
+  },
+
   confidence: {
     measured: "measured",
     estimated: "estimated",
     idle: "idle",
-    /** Rendered as "2h ago" next to the stale marker. */
-    stale: (age: string) => `${age} ago`,
   },
 
   window: {
@@ -49,11 +67,6 @@ export const strings = {
   } satisfies Record<WindowKind, string | ((minutes: number) => string)>,
 
   strip: {
-    /**
-     * Leading axis label. This is the strip's main lesson: almost nobody knows their Codex
-     * limit is counted over a week rather than over an afternoon.
-     */
-    ago: (duration: string) => `${duration} ago`,
     now: "now",
     /** Hover readout for one slice of the timeline. */
     tokens: (tokens: string) => `${tokens} tokens`,
@@ -95,6 +108,12 @@ export const strings = {
      */
     pickPlan: "Pick your plan to see an estimate",
     pickPlanAction: "Choose plan",
+    /**
+     * The fullness bar's spoken name. The bar restates the number printed beside it, so the
+     * printed pair is hidden from assistive technology and the meter announces both — its
+     * name from here and its value from `aria-valuetext`.
+     */
+    limitLabel: (window: string) => `${window} limit`,
   },
 
   quiet: {
@@ -146,6 +165,8 @@ export const strings = {
   /**
    * Provider names are set as spaced uppercase text, never as vendor logos. Reproducing a
    * third-party mark in the app is a trademark risk and would break the design language.
+   *
+   * These are product names and stay in their original form in every language.
    */
   provider: {
     "claude-code": "Claude Code",
@@ -180,6 +201,17 @@ export const strings = {
     themeDark: "Dark",
     themeLight: "Light",
     back: "Done",
+
+    languageTitle: "Language",
+    languageSystem: "Match system",
+    /**
+     * Each language names itself. Someone who has landed in a language they cannot read has
+     * to be able to find their way out of it.
+     */
+    languageEnglish: "English",
+    languageTurkish: "Türkçe",
+    /** Times and dates are a regional setting, not a language one, and stay with the system. */
+    languageHint: "Dates and clock times keep following your system's regional settings.",
 
     planTitle: (provider: string) => `${provider} plan`,
     /**
@@ -226,4 +258,19 @@ export const strings = {
       count === 1 ? `1 reading, last ${when}` : `${count} readings, last ${when}`,
     statuslineFailed: (reason: string) => `Could not change the setting: ${reason}`,
   },
-} as const;
+
+  /**
+   * Names for things a screen reader has to announce but the design deliberately leaves
+   * unlabelled on screen. Never duplicates visible copy — where a heading already says it,
+   * the region is associated with that heading instead.
+   */
+  a11y: {
+    tools: "Tracked tools",
+    settingsRegion: "Settings",
+    status: "Status",
+    /** The panel's own toolbar: the dashboard and settings buttons. */
+    panelActions: "Panel actions",
+  },
+};
+
+export type Catalogue = typeof en;

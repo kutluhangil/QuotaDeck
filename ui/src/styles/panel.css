@@ -434,6 +434,24 @@
   background: var(--level-critical);
 }
 
+/* Same two patterns the usage bar carries, so a level looks the same wherever it appears.
+   Denser here because the meter is four pixels wide. */
+.pace__fill[data-pattern="hatched"] {
+  background-image: repeating-linear-gradient(
+    135deg,
+    rgb(0 0 0 / 0.28) 0 1px,
+    transparent 1px 3px
+  );
+}
+
+.pace__fill[data-pattern="dense"] {
+  background-image: repeating-linear-gradient(
+    135deg,
+    rgb(0 0 0 / 0.34) 0 1px,
+    transparent 1px 2px
+  );
+}
+
 .badge {
   display: inline-flex;
   align-items: center;

@@ -13,6 +13,8 @@ use quotadeck_core::provider::ProviderConfig;
 use quotadeck_core::types::{ProviderId, ProviderSnapshot, QuotaWindow};
 use serde::{Deserialize, Serialize};
 
+use crate::i18n::Locale;
+
 /// What the panel renders. Raw log lines never appear here — only folded snapshots.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -100,6 +102,11 @@ pub enum Theme {
 pub struct Settings {
     pub tray_mode: TrayMode,
     pub theme: Theme,
+    /// Which catalogue the copy comes from, here and in the panel.
+    ///
+    /// Stored rather than left to the frontend because the notifications and the tray menu are
+    /// written from this process, and the panel is usually closed when they are.
+    pub locale: Locale,
     /// Chosen subscription tier per provider, keyed by [`ProviderId::key`].
     ///
     /// A provider missing from this map has no tier picked, which means no estimated window is
@@ -125,6 +132,7 @@ impl Default for Settings {
         Settings {
             tray_mode: TrayMode::Glyph,
             theme: Theme::System,
+            locale: Locale::System,
             plans: BTreeMap::new(),
             alerts: BTreeMap::new(),
             muted_until: None,
@@ -253,6 +261,10 @@ impl Deck {
 
     pub fn set_tray_mode(&self, mode: TrayMode) {
         self.update_settings(|settings| settings.tray_mode = mode);
+    }
+
+    pub fn set_locale(&self, locale: Locale) {
+        self.update_settings(|settings| settings.locale = locale);
     }
 
     /// Record the tier the user picked for one provider, or clear it.
@@ -436,7 +448,7 @@ mod tests {
         let json = serde_json::to_string(&settings).expect("serialise settings");
         assert_eq!(
             json,
-            r#"{"trayMode":"compact","theme":"dark","plans":{"claude-code":"max-20x"},"alerts":{"codex":[85,95]},"mutedUntil":null}"#
+            r#"{"trayMode":"compact","theme":"dark","locale":"system","plans":{"claude-code":"max-20x"},"alerts":{"codex":[85,95]},"mutedUntil":null}"#
         );
     }
 
@@ -446,6 +458,8 @@ mod tests {
             .expect("an older settings file");
         assert_eq!(stored.tray_mode, TrayMode::Strip);
         assert!(stored.plans.is_empty());
+        // A file written before the language could be picked keeps following the system.
+        assert_eq!(stored.locale, Locale::System);
     }
 
     #[test]

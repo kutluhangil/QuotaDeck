@@ -6,6 +6,7 @@
 
 pub mod alerts;
 pub mod deck;
+pub mod i18n;
 pub mod icon;
 pub mod statusline;
 pub mod tray;
@@ -22,6 +23,7 @@ use tauri::{AppHandle, Emitter, Manager};
 
 use crate::alerts::{Alert, Alerts};
 use crate::deck::{Deck, DeckState, ProviderHistory, Settings, TrayMode};
+use crate::i18n::Locale;
 use crate::statusline::StatuslineState;
 
 /// Event the panel subscribes to.
@@ -54,7 +56,9 @@ pub fn run() {
             provider_plans,
             usage_history,
             open_dashboard,
+            hide_panel,
             set_tray_mode,
+            set_locale,
             set_plan,
             set_alert_thresholds,
             set_mute,
@@ -183,6 +187,19 @@ fn open_dashboard(app: AppHandle) -> std::result::Result<(), String> {
     Ok(())
 }
 
+/// Dismiss the popover.
+///
+/// The click-away path goes through the window's own blur event; this is the keyboard's, and
+/// it has to set the same flag or the read loop keeps ticking at the foreground rate against a
+/// window nobody is looking at.
+#[tauri::command]
+fn hide_panel(app: AppHandle, deck: tauri::State<'_, Deck>) {
+    deck.set_panel_open(false);
+    if let Some(window) = app.get_webview_window(PANEL_WINDOW) {
+        let _ = window.hide();
+    }
+}
+
 /// The blueprint's dashboard size (§2).
 const DASHBOARD_WIDTH: f64 = 960.0;
 const DASHBOARD_HEIGHT: f64 = 640.0;
@@ -227,6 +244,13 @@ fn set_panel_height(app: AppHandle, height: f64) {
 fn set_tray_mode(app: AppHandle, deck: tauri::State<'_, Deck>, mode: TrayMode) {
     deck.set_tray_mode(mode);
     tray::refresh(&app, &deck.state(), deck.settings());
+}
+
+/// Record the language and re-label the one surface the panel cannot reach.
+#[tauri::command]
+fn set_locale(app: AppHandle, deck: tauri::State<'_, Deck>, locale: Locale) {
+    deck.set_locale(locale);
+    tray::relanguage(&app, locale.language());
 }
 
 /// Folds every installed provider's logs on a timer.

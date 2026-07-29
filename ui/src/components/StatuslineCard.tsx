@@ -1,6 +1,5 @@
 import { formatRelative } from "../format";
-import { strings } from "../strings";
-import { useDeck } from "../store";
+import { useDeck, useStrings } from "../store";
 
 /**
  * Consent for the one thing this app writes outside its own data directory.
@@ -11,6 +10,7 @@ import { useDeck } from "../store";
  * button is the only path to `install_statusline`; nothing installs on its own.
  */
 export function StatuslineCard({ now }: { now: number }) {
+  const strings = useStrings();
   const statusline = useDeck((state) => state.statusline);
   const error = useDeck((state) => state.statuslineError);
   const install = useDeck((state) => state.installStatusline);
@@ -27,7 +27,7 @@ export function StatuslineCard({ now }: { now: number }) {
     );
   }
 
-  const lastReading = formatRelative(statusline.lastReadingAt, now);
+  const lastReading = formatRelative(statusline.lastReadingAt, now, strings);
 
   return (
     <fieldset className="settings__group">

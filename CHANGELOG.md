@@ -2,6 +2,21 @@
 
 ## 2026-07-29
 
+- Phase 8: added the two-language catalogue (`ui/src/i18n/`) with English and Turkish. `Catalogue` is derived from the English object, so a key added there fails the build until it is translated.
+- Phase 8: a test compares the two catalogues by key path *and* by function arity — a translation that drops a placeholder type-checks fine and silently loses the number the sentence was written around.
+- Phase 8: separated the two questions a locale answers. The catalogue decides the words and the user picks it; numbers, dates and clock times stay on the system's regional settings unless a language is picked explicitly.
+- Phase 8: percentages, token counts and costs go through `Intl` rather than string concatenation. Turkish writes %76, not 76%, and 1,2M rather than 1.2M.
+- Phase 8: added `app/src/i18n.rs` — the backend's own catalogue for the two surfaces the panel cannot speak for: the notifications, raised from the read loop while the webview may be suspended, and the tray menu, which is the only way to quit an accessory app.
+- Phase 8: `Locale::System` resolves from `LC_ALL` / `LC_MESSAGES` / `LANG` in POSIX order, matched on the primary subtag. A language with no catalogue is not a match, so the search continues rather than settling for a half-translated app.
+- Phase 8: the alert tests name their language. `Locale::System` reads the environment, and a default would have made every assertion on the wording depend on the machine running CI.
+- Phase 8: Escape steps out of settings, then out of the panel, through a new `hide_panel` command that sets the same open flag the click-away path does.
+- Phase 8: the dashboard's range picker became a radio group with a roving tabindex and arrow keys — one choice, announced as one of three, with only the chosen option in the tab order.
+- Phase 8: focus moves with the view. Toggling to settings replaces everything under the header, and focus that stayed on the button left a keyboard user at the top of a screen that was no longer there.
+- Phase 8: the focus ring moved from the 13px native radio to the chip around it, so the focused thing looks like the thing you would click.
+- Phase 8: the printed percentage is now hidden from assistive technology and the bar beneath it carries the reading as a `meter` with `aria-valuetext`, rather than the pair being announced twice.
+- Phase 8: the chosen dashboard range and the pace meter carry a shape as well as a tint — a dot that is always in the box and only changes colour, and the same two fill patterns the usage bar uses.
+- Phase 8: `<html lang>` follows the resolved language, because it is what a screen reader reads its pronunciation rules off.
+
 - Phase 7: added `core/src/pace.rs` — a pace forecast per quota window, wired into every provider through `snapshot_with_windows` so no provider file learns about it.
 - Phase 7: two horizons, as the blueprint specifies. A session window is projected from an exponentially weighted burn rate (α = 0.3, fifteen-minute bins over four hours); a weekly or monthly one is weighted by the user's own hour-of-week profile over the retained history, scaled by how much heavier the current window has run than that profile predicted.
 - Phase 7: the projection reports the peak of the trajectory, not its endpoint. Against a rolling window usage falls off the far edge as the near edge advances, so a trajectory can cross the ceiling and fall back, and the endpoint would hide exactly the crossing worth warning about.

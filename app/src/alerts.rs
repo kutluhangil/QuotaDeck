@@ -11,16 +11,17 @@
 //! 3. A reading the panel marks stale never raises anything. Copilot's exhaustion event stays
 //!    on the card for the rest of the month, and it is not news for any of it.
 //!
-//! The copy here is English and lives in Rust rather than in the panel's catalogue: the panel
-//! is usually closed and its webview may be suspended, so the notification has to be raised
-//! from the read loop. Phase 8 gives this module a localised catalogue of its own.
+//! The copy comes from [`crate::i18n`] rather than from the panel's catalogue: the panel is
+//! usually closed and its webview may be suspended, so the notification has to be written on
+//! the side that raised it.
 
 use std::collections::HashMap;
 
 use chrono::{DateTime, Utc};
-use quotadeck_core::types::{Confidence, ProviderId, QuotaWindow, WindowKind};
+use quotadeck_core::types::{Confidence, ProviderId, QuotaWindow};
 
 use crate::deck::{DeckState, Settings};
+use crate::i18n::{provider_name, Language};
 
 /// How far a window must fall back below an announced threshold before it can raise it again.
 ///
@@ -72,6 +73,7 @@ impl Alerts {
         now: DateTime<Utc>,
     ) -> Vec<Alert> {
         let announce = self.primed && !state.scanning && !settings.is_muted(now);
+        let language = settings.locale.language();
         let mut alerts = Vec::new();
 
         for snapshot in &state.providers {
@@ -102,7 +104,7 @@ impl Alerts {
                     },
                 );
                 if announce {
-                    alerts.push(alert_for(snapshot.id, window, percent));
+                    alerts.push(alert_for(snapshot.id, window, percent, language));
                 }
             }
         }
@@ -135,42 +137,27 @@ fn highest_crossed(thresholds: &[u8], percent: f32) -> Option<u8> {
         .max()
 }
 
-fn alert_for(provider: ProviderId, window: &QuotaWindow, percent: f32) -> Alert {
-    let name = display_name(provider);
+fn alert_for(
+    provider: ProviderId,
+    window: &QuotaWindow,
+    percent: f32,
+    language: Language,
+) -> Alert {
+    let label = language.window_label(window);
+    // The reset instant is stated in the reader's own zone; the clock format is a regional
+    // setting and stays with the system, exactly as it does in the panel.
     let body = match window.resets_at {
-        Some(at) => format!(
-            "The {} limit is {:.0}% used. It resets at {}.",
-            window_label(window),
+        Some(at) => language.alert_body_with_reset(
+            &label,
             percent,
-            at.with_timezone(&chrono::Local).format("%H:%M")
+            &at.with_timezone(&chrono::Local).format("%H:%M").to_string(),
         ),
-        None => format!(
-            "The {} limit is {:.0}% used.",
-            window_label(window),
-            percent
-        ),
+        None => language.alert_body(&label, percent),
     };
     Alert {
         provider,
-        title: name,
+        title: provider_name(provider),
         body,
-    }
-}
-
-/// The provider's own untranslated name. Falls back to the stable key, which is never pretty
-/// but is never wrong either.
-fn display_name(provider: ProviderId) -> String {
-    quotadeck_providers::by_key(provider.key())
-        .map(|p| p.display_name().to_string())
-        .unwrap_or_else(|| provider.key().to_string())
-}
-
-fn window_label(window: &QuotaWindow) -> String {
-    match window.kind {
-        WindowKind::Session => "session".into(),
-        WindowKind::Weekly => "weekly".into(),
-        WindowKind::Monthly => "monthly".into(),
-        WindowKind::Other => format!("{}-minute", window.window_minutes),
     }
 }
 
@@ -178,10 +165,22 @@ fn window_label(window: &QuotaWindow) -> String {
 mod tests {
     use super::*;
     use crate::deck::DEFAULT_THRESHOLDS;
-    use quotadeck_core::types::{CostRange, ProviderSnapshot, TokenRollup};
+    use crate::i18n::Locale;
+    use quotadeck_core::types::{CostRange, ProviderSnapshot, TokenRollup, WindowKind};
 
     fn now() -> DateTime<Utc> {
         DateTime::from_timestamp(1_785_715_200, 0).expect("a valid instant")
+    }
+
+    /// Settings that name their language.
+    ///
+    /// `Locale::System` reads `LANG`, so a default here would make every assertion on the
+    /// wording depend on the machine the tests happen to run on.
+    fn settings() -> Settings {
+        Settings {
+            locale: Locale::En,
+            ..Settings::default()
+        }
     }
 
     fn window(percent: f32, resets_at: Option<DateTime<Utc>>) -> QuotaWindow {
@@ -224,7 +223,7 @@ mod tests {
     fn the_first_pass_is_silent() {
         // Launching on a Friday afternoon must not fire one notification per provider before
         // the user has done a minute of work.
-        let settings = Settings::default();
+        let settings = settings();
         let mut alerts = Alerts::new();
         assert!(alerts
             .evaluate(&state(vec![window(96.0, None)], false), &settings, now())
@@ -233,7 +232,7 @@ mod tests {
 
     #[test]
     fn a_crossing_after_the_first_pass_is_announced_once() {
-        let settings = Settings::default();
+        let settings = settings();
         let mut alerts = primed(&settings, vec![window(40.0, None)]);
 
         let raised = alerts.evaluate(&state(vec![window(72.0, None)], false), &settings, now());
@@ -248,7 +247,7 @@ mod tests {
 
     #[test]
     fn each_threshold_is_announced_in_turn() {
-        let settings = Settings::default();
+        let settings = settings();
         let mut alerts = primed(&settings, vec![window(40.0, None)]);
 
         for percent in [72.0, 86.0, 96.0] {
@@ -260,7 +259,7 @@ mod tests {
 
     #[test]
     fn a_jump_past_two_thresholds_raises_one_notification_not_two() {
-        let settings = Settings::default();
+        let settings = settings();
         let mut alerts = primed(&settings, vec![window(40.0, None)]);
 
         let raised = alerts.evaluate(&state(vec![window(96.0, None)], false), &settings, now());
@@ -272,7 +271,7 @@ mod tests {
     fn drifting_across_a_threshold_does_not_notify_twice() {
         // A rolling window crosses its own boundary as old usage expires. Without hysteresis
         // this fires on every tick that carries the user over and back.
-        let settings = Settings::default();
+        let settings = settings();
         let mut alerts = primed(&settings, vec![window(40.0, None)]);
         alerts.evaluate(&state(vec![window(85.5, None)], false), &settings, now());
 
@@ -288,7 +287,7 @@ mod tests {
 
     #[test]
     fn a_real_fall_back_makes_the_next_climb_news_again() {
-        let settings = Settings::default();
+        let settings = settings();
         let mut alerts = primed(&settings, vec![window(40.0, None)]);
         alerts.evaluate(&state(vec![window(86.0, None)], false), &settings, now());
 
@@ -299,7 +298,7 @@ mod tests {
 
     #[test]
     fn a_new_window_period_announces_the_same_threshold_again() {
-        let settings = Settings::default();
+        let settings = settings();
         let first = Some(now() + chrono::Duration::hours(1));
         let second = Some(now() + chrono::Duration::days(8));
         let mut alerts = primed(&settings, vec![window(40.0, first)]);
@@ -313,7 +312,7 @@ mod tests {
     fn a_stale_reading_never_raises_anything() {
         // Copilot's exhaustion event sits on the card for the rest of the month, and it is
         // not news for any of it.
-        let settings = Settings::default();
+        let settings = settings();
         let mut stale = window(100.0, None);
         stale.confidence = Confidence::Stale {
             reported_at: now() - chrono::Duration::days(14),
@@ -348,13 +347,28 @@ mod tests {
 
     #[test]
     fn a_provider_with_no_thresholds_is_silent() {
-        let mut settings = Settings::default();
+        let mut settings = settings();
         settings.alerts.insert("codex".into(), Vec::new());
         let mut alerts = primed(&settings, vec![window(40.0, None)]);
 
         assert!(alerts
             .evaluate(&state(vec![window(99.0, None)], false), &settings, now())
             .is_empty());
+    }
+
+    #[test]
+    fn the_notification_is_written_in_the_chosen_language() {
+        // The panel is usually closed when this is raised, so the language has to be read from
+        // the stored setting rather than from whatever the webview last resolved.
+        let settings = Settings {
+            locale: Locale::Tr,
+            ..Settings::default()
+        };
+        let mut alerts = primed(&settings, vec![window(40.0, None)]);
+
+        let raised = alerts.evaluate(&state(vec![window(96.0, None)], false), &settings, now());
+        assert_eq!(raised.len(), 1);
+        assert_eq!(raised[0].body, "haftalık limiti %96 doldu.");
     }
 
     #[test]

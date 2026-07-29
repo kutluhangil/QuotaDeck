@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 
 import { ConfidenceBadge } from "./components/ConfidenceBadge";
 import { EmptyState } from "./components/EmptyState";
@@ -14,11 +14,65 @@ import {
   RANGE_DAYS,
   type Range,
 } from "./history";
-import { strings } from "./strings";
-import { useDeck } from "./store";
+import { useDeck, useLocale, useStrings } from "./store";
 import { paceFor, type ProviderSnapshot } from "./types";
 
 const ranges: Range[] = ["day", "week", "month"];
+
+/**
+ * The rolling range this window reports over.
+ *
+ * A radio group rather than three toggle buttons: exactly one is chosen at a time, and that is
+ * the semantic a screen reader needs to say "1 of 3" instead of reading three unrelated
+ * pressed states. Arrow keys move between them and only the chosen one is in the tab order,
+ * which is what a radio group is expected to do.
+ */
+function RangePicker({ range, onChange }: { range: Range; onChange: (next: Range) => void }) {
+  const strings = useStrings();
+  const buttons = useRef<(HTMLButtonElement | null)[]>([]);
+
+  function step(index: number, delta: number) {
+    const next = (index + delta + ranges.length) % ranges.length;
+    const option = ranges[next];
+    if (option === undefined) return;
+    onChange(option);
+    buttons.current[next]?.focus();
+  }
+
+  function onKeyDown(event: React.KeyboardEvent<HTMLButtonElement>, index: number) {
+    const delta =
+      event.key === "ArrowRight" || event.key === "ArrowDown"
+        ? 1
+        : event.key === "ArrowLeft" || event.key === "ArrowUp"
+          ? -1
+          : 0;
+    if (delta === 0) return;
+    event.preventDefault();
+    step(index, delta);
+  }
+
+  return (
+    <div className="board__ranges" role="radiogroup" aria-label={strings.dashboard.rangeLabel}>
+      {ranges.map((option, index) => (
+        <button
+          key={option}
+          ref={(element) => {
+            buttons.current[index] = element;
+          }}
+          type="button"
+          role="radio"
+          className="type-caption board__range"
+          aria-checked={range === option}
+          tabIndex={range === option ? 0 : -1}
+          onKeyDown={(event) => onKeyDown(event, index)}
+          onClick={() => onChange(option)}
+        >
+          {strings.dashboard.range[option]}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 function ProviderPanel({
   snapshot,
@@ -29,6 +83,9 @@ function ProviderPanel({
   range: Range;
   nowSeconds: number;
 }) {
+  const strings = useStrings();
+  const locale = useLocale();
+  const nameId = useId();
   // Selected whole, narrowed here. `historyFor` builds a fresh empty array for a provider
   // with no history, and a selector that returns one hands zustand a new snapshot on every
   // render.
@@ -38,9 +95,11 @@ function ProviderPanel({
   const cells = dailyCells(hours, HEATMAP_DAYS, nowSeconds);
 
   return (
-    <article className="board__card">
+    <article className="board__card" aria-labelledby={nameId}>
       <header className="board__card-head">
-        <h2 className="type-label board__name">{strings.provider[snapshot.id]}</h2>
+        <h2 className="type-label board__name" id={nameId}>
+          {strings.provider[snapshot.id]}
+        </h2>
       </header>
 
       {snapshot.windows.length > 0 ? (
@@ -49,9 +108,11 @@ function ProviderPanel({
             const pace = paceFor(snapshot, window);
             return (
               <li key={`${window.limitId}-${window.windowMinutes}`} className="board__window">
-                <span className="type-caption board__window-label">{windowLabel(window)}</span>
+                <span className="type-caption board__window-label">
+                  {windowLabel(window, strings)}
+                </span>
                 <span className="type-metric board__window-value">
-                  {window.usedPercent === null ? "—" : formatPercent(window.usedPercent)}
+                  {window.usedPercent === null ? "—" : formatPercent(window.usedPercent, locale)}
                 </span>
                 {pace ? <PaceBadge pace={pace} /> : <span />}
                 <ConfidenceBadge confidence={window.confidence} />
@@ -68,12 +129,12 @@ function ProviderPanel({
       <dl className="board__totals">
         <div className="board__total">
           <dt className="type-caption board__total-label">{strings.dashboard.rangeTokens}</dt>
-          <dd className="type-metric board__total-value">{formatTokens(sum.tokens)}</dd>
+          <dd className="type-metric board__total-value">{formatTokens(sum.tokens, locale)}</dd>
         </div>
         <div className="board__total">
           <dt className="type-caption board__total-label">{strings.dashboard.rangeCost}</dt>
           <dd className="type-metric board__total-value">
-            {sum.usd > 0 ? formatCost(sum.usd) : "—"}
+            {sum.usd > 0 ? formatCost(sum.usd, locale) : "—"}
           </dd>
         </div>
       </dl>
@@ -81,7 +142,7 @@ function ProviderPanel({
           a model it could not price under-reports a month without admitting it. */}
       {sum.unpricedTokens > 0 && (
         <p className="type-caption board__note">
-          {strings.dashboard.unpriced(formatTokens(sum.unpricedTokens))}
+          {strings.dashboard.unpriced(formatTokens(sum.unpricedTokens, locale))}
         </p>
       )}
 
@@ -91,6 +152,7 @@ function ProviderPanel({
 }
 
 export function Dashboard() {
+  const strings = useStrings();
   const deck = useDeck((state) => state.deck);
   const start = useDeck((state) => state.start);
   const [range, setRange] = useState<Range>("week");
@@ -117,22 +179,10 @@ export function Dashboard() {
           <span className="panel__glyph" aria-hidden="true" />
           {strings.dashboard.title}
         </span>
-        <div className="board__ranges" role="group" aria-label={strings.dashboard.rangeLabel}>
-          {ranges.map((option) => (
-            <button
-              key={option}
-              type="button"
-              className="type-caption board__range"
-              aria-pressed={range === option}
-              onClick={() => setRange(option)}
-            >
-              {strings.dashboard.range[option]}
-            </button>
-          ))}
-        </div>
+        <RangePicker range={range} onChange={setRange} />
       </header>
 
-      <main className="board__body">
+      <main className="board__body" aria-label={strings.a11y.tools}>
         {reporting.length === 0 ? (
           <EmptyState
             title={strings.empty.noTools.title}

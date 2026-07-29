@@ -5,8 +5,7 @@ import { ProviderCard } from "./components/ProviderCard";
 import { QuietTools } from "./components/QuietTools";
 import { SettingsView } from "./components/SettingsView";
 import { formatClock } from "./format";
-import { strings } from "./strings";
-import { reportPanelHeight, useDeck } from "./store";
+import { reportPanelHeight, useDeck, useLocale, useStrings } from "./store";
 import { awaitingSetup, type ProviderSnapshot } from "./types";
 
 function hasReading(snapshot: ProviderSnapshot): boolean {
@@ -23,10 +22,13 @@ function earnsCard(snapshot: ProviderSnapshot): boolean {
 }
 
 export function App() {
+  const strings = useStrings();
+  const locale = useLocale();
   const deck = useDeck((state) => state.deck);
   const view = useDeck((state) => state.view);
   const setView = useDeck((state) => state.setView);
   const openDashboard = useDeck((state) => state.openDashboard);
+  const hidePanel = useDeck((state) => state.hidePanel);
   const start = useDeck((state) => state.start);
   const [now, setNow] = useState(() => Date.now());
   const bodyRef = useRef<HTMLElement>(null);
@@ -41,6 +43,22 @@ export function App() {
     return () => window.clearInterval(timer);
   }, []);
 
+  /*
+   * Escape steps back the way a popover is expected to: out of settings first, then out of the
+   * panel itself. Clicking away already dismisses it, and a menu bar window that can only be
+   * closed with the mouse is one a keyboard user is stuck inside.
+   */
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      if (view === "settings") setView("panel");
+      else void hidePanel();
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [view, setView, hidePanel]);
+
   // A popover should be as tall as what it has to say. The window follows the content
   // rather than leaving a block of empty surface under two cards.
   useEffect(() => {
@@ -54,10 +72,19 @@ export function App() {
     return () => observer.disconnect();
   }, [view, deck]);
 
+  /*
+   * Move focus with the view. Toggling to settings replaces everything under the header, and a
+   * keyboard user whose focus stayed on the button would tab from the top of a screen that is
+   * no longer there.
+   */
+  useEffect(() => {
+    bodyRef.current?.focus();
+  }, [view]);
+
   const active = deck.providers.filter(earnsCard);
   const quiet = deck.providers.filter((snapshot) => !earnsCard(snapshot));
   const reporting = deck.providers.filter(hasReading).length;
-  const updated = formatClock(deck.updatedAt);
+  const updated = formatClock(deck.updatedAt, locale);
 
   return (
     <div className="panel">
@@ -66,7 +93,7 @@ export function App() {
           <span className="panel__glyph" aria-hidden="true" />
           {strings.appName}
         </span>
-        <span className="panel__actions">
+        <span className="panel__actions" role="toolbar" aria-label={strings.a11y.panelActions}>
           <button
             type="button"
             className="type-caption panel__action"
@@ -85,7 +112,13 @@ export function App() {
         </span>
       </header>
 
-      <main className="panel__body" ref={bodyRef}>
+      <main
+        className="panel__body"
+        ref={bodyRef}
+        // Focused programmatically on a view change, never reachable by tabbing into it.
+        tabIndex={-1}
+        aria-label={view === "settings" ? strings.a11y.settingsRegion : strings.a11y.tools}
+      >
         {view === "settings" ? (
           <SettingsView now={now} />
         ) : deck.providers.length === 0 ? (
@@ -110,7 +143,12 @@ export function App() {
       </main>
 
       <footer className="panel__foot type-caption">
-        <span>
+        {/*
+          Polite, and cheap to be: the clock is minute-precision, so the five-second refresh
+          rewrites the same text and announces nothing. What does change — the scan finishing —
+          is exactly the transition worth hearing about.
+        */}
+        <span role="status" aria-live="polite">
           {deck.scanning
             ? strings.empty.scanning
             : updated

@@ -855,12 +855,12 @@ o yüzden bunlar gerçek fixture edinilene kadar açık kalıyor (§10).
 
 ### Faz 8 — Yerelleştirme ve Erişilebilirlik
 
-- [ ] i18n altyapısı, TR + EN
-- [ ] Tüm string'ler dışarı alınmış, hardcode yok
-- [ ] Klavye navigasyonu, görünür focus halkası
-- [ ] VoiceOver / Narrator etiketleri
-- [ ] Renk körlüğü: seviye yalnızca renkle değil, **desen + metin** ile de ifade edilir
-- [ ] `prefers-reduced-motion` tüm animasyonlarda
+- [x] i18n altyapısı, TR + EN
+- [x] Tüm stringler dışarı alınmış, hardcode yok
+- [x] Klavye navigasyonu, görünür focus halkası
+- [x] VoiceOver / Narrator etiketleri
+- [x] Renk körlüğü: seviye yalnızca renkle değil, **desen + metin** ile de ifade edilir
+- [x] `prefers-reduced-motion` tüm animasyonlarda
 
 ### Faz 9 — macOS Sandbox ve App Store
 
