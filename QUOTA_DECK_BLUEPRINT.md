@@ -846,12 +846,12 @@ o yüzden bunlar gerçek fixture edinilene kadar açık kalıyor (§10).
 
 ### Faz 7 — Tahmin, Geçmiş, Bildirimler
 
-- [ ] Pace forecast (EWMA kısa vade + profil ağırlıklı uzun vade)
-- [ ] Risk rozetleri (sağlıklı / riskli / aşımda)
-- [ ] Dashboard penceresi: gün / hafta / ay
-- [ ] Aktivite ısı haritası
-- [ ] Eşik bildirimleri (%70 / %85 / %95) — sağlayıcı başına ayarlanabilir
-- [ ] Bildirim susturma (1 saat / bugün)
+- [x] Pace forecast (EWMA kısa vade + profil ağırlıklı uzun vade) — `core/src/pace.rs`
+- [x] Risk rozetleri (sağlıklı / riskli / aşımda) — `ui/src/components/PaceBadge.tsx`
+- [x] Dashboard penceresi: gün / hafta / ay — `ui/src/Dashboard.tsx`, pencere `open_dashboard` ile açılır
+- [x] Aktivite ısı haritası — `ui/src/components/Heatmap.tsx`, yerel takvim günü, nötr mürekkep rampası
+- [x] Eşik bildirimleri (%70 / %85 / %95) — sağlayıcı başına ayarlanabilir — `app/src/alerts.rs`
+- [x] Bildirim susturma (1 saat / bugün) — `Settings.muted_until`
 
 ### Faz 8 — Yerelleştirme ve Erişilebilirlik
 
