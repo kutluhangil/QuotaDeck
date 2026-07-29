@@ -7,6 +7,7 @@ use std::sync::{Arc, Mutex};
 
 use chrono::{DateTime, Utc};
 use quotadeck_core::error::{Error, Result};
+use quotadeck_core::history::HistoryPoint;
 use quotadeck_core::paths;
 use quotadeck_core::provider::ProviderConfig;
 use quotadeck_core::types::{ProviderId, ProviderSnapshot, QuotaWindow};
@@ -59,6 +60,20 @@ impl DeckState {
                 },
             )
     }
+}
+
+/// One provider's retained usage, folded to the hour.
+///
+/// Pulled by the dashboard rather than pushed with every tick: the panel never renders it, and
+/// a month of history on every refresh would put the cost of a surface nobody has open through
+/// the channel the panel depends on.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderHistory {
+    pub id: ProviderId,
+    /// Hours carrying usage, oldest first. Empty hours are omitted; the dashboard lays out
+    /// the calendar itself, in the viewer's own zone.
+    pub hours: Vec<HistoryPoint>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -158,6 +173,7 @@ impl Settings {
 #[derive(Clone)]
 pub struct Deck {
     state: Arc<Mutex<DeckState>>,
+    history: Arc<Mutex<Vec<ProviderHistory>>>,
     settings: Arc<Mutex<Settings>>,
     panel_open: Arc<AtomicBool>,
 }
@@ -166,8 +182,23 @@ impl Deck {
     pub fn new() -> Self {
         Deck {
             state: Arc::new(Mutex::new(DeckState::empty())),
+            history: Arc::new(Mutex::new(Vec::new())),
             settings: Arc::new(Mutex::new(Settings::load())),
             panel_open: Arc::new(AtomicBool::new(false)),
+        }
+    }
+
+    pub fn history(&self) -> Vec<ProviderHistory> {
+        match self.history.lock() {
+            Ok(guard) => guard.clone(),
+            Err(poisoned) => poisoned.into_inner().clone(),
+        }
+    }
+
+    pub fn set_history(&self, next: Vec<ProviderHistory>) {
+        match self.history.lock() {
+            Ok(mut guard) => *guard = next,
+            Err(poisoned) => *poisoned.into_inner() = next,
         }
     }
 

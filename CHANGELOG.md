@@ -10,6 +10,12 @@
 - Phase 7: forecasts are counted in equivalent API cost where the window was fully priced and in tokens where it was not. Codex names no model in any record, and a cost-only forecast would exclude the provider whose measured windows make one worth having.
 - Phase 7: nothing is projected below 5% used, from a window with no counted consumption, or from a window whose reported reset has already passed.
 - Phase 7: added the pace badge to the panel — a miniature of the bar it is projecting, with the risk word beside it, so the reading survives colour blindness and greyscale.
+- Phase 7: added the dashboard window (960 × 640), opened on demand from the panel and never created at launch. One bundle serves both surfaces; the window's own label decides which mounts.
+- Phase 7: added `core/src/history.rs` — retained usage folded to the hour, with the empty hours dropped. A month of five-minute buckets is 8640 points per provider and nearly all of them are empty.
+- Phase 7: history is pulled by the dashboard rather than pushed with the snapshots. The panel never renders it, and a month of history on every five-second tick would charge a closed surface to the channel the panel depends on.
+- Phase 7: dashboard ranges are rolling — last 24 hours, 7 days, 30 days — matching the panel's rolling day. Heatmap cells are local calendar days, folded in the frontend because only it knows the viewer's zone.
+- Phase 7: the heatmap is shaded on a neutral ink ramp, never the level ramp. Volume is not fullness, and a colour in this app means exactly one thing.
+- Phase 7: every window gets its own pace badge on the dashboard. The panel has room for one and gives it to the window closest to running out.
 
 ## 2026-07-28
 

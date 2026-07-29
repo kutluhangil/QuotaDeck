@@ -102,6 +102,23 @@ export interface ProviderSnapshot {
   unavailable: UnavailableReason | null;
 }
 
+/** One hour of counted usage, as the dashboard pulls it. */
+export interface HistoryPoint {
+  /** Unix epoch seconds at the start of the hour, in UTC. */
+  start: number;
+  tokens: TokenRollup;
+  cost: CostRange;
+}
+
+/**
+ * One provider's retained history. Hours with no usage are omitted — the dashboard lays out
+ * the calendar itself, in the viewer's own zone.
+ */
+export interface ProviderHistory {
+  id: ProviderId;
+  hours: HistoryPoint[];
+}
+
 /** A ceiling one tier is assumed to allow over one window, in equivalent API dollars. */
 export interface PlanCeiling {
   windowMinutes: number;

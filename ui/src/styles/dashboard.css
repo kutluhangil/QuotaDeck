@@ -1,0 +1,258 @@
+/*
+ * The dashboard window (960 × 640). A real window, not a popover: it paints an opaque
+ * surface, it scrolls, and it does not round its own corners or draw its own border.
+ *
+ * Every token here is shared with the panel except the heat ramp, which exists because the
+ * level ramp may not be borrowed for it. A busy Tuesday is volume, not fullness, and in this
+ * app a colour means exactly one thing.
+ */
+
+:root {
+  /* Neutral by construction. Green would read as "healthy", blue as "measured". */
+  --heat-0: #1a2331;
+  --heat-1: #26313f;
+  --heat-2: #37455a;
+  --heat-3: #4c5d78;
+  --heat-4: #66799a;
+
+  --cell: 15px;
+}
+
+:root[data-theme="light"] {
+  --heat-0: #e9edf3;
+  --heat-1: #d3dae4;
+  --heat-2: #b3bfd0;
+  --heat-3: #8e9db3;
+  --heat-4: #6a7a94;
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --heat-0: #e9edf3;
+    --heat-1: #d3dae4;
+    --heat-2: #b3bfd0;
+    --heat-3: #8e9db3;
+    --heat-4: #6a7a94;
+  }
+}
+
+/* The popover floats over the desktop and paints its own surface; a window fills the frame
+   the compositor already gave it. */
+:root[data-surface="dashboard"] body {
+  background: var(--surface-abyss);
+}
+
+.board {
+  block-size: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-abyss);
+}
+
+.board__head {
+  flex: 0 0 auto;
+  block-size: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--step-4);
+  padding-inline: var(--step-5);
+  border-block-end: var(--hairline) solid var(--rule);
+}
+
+.board__title {
+  display: flex;
+  align-items: center;
+  gap: var(--step-2);
+  color: var(--ink-primary);
+}
+
+.board__ranges {
+  display: flex;
+  gap: var(--step-1);
+  padding: 2px;
+  border: var(--hairline) solid var(--rule);
+  border-radius: var(--radius);
+}
+
+.board__range {
+  color: var(--ink-secondary);
+  padding: var(--step-1) var(--step-3);
+  border-radius: calc(var(--radius) - 2px);
+}
+
+.board__range:hover {
+  color: var(--ink-primary);
+}
+
+.board__range[aria-pressed="true"] {
+  color: var(--ink-primary);
+  background: var(--surface-raised);
+}
+
+.board__body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: var(--step-5);
+}
+
+/* Two columns at 960px, one on a window the user narrowed. `auto-fill` rather than a fixed
+   count so a fourth provider wraps instead of squeezing. */
+.board__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: var(--step-4);
+}
+
+.board__card {
+  background: var(--surface-hull);
+  border: var(--hairline) solid var(--rule);
+  border-radius: var(--radius);
+  padding: var(--step-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--step-3);
+}
+
+.board__card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.board__name {
+  color: var(--ink-secondary);
+  margin: 0;
+}
+
+.board__quiet {
+  color: var(--ink-tertiary);
+  margin: 0;
+}
+
+.board__windows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--step-2);
+}
+
+/* The dashboard has the width the panel does not: every window gets its own forecast here. */
+.board__window {
+  display: grid;
+  grid-template-columns: 1fr auto auto auto;
+  align-items: center;
+  gap: var(--step-3);
+}
+
+.board__window-label {
+  color: var(--ink-tertiary);
+}
+
+.board__window-value {
+  color: var(--ink-primary);
+}
+
+.board__totals {
+  display: flex;
+  gap: var(--step-5);
+  margin: 0;
+  padding-block-start: var(--step-3);
+  border-block-start: var(--hairline) solid var(--rule);
+}
+
+.board__total {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.board__total-label {
+  color: var(--ink-tertiary);
+}
+
+.board__total-value {
+  color: var(--ink-primary);
+  margin: 0;
+}
+
+.board__note {
+  color: var(--ink-tertiary);
+  margin: 0;
+}
+
+.board__foot {
+  flex: 0 0 auto;
+  block-size: var(--footer-height);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-inline: var(--step-5);
+  border-block-start: var(--hairline) solid var(--rule);
+  color: var(--ink-tertiary);
+}
+
+.heatmap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--step-2);
+}
+
+/* Seven weekday columns, oldest week first. Leading pads put the first day on its own
+   weekday, so a column is always the same day of the week. */
+.heatmap__grid {
+  display: grid;
+  grid-template-columns: repeat(7, var(--cell));
+  gap: 3px;
+}
+
+/* Same track sizes as the grid, so a letter sits over its own column. */
+.heatmap__days {
+  display: grid;
+  grid-template-columns: repeat(7, var(--cell));
+  gap: 3px;
+  color: var(--ink-tertiary);
+  text-align: center;
+}
+
+.heatmap__cell,
+.heatmap__pad {
+  inline-size: var(--cell);
+  block-size: var(--cell);
+  border-radius: 2px;
+}
+
+.heatmap__cell {
+  background: var(--heat-0);
+}
+
+.heatmap__cell[data-heat="1"] {
+  background: var(--heat-1);
+}
+
+.heatmap__cell[data-heat="2"] {
+  background: var(--heat-2);
+}
+
+.heatmap__cell[data-heat="3"] {
+  background: var(--heat-3);
+}
+
+.heatmap__cell[data-heat="4"] {
+  background: var(--heat-4);
+}
+
+.heatmap__legend {
+  display: flex;
+  align-items: center;
+  gap: var(--step-1);
+  color: var(--ink-tertiary);
+  margin: 0;
+}
+
+.heatmap__cell--key {
+  inline-size: 10px;
+  block-size: 10px;
+}

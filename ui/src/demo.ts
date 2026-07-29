@@ -10,6 +10,8 @@
 import type {
   Bucket,
   DeckState,
+  HistoryPoint,
+  ProviderHistory,
   ProviderPlans,
   ProviderSnapshot,
   StatuslineState,
@@ -184,6 +186,57 @@ export function demoDeck(): DeckState {
     updatedAt: iso(0),
     scanning: false,
   };
+}
+
+/**
+ * A month of hourly history, so the dashboard's ranges and heatmap can be designed without
+ * the shell. Sparse on purpose: real usage leaves whole days blank, and a full grid would
+ * hide the one thing a heatmap is for.
+ */
+function hourly(days: number, seed: number, costPerToken: number): HistoryPoint[] {
+  const nowHour = Math.floor(Date.now() / 3_600_000) * 3600;
+  const points: HistoryPoint[] = [];
+
+  const random = () => {
+    seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+    return seed / 0x7fffffff;
+  };
+
+  for (let hour = nowHour - days * 24 * 3600; hour <= nowHour; hour += 3600) {
+    const at = new Date(hour * 1000);
+    const weekday = at.getDay() !== 0 && at.getDay() !== 6;
+    const working = at.getHours() >= 9 && at.getHours() <= 22;
+    if (!working || random() > (weekday ? 0.55 : 0.15)) continue;
+
+    const base = Math.round((40_000 + random() * 180_000) * (random() > 0.94 ? 6 : 1));
+    const tokens = {
+      input: Math.round(base / 10),
+      output: Math.round(base / 40),
+      cacheRead: base,
+      cacheCreation: 0,
+      reasoning: 0,
+    };
+    const total = tokens.input + tokens.output + tokens.cacheRead;
+    points.push({
+      start: hour,
+      tokens,
+      cost: {
+        usd: total * costPerToken,
+        unpricedTokens: costPerToken > 0 ? 0 : total,
+      },
+    });
+  }
+
+  return points;
+}
+
+export function demoHistory(): ProviderHistory[] {
+  return [
+    { id: "claude-code", hours: hourly(30, 0xc0ffee, 1.4e-6) },
+    // Codex names no model in any record, so its history carries tokens and no dollars.
+    { id: "codex", hours: hourly(30, 0x5eed, 0) },
+    { id: "copilot-cli", hours: [] },
+  ];
 }
 
 /** Mirrors what `provider_plans` returns, so the settings view can be designed in a browser. */

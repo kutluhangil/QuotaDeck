@@ -1,8 +1,9 @@
 import { create } from "zustand";
 
-import { demoDeck, demoPlans, demoStatusline } from "./demo";
+import { demoDeck, demoHistory, demoPlans, demoStatusline } from "./demo";
 import type {
   DeckState,
+  ProviderHistory,
   ProviderId,
   ProviderPlans,
   Settings,
@@ -15,6 +16,11 @@ export const inShell = typeof window !== "undefined" && "__TAURI_INTERNALS__" in
 
 interface DeckStore {
   deck: DeckState;
+  /**
+   * Hourly history, pulled rather than pushed. The panel never renders it; only the dashboard
+   * asks, and it refreshes on the same event the snapshots arrive on.
+   */
+  history: ProviderHistory[];
   settings: Settings;
   /** Tiers each provider declared, fetched once. Empty until the shell answers. */
   plans: ProviderPlans[];
@@ -28,6 +34,7 @@ interface DeckStore {
   setPlan: (provider: ProviderId, planId: string | null) => void;
   installStatusline: () => Promise<void>;
   revertStatusline: () => Promise<void>;
+  openDashboard: () => Promise<void>;
   start: () => Promise<void>;
 }
 
@@ -35,6 +42,7 @@ const emptyDeck: DeckState = { providers: [], updatedAt: new Date(0).toISOString
 
 export const useDeck = create<DeckStore>((set, get) => ({
   deck: emptyDeck,
+  history: [],
   settings: { trayMode: "glyph", theme: "system", plans: {} },
   plans: [],
   statusline: null,
@@ -75,10 +83,19 @@ export const useDeck = create<DeckStore>((set, get) => ({
     else set({ statuslineError: next.error });
   },
 
+  openDashboard: async () => {
+    await send("open_dashboard", {});
+  },
+
   start: async () => {
     if (!inShell) {
       // Design work runs against a fixture so the panel can be built without the shell.
-      set({ deck: demoDeck(), plans: demoPlans(), statusline: demoStatusline() });
+      set({
+        deck: demoDeck(),
+        history: demoHistory(),
+        plans: demoPlans(),
+        statusline: demoStatusline(),
+      });
       applyTheme(get().settings.theme);
       return;
     }
@@ -88,15 +105,21 @@ export const useDeck = create<DeckStore>((set, get) => ({
       import("@tauri-apps/api/event"),
     ]);
 
-    await listen<DeckState>("deck://state", (event) => set({ deck: event.payload }));
+    // History is folded on the same pass that produces the snapshots, so the event that
+    // announces one is also the moment the other is worth re-reading.
+    await listen<DeckState>("deck://state", (event) => {
+      set({ deck: event.payload });
+      void invoke<ProviderHistory[]>("usage_history").then((history) => set({ history }));
+    });
 
-    const [deck, settings, plans, statusline] = await Promise.all([
+    const [deck, history, settings, plans, statusline] = await Promise.all([
       invoke<DeckState>("current_state"),
+      invoke<ProviderHistory[]>("usage_history"),
       invoke<Settings>("current_settings"),
       invoke<ProviderPlans[]>("provider_plans"),
       invoke<StatuslineState>("statusline_state"),
     ]);
-    set({ deck, settings, plans, statusline });
+    set({ deck, history, settings, plans, statusline });
     applyTheme(settings.theme);
   },
 }));

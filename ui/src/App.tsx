@@ -26,6 +26,7 @@ export function App() {
   const deck = useDeck((state) => state.deck);
   const view = useDeck((state) => state.view);
   const setView = useDeck((state) => state.setView);
+  const openDashboard = useDeck((state) => state.openDashboard);
   const start = useDeck((state) => state.start);
   const [now, setNow] = useState(() => Date.now());
   const bodyRef = useRef<HTMLElement>(null);
@@ -65,14 +66,23 @@ export function App() {
           <span className="panel__glyph" aria-hidden="true" />
           {strings.appName}
         </span>
-        <button
-          type="button"
-          className="type-caption panel__action"
-          onClick={() => setView(view === "settings" ? "panel" : "settings")}
-          aria-pressed={view === "settings"}
-        >
-          {view === "settings" ? strings.settings.back : strings.header.settings}
-        </button>
+        <span className="panel__actions">
+          <button
+            type="button"
+            className="type-caption panel__action"
+            onClick={() => void openDashboard()}
+          >
+            {strings.header.expand}
+          </button>
+          <button
+            type="button"
+            className="type-caption panel__action"
+            onClick={() => setView(view === "settings" ? "panel" : "settings")}
+            aria-pressed={view === "settings"}
+          >
+            {view === "settings" ? strings.settings.back : strings.header.settings}
+          </button>
+        </span>
       </header>
 
       <main className="panel__body" ref={bodyRef}>

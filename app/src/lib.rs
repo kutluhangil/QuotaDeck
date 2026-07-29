@@ -14,16 +14,21 @@ use std::time::Duration;
 
 use chrono::Utc;
 use quotadeck_core::discovery::RootAccess;
-use quotadeck_core::engine::ProviderEngine;
+use quotadeck_core::engine::{ProviderEngine, DEFAULT_RETENTION_DAYS};
 use quotadeck_core::types::{PlanOption, ProviderId, ProviderSnapshot, UnavailableReason};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager};
 
-use crate::deck::{Deck, DeckState, Settings, TrayMode};
+use crate::deck::{Deck, DeckState, ProviderHistory, Settings, TrayMode};
 use crate::statusline::StatuslineState;
 
 /// Event the panel subscribes to.
 pub const STATE_EVENT: &str = "deck://state";
+
+/// The tray popover.
+pub const PANEL_WINDOW: &str = "panel";
+/// The full-size history window, opened on demand and never on launch.
+pub const DASHBOARD_WINDOW: &str = "dashboard";
 
 /// Tick while the panel is on screen.
 const FOREGROUND_TICK: Duration = Duration::from_secs(5);
@@ -44,6 +49,8 @@ pub fn run() {
             current_state,
             current_settings,
             provider_plans,
+            usage_history,
+            open_dashboard,
             set_tray_mode,
             set_plan,
             set_panel_height,
@@ -62,6 +69,11 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|window, event| {
+            // Only the popover dismisses itself. The dashboard is an ordinary window and has
+            // to survive the user clicking on their editor.
+            if window.label() != PANEL_WINDOW {
+                return;
+            }
             if let tauri::WindowEvent::Focused(false) = event {
                 // A menu bar popover closes when you click away from it.
                 if let Some(deck) = window.app_handle().try_state::<Deck>() {
@@ -111,6 +123,49 @@ fn provider_plans() -> Vec<ProviderPlans> {
 fn set_plan(deck: tauri::State<'_, Deck>, provider: ProviderId, plan_id: Option<String>) {
     deck.set_plan(provider, plan_id);
 }
+
+/// Retained usage folded to the hour, for the dashboard.
+///
+/// A pull rather than part of [`STATE_EVENT`]: the panel never renders this, and pushing a
+/// month of history on every five-second tick would charge a surface nobody has open to the
+/// channel the panel depends on.
+#[tauri::command]
+fn usage_history(deck: tauri::State<'_, Deck>) -> Vec<ProviderHistory> {
+    deck.history()
+}
+
+/// Show the dashboard, creating it on first use.
+///
+/// Not declared in the config as a startup window: a menu bar accessory that opens a 960px
+/// window on login is one the user turns off.
+#[tauri::command]
+fn open_dashboard(app: AppHandle) -> std::result::Result<(), String> {
+    if let Some(window) = app.get_webview_window(DASHBOARD_WINDOW) {
+        window.show().map_err(|e| e.to_string())?;
+        window.set_focus().map_err(|e| e.to_string())?;
+        return Ok(());
+    }
+
+    let window = tauri::WebviewWindowBuilder::new(
+        &app,
+        DASHBOARD_WINDOW,
+        tauri::WebviewUrl::App("index.html".into()),
+    )
+    .title("Quota Deck")
+    .inner_size(DASHBOARD_WIDTH, DASHBOARD_HEIGHT)
+    .min_inner_size(720.0, 480.0)
+    .center()
+    .resizable(true)
+    .build()
+    .map_err(|e| e.to_string())?;
+
+    window.set_focus().map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// The blueprint's dashboard size (§2).
+const DASHBOARD_WIDTH: f64 = 960.0;
+const DASHBOARD_HEIGHT: f64 = 640.0;
 
 #[tauri::command]
 fn statusline_state() -> StatuslineState {
@@ -192,6 +247,8 @@ fn publish(
     let now = Utc::now();
     let settings = deck.settings();
     let mut providers = Vec::with_capacity(engines.len());
+    let mut history = Vec::with_capacity(engines.len());
+    let history_from = now - chrono::Duration::days(DEFAULT_RETENTION_DAYS);
 
     for engine in engines.iter_mut() {
         // Picked up every tick, so a plan chosen in the panel shows on the next refresh
@@ -222,6 +279,14 @@ fn publish(
             Ok(_) => {
                 engine.prune(now);
                 providers.push(engine.snapshot(now));
+                history.push(ProviderHistory {
+                    id: engine.provider().id(),
+                    hours: quotadeck_core::history::hours(
+                        engine.index().bucket_series(),
+                        history_from,
+                        now,
+                    ),
+                });
             }
             Err(e) => {
                 // A provider that cannot be read says so; it does not silently vanish from
@@ -243,6 +308,7 @@ fn publish(
         updated_at: now,
         scanning,
     };
+    deck.set_history(history);
     deck.set_state(state.clone());
     tray::refresh(app, &state, settings);
     let _ = app.emit(STATE_EVENT, &state);

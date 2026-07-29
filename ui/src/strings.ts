@@ -102,6 +102,26 @@ export const strings = {
     heading: (count: number) => (count === 1 ? "1 tool is quiet" : `${count} tools are quiet`),
   },
 
+  dashboard: {
+    title: "Quota Deck",
+    rangeLabel: "Range",
+    /** Rolling, not calendar: the same window model the panel uses. */
+    range: { day: "Day", week: "Week", month: "Month" },
+    rangeSpan: (days: number) => (days === 1 ? "Last 24 hours" : `Last ${days} days`),
+    rangeTokens: "Tokens",
+    rangeCost: "Equivalent cost",
+    retention: (days: number) => `${days} days of history kept on this device`,
+    /**
+     * Standalone form of the panel's `costPartial`. On a card the phrase follows a dollar
+     * figure and reads as a continuation; here it is a line of its own and has to stand up
+     * without one.
+     */
+    unpriced: (tokens: string) => `${tokens} tokens carried no known price`,
+    heatmapLabel: "Daily activity over the last month",
+    heatmapQuiet: "quiet",
+    heatmapBusy: "busy",
+  },
+
   empty: {
     noTools: {
       title: "No supported tool found",

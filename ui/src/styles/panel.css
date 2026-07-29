@@ -58,6 +58,12 @@
   opacity: 0.9;
 }
 
+.panel__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--step-1);
+}
+
 .panel__action {
   color: var(--ink-secondary);
   padding: var(--step-1) var(--step-2);
