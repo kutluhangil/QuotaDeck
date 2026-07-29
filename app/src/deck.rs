@@ -106,7 +106,19 @@ pub struct Settings {
     /// produced for it at all. There is deliberately no default tier: an unpicked plan must
     /// read as "tell me your plan", never as a percentage the user never asked for.
     pub plans: BTreeMap<String, String>,
+    /// Usage percentages that raise a notification, per provider key.
+    ///
+    /// Unlike `plans`, an absent provider takes [`DEFAULT_THRESHOLDS`] rather than nothing: a
+    /// quota tracker that never warns you is not doing its job, and the operating system asks
+    /// for its own consent before the first notification is ever shown. An empty list is how
+    /// the user turns one provider off.
+    pub alerts: BTreeMap<String, Vec<u8>>,
+    /// Nothing is raised before this instant. Set from the panel, in the user's own zone.
+    pub muted_until: Option<DateTime<Utc>>,
 }
+
+/// Thresholds a provider raises at unless the user changed them (blueprint §9, Phase 7).
+pub const DEFAULT_THRESHOLDS: [u8; 3] = [70, 85, 95];
 
 impl Default for Settings {
     fn default() -> Self {
@@ -114,6 +126,8 @@ impl Default for Settings {
             tray_mode: TrayMode::Glyph,
             theme: Theme::System,
             plans: BTreeMap::new(),
+            alerts: BTreeMap::new(),
+            muted_until: None,
         }
     }
 }
@@ -123,6 +137,18 @@ impl Settings {
         ProviderConfig {
             plan_id: self.plans.get(id.key()).cloned(),
         }
+    }
+
+    /// Percentages this provider raises a notification at.
+    pub fn thresholds_for(&self, id: ProviderId) -> Vec<u8> {
+        self.alerts
+            .get(id.key())
+            .cloned()
+            .unwrap_or_else(|| DEFAULT_THRESHOLDS.to_vec())
+    }
+
+    pub fn is_muted(&self, now: DateTime<Utc>) -> bool {
+        self.muted_until.is_some_and(|until| until > now)
     }
 
     fn path() -> Option<PathBuf> {
@@ -239,6 +265,20 @@ impl Deck {
                 settings.plans.remove(provider.key());
             }
         });
+    }
+
+    /// Record which percentages one provider warns at. An empty list turns it off.
+    pub fn set_alert_thresholds(&self, provider: ProviderId, thresholds: Vec<u8>) {
+        self.update_settings(|settings| {
+            settings
+                .alerts
+                .insert(provider.key().to_string(), thresholds);
+        });
+    }
+
+    /// Silence every notification until `until`, or lift the silence with `None`.
+    pub fn set_muted_until(&self, until: Option<DateTime<Utc>>) {
+        self.update_settings(|settings| settings.muted_until = until);
     }
 
     /// Mutate the settings and persist them.
@@ -386,16 +426,17 @@ mod tests {
         let mut settings = Settings {
             tray_mode: TrayMode::Compact,
             theme: Theme::Dark,
-            plans: BTreeMap::new(),
+            ..Settings::default()
         };
         settings
             .plans
             .insert("claude-code".into(), "max-20x".into());
+        settings.alerts.insert("codex".into(), vec![85, 95]);
 
         let json = serde_json::to_string(&settings).expect("serialise settings");
         assert_eq!(
             json,
-            r#"{"trayMode":"compact","theme":"dark","plans":{"claude-code":"max-20x"}}"#
+            r#"{"trayMode":"compact","theme":"dark","plans":{"claude-code":"max-20x"},"alerts":{"codex":[85,95]},"mutedUntil":null}"#
         );
     }
 

@@ -176,6 +176,22 @@ export interface Settings {
    * tier picked, and therefore gets no estimated window at all.
    */
   plans: Partial<Record<ProviderId, string>>;
+  /**
+   * Usage percentages each provider warns at. Unlike `plans`, a provider absent from this map
+   * takes `DEFAULT_THRESHOLDS` rather than nothing — a quota tracker that never warns is not
+   * doing its job, and the operating system asks for its own consent before the first one.
+   * An empty list is how the user turns a provider off.
+   */
+  alerts: Partial<Record<ProviderId, number[]>>;
+  /** ISO-8601. Nothing is raised before this instant. */
+  mutedUntil: string | null;
+}
+
+/** Mirrors `DEFAULT_THRESHOLDS` in `app/src/deck.rs`. */
+export const DEFAULT_THRESHOLDS = [70, 85, 95];
+
+export function thresholdsFor(settings: Settings, provider: ProviderId): number[] {
+  return settings.alerts[provider] ?? DEFAULT_THRESHOLDS;
 }
 
 export function totalTokens(rollup: TokenRollup): number {

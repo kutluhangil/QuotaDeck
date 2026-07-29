@@ -192,6 +192,21 @@ export const strings = {
     planNone: "Not set",
     planNoneHint: "No estimate is shown. Nothing is guessed.",
 
+    alertsTitle: "Warn me at",
+    /**
+     * Says outright that the app decides nothing about whether a notification appears — the
+     * operating system asked first, and the user can take that back without coming here.
+     */
+    alertsHint:
+      "A notification when a limit crosses one of these, once per limit per window. macOS asks for permission before the first one.",
+    alertsThreshold: (percent: number) => `${percent}%`,
+    alertsOff: "No warnings for this tool",
+    muteTitle: "Quiet",
+    muteHour: "For an hour",
+    muteToday: "Until tomorrow",
+    muteClear: "Turn warnings back on",
+    mutedUntil: (time: string) => `Muted until ${time}`,
+
     statuslineTitle: "Measured limits",
     statuslineBody:
       "Claude Code hands its status line the real percentage for your 5-hour and weekly limits. Connecting it replaces the estimate with the measurement. Nothing leaves this device and no credentials are read.",

@@ -28,7 +28,8 @@ body {
   overflow: hidden;
 }
 
-input[type="radio"] {
+input[type="radio"],
+input[type="checkbox"] {
   /* Native control, project colour: the panel has one blue and this is it. */
   accent-color: var(--measured);
   margin: 0;

@@ -16,6 +16,13 @@
 - Phase 7: dashboard ranges are rolling — last 24 hours, 7 days, 30 days — matching the panel's rolling day. Heatmap cells are local calendar days, folded in the frontend because only it knows the viewer's zone.
 - Phase 7: the heatmap is shaded on a neutral ink ramp, never the level ramp. Volume is not fullness, and a colour in this app means exactly one thing.
 - Phase 7: every window gets its own pace badge on the dashboard. The panel has room for one and gives it to the window closest to running out.
+- Phase 7: added threshold notifications at 70 / 85 / 95%, adjustable per provider, through `tauri-plugin-notification`. On macOS the plugin resolves to `notify-rust` → `mac-notification-sys`; the zbus/zvariant crates in the lockfile are the Linux path and never compile for our targets.
+- Phase 7: a notification is about a crossing, not a state. The first complete pass seeds the state silently — launching on a Friday afternoon must not fire one per provider before any work is done — and each threshold is announced once per window period.
+- Phase 7: three points of hysteresis before an announced threshold can fire again. A rolling window drifts across its own boundary as old usage expires, and without it someone working at 85% is notified on every tick.
+- Phase 7: a stale reading never raises a notification. Copilot's exhaustion event sits on the card for the rest of the month and is not news for any of it.
+- Phase 7: added mute for an hour or until tomorrow. The instant is computed from a duration the panel supplies, so "tomorrow" means the viewer's tomorrow and the backend stays UTC-only. Muting holds the crossing state, so lifting it does not release a burst.
+- Phase 7: notification copy lives in Rust because the panel is usually closed and its webview may be suspended. Phase 8 gives this module its own localised catalogue.
+- Phase 7: fixed two zustand selectors that built a fresh array per call — a new snapshot on every render, which left the settings view blank.
 
 ## 2026-07-28
 

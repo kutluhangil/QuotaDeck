@@ -29,7 +29,11 @@ function ProviderPanel({
   range: Range;
   nowSeconds: number;
 }) {
-  const hours = useDeck((state) => historyFor(state.history, snapshot.id));
+  // Selected whole, narrowed here. `historyFor` builds a fresh empty array for a provider
+  // with no history, and a selector that returns one hands zustand a new snapshot on every
+  // render.
+  const history = useDeck((state) => state.history);
+  const hours = historyFor(history, snapshot.id);
   const sum = totals(inRange(hours, range, nowSeconds));
   const cells = dailyCells(hours, HEATMAP_DAYS, nowSeconds);
 

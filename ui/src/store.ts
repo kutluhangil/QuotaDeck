@@ -10,6 +10,7 @@ import type {
   StatuslineState,
   TrayMode,
 } from "./types";
+import { thresholdsFor } from "./types";
 
 /** True inside the Tauri shell, false when the UI runs in a plain browser during design work. */
 export const inShell = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -32,6 +33,9 @@ interface DeckStore {
   setTrayMode: (mode: TrayMode) => void;
   setTheme: (theme: Settings["theme"]) => void;
   setPlan: (provider: ProviderId, planId: string | null) => void;
+  toggleThreshold: (provider: ProviderId, threshold: number) => void;
+  /** `null` lifts the mute; otherwise the number of minutes to stay quiet for. */
+  setMute: (minutes: number | null) => void;
   installStatusline: () => Promise<void>;
   revertStatusline: () => Promise<void>;
   openDashboard: () => Promise<void>;
@@ -43,7 +47,7 @@ const emptyDeck: DeckState = { providers: [], updatedAt: new Date(0).toISOString
 export const useDeck = create<DeckStore>((set, get) => ({
   deck: emptyDeck,
   history: [],
-  settings: { trayMode: "glyph", theme: "system", plans: {} },
+  settings: { trayMode: "glyph", theme: "system", plans: {}, alerts: {}, mutedUntil: null },
   plans: [],
   statusline: null,
   statuslineError: null,
@@ -67,6 +71,24 @@ export const useDeck = create<DeckStore>((set, get) => ({
     else plans[provider] = planId;
     set({ settings: { ...get().settings, plans } });
     void send("set_plan", { provider, planId });
+  },
+
+  toggleThreshold: (provider, threshold) => {
+    const current = thresholdsFor(get().settings, provider);
+    const next = current.includes(threshold)
+      ? current.filter((value) => value !== threshold)
+      : [...current, threshold].sort((a, b) => a - b);
+    set({ settings: { ...get().settings, alerts: { ...get().settings.alerts, [provider]: next } } });
+    void send("set_alert_thresholds", { provider, thresholds: next });
+  },
+
+  setMute: (minutes) => {
+    // The instant is computed in the backend from this duration. "Until the end of today" is
+    // a question about the viewer's zone, and only this side knows it.
+    const mutedUntil =
+      minutes === null ? null : new Date(Date.now() + minutes * 60_000).toISOString();
+    set({ settings: { ...get().settings, mutedUntil } });
+    void send("set_mute", { minutes });
   },
 
   installStatusline: async () => {

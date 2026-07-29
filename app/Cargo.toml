@@ -37,3 +37,4 @@ serde_json.workspace = true
 
 tauri = { version = "2", features = ["tray-icon", "image-png", "macos-private-api"] }
 tauri-plugin-positioner = { version = "2", features = ["tray-icon"] }
+tauri-plugin-notification = "2.3.3"

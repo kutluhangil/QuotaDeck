@@ -4,6 +4,7 @@
 //! worst reading, and a panel window that renders the detail. The frontend is given no
 //! filesystem capability at all — it receives snapshots and nothing else.
 
+pub mod alerts;
 pub mod deck;
 pub mod icon;
 pub mod statusline;
@@ -19,6 +20,7 @@ use quotadeck_core::types::{PlanOption, ProviderId, ProviderSnapshot, Unavailabl
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager};
 
+use crate::alerts::{Alert, Alerts};
 use crate::deck::{Deck, DeckState, ProviderHistory, Settings, TrayMode};
 use crate::statusline::StatuslineState;
 
@@ -44,6 +46,7 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_positioner::init())
+        .plugin(tauri_plugin_notification::init())
         .manage(deck.clone())
         .invoke_handler(tauri::generate_handler![
             current_state,
@@ -53,6 +56,8 @@ pub fn run() {
             open_dashboard,
             set_tray_mode,
             set_plan,
+            set_alert_thresholds,
+            set_mute,
             set_panel_height,
             statusline_state,
             install_statusline,
@@ -122,6 +127,21 @@ fn provider_plans() -> Vec<ProviderPlans> {
 #[tauri::command]
 fn set_plan(deck: tauri::State<'_, Deck>, provider: ProviderId, plan_id: Option<String>) {
     deck.set_plan(provider, plan_id);
+}
+
+#[tauri::command]
+fn set_alert_thresholds(deck: tauri::State<'_, Deck>, provider: ProviderId, thresholds: Vec<u8>) {
+    deck.set_alert_thresholds(provider, thresholds);
+}
+
+/// Silence notifications for `minutes`, or lift the silence with `None`.
+///
+/// A duration rather than an instant, and computed by the panel: "until the end of today" is a
+/// question about the user's own zone, and this process only ever thinks in UTC.
+#[tauri::command]
+fn set_mute(deck: tauri::State<'_, Deck>, minutes: Option<u32>) {
+    let until = minutes.map(|minutes| Utc::now() + chrono::Duration::minutes(i64::from(minutes)));
+    deck.set_muted_until(until);
 }
 
 /// Retained usage folded to the hour, for the dashboard.
@@ -221,12 +241,20 @@ fn spawn_read_loop(app: AppHandle, deck: Deck) {
                 .into_iter()
                 .map(ProviderEngine::new)
                 .collect();
+            let mut alerts = Alerts::new();
 
             // First pass: newest files only, so the panel fills quickly.
-            publish(&app, &deck, &mut engines, Some(FIRST_PASS_FILES), true);
+            publish(
+                &app,
+                &deck,
+                &mut engines,
+                &mut alerts,
+                Some(FIRST_PASS_FILES),
+                true,
+            );
 
             loop {
-                publish(&app, &deck, &mut engines, None, false);
+                publish(&app, &deck, &mut engines, &mut alerts, None, false);
                 thread::sleep(if deck.panel_open() {
                     FOREGROUND_TICK
                 } else {
@@ -241,6 +269,7 @@ fn publish(
     app: &AppHandle,
     deck: &Deck,
     engines: &mut [ProviderEngine],
+    alerts: &mut Alerts,
     max_files: Option<usize>,
     scanning: bool,
 ) {
@@ -310,6 +339,32 @@ fn publish(
     };
     deck.set_history(history);
     deck.set_state(state.clone());
-    tray::refresh(app, &state, settings);
+    tray::refresh(app, &state, settings.clone());
     let _ = app.emit(STATE_EVENT, &state);
+
+    for alert in alerts.evaluate(&state, &settings, now) {
+        raise(app, &alert);
+    }
+}
+
+/// Show one notification.
+///
+/// A failure is reported and the pass continues: the operating system refusing a notification
+/// — the user never granted permission, or Focus is on — is not a reason to stop reading logs,
+/// and the panel still carries the same reading.
+fn raise(app: &AppHandle, alert: &Alert) {
+    use tauri_plugin_notification::NotificationExt;
+
+    if let Err(e) = app
+        .notification()
+        .builder()
+        .title(&alert.title)
+        .body(&alert.body)
+        .show()
+    {
+        eprintln!(
+            "quotadeck: could not raise the {} notification: {e}",
+            alert.provider.key()
+        );
+    }
 }
