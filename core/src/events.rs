@@ -235,6 +235,15 @@ impl EventIndex {
         self.series.iter()
     }
 
+    /// The whole retained series, not the slice a snapshot carries.
+    ///
+    /// A pace forecast needs weeks of history to build an hour-of-week profile, where
+    /// [`ProviderSnapshot::series`](crate::types::ProviderSnapshot::series) is trimmed to the
+    /// span the Horizon strip can draw.
+    pub fn bucket_series(&self) -> &BucketSeries {
+        &self.series
+    }
+
     pub fn last_activity(&self) -> Option<DateTime<Utc>> {
         self.last_activity
     }

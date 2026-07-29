@@ -78,6 +78,12 @@ export type PaceRisk = "healthy" | "at-risk" | "over";
 
 export interface PaceForecast {
   limitId: string;
+  /** Identifies the window alongside `limitId`: one limit can hold several windows. */
+  windowMinutes: number;
+  /**
+   * Highest usage the projection reaches before the window resets — the peak, not the
+   * endpoint. Against a rolling window a trajectory can cross the ceiling and fall back.
+   */
   projectedPercent: number;
   risk: PaceRisk;
   exhaustedAt: string | null;
@@ -168,6 +174,24 @@ export function awaitingSetup(snapshot: ProviderSnapshot): boolean {
     snapshot.installed &&
     snapshot.unavailable === "never-reported" &&
     totalTokens(snapshot.today) > 0
+  );
+}
+
+/**
+ * The forecast belonging to one window, or null when nothing could be projected.
+ *
+ * Matched on both fields: Claude Code reports its five-hour and its weekly limit under one id,
+ * and they run out at very different rates.
+ */
+export function paceFor(
+  snapshot: ProviderSnapshot,
+  window: QuotaWindow,
+): PaceForecast | null {
+  return (
+    snapshot.pace.find(
+      (pace) =>
+        pace.limitId === window.limitId && pace.windowMinutes === window.windowMinutes,
+    ) ?? null
   );
 }
 

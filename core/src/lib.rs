@@ -12,6 +12,7 @@ pub mod engine;
 pub mod error;
 pub mod events;
 pub mod horizon;
+pub mod pace;
 pub mod paths;
 pub mod plan;
 pub mod pricing;

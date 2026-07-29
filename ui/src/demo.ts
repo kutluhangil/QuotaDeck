@@ -99,7 +99,17 @@ export function demoDeck(): DeckState {
     todayCost: { usd: 0, unpricedTokens: 133_183_948 },
     // A weekly window, so the strip draws seven days.
     series: series(now, 7 * 86_400, 0x5eed),
-    pace: [],
+    // Only the weekly window: the monthly reading is stale, and a projection is never built
+    // on a reading the panel has already marked old.
+    pace: [
+      {
+        limitId: "codex",
+        windowMinutes: 10_080,
+        projectedPercent: 93,
+        risk: "at-risk",
+        exhaustedAt: null,
+      },
+    ],
     lastActivity: iso(-9 * 60_000),
     unavailable: null,
   };
@@ -135,7 +145,24 @@ export function demoDeck(): DeckState {
     todayCost: { usd: 86.42, unpricedTokens: 0 },
     // The card leads with the fullest window, which here is the weekly one at 95%.
     series: series(now, 7 * 86_400, 0xc0ffee),
-    pace: [],
+    // The weekly limit runs out before it resets; the session one coasts. Both shapes are
+    // here so the card is designed against a named instant and a bare projection at once.
+    pace: [
+      {
+        limitId: "claude",
+        windowMinutes: 300,
+        projectedPercent: 61,
+        risk: "healthy",
+        exhaustedAt: null,
+      },
+      {
+        limitId: "claude",
+        windowMinutes: 10_080,
+        projectedPercent: 118,
+        risk: "over",
+        exhaustedAt: iso(2.1 * 3_600_000),
+      },
+    ],
     lastActivity: iso(-30_000),
     unavailable: null,
   };

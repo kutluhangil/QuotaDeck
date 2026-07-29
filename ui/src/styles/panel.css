@@ -153,6 +153,14 @@
   gap: var(--step-2);
 }
 
+/* Both badges share the last cell so the percentage column stays aligned whether or not a
+   window has a forecast to show. */
+.card__other-badges {
+  display: flex;
+  align-items: center;
+  gap: var(--step-2);
+}
+
 .card__other-label {
   color: var(--ink-tertiary);
 }
@@ -346,6 +354,78 @@
   .strip__bar {
     transition: none;
   }
+}
+
+/*
+ * Pace: where a window is heading.
+ *
+ * A row of its own under the strip, because it is the one line on the card that talks about
+ * the future and it must not be mistaken for the reading above it.
+ */
+.card__pace {
+  display: flex;
+  align-items: center;
+  gap: var(--step-2);
+  color: var(--ink-secondary);
+}
+
+.card__pace-text {
+  color: var(--ink-tertiary);
+}
+
+.pace {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--ink-tertiary);
+  white-space: nowrap;
+}
+
+/*
+ * The word takes the ramp only once the projection is worth acting on. A green "on pace" on
+ * every card all day would spend the ramp on good news and leave nothing for bad.
+ */
+.pace[data-risk="at-risk"] {
+  color: var(--level-tight);
+}
+
+.pace[data-risk="over"] {
+  color: var(--level-critical);
+}
+
+/*
+ * A miniature of the bar it is projecting — a real fullness indicator, which is what earns it
+ * the level ramp. Height and word each carry the reading on their own, so neither colour
+ * blindness nor a greyscale screenshot loses it.
+ */
+.pace__meter {
+  position: relative;
+  display: block;
+  inline-size: 4px;
+  block-size: 11px;
+  flex: 0 0 auto;
+  border-radius: 1px;
+  background: var(--track);
+  overflow: hidden;
+}
+
+.pace__fill {
+  position: absolute;
+  inset-inline: 0;
+  inset-block-end: 0;
+  border-radius: 1px;
+}
+
+.pace__fill[data-level="ample"] {
+  background: var(--level-ample);
+}
+
+.pace__fill[data-level="tight"] {
+  background: var(--level-tight);
+}
+
+.pace__fill[data-level="critical"] {
+  background: var(--level-critical);
 }
 
 .badge {

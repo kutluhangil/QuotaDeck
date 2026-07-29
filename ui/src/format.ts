@@ -3,7 +3,7 @@
  */
 
 import { strings } from "./strings";
-import type { QuotaWindow, WindowKind } from "./types";
+import type { PaceRisk, QuotaWindow, WindowKind } from "./types";
 
 /** Level ramp thresholds, matching the `--level-*` tokens. */
 export type Level = "ample" | "tight" | "critical";
@@ -26,6 +26,25 @@ export function levelPattern(level: Level): string {
       return "hatched";
     case "critical":
       return "dense";
+  }
+}
+
+/**
+ * The level a projected fullness sits at.
+ *
+ * Kept apart from `levelFor` because the thresholds differ and should: a window at 88% is
+ * critical *now*, while a projection landing at 88% by Sunday is still healthy. The pace bands
+ * come from the blueprint (§6.2) and the ramp is reused so a colour means the same thing in
+ * both places.
+ */
+export function levelForRisk(risk: PaceRisk): Level {
+  switch (risk) {
+    case "healthy":
+      return "ample";
+    case "at-risk":
+      return "tight";
+    case "over":
+      return "critical";
   }
 }
 

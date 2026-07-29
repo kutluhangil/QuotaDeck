@@ -6,17 +6,21 @@ import {
   formatRelative,
   formatTokens,
   levelFor,
+  secondsUntil,
   windowLabel,
 } from "../format";
 import { strings } from "../strings";
 import {
   awaitingSetup,
+  paceFor,
   totalTokens,
+  type PaceForecast,
   type ProviderSnapshot,
   type QuotaWindow,
 } from "../types";
 import { ConfidenceBadge } from "./ConfidenceBadge";
 import { HorizonStrip } from "./HorizonStrip";
+import { PaceBadge } from "./PaceBadge";
 import { UsageBar } from "./UsageBar";
 
 /**
@@ -40,6 +44,29 @@ function ResetLine({ window, now }: { window: QuotaWindow; now: number }) {
   if (seconds === null || seconds <= 0) return <span>{strings.card.resetsAt(clock)}</span>;
 
   return <span>{`${strings.card.resetsAt(clock)} · ${formatDuration(seconds)}`}</span>;
+}
+
+/**
+ * Where the headline window is heading.
+ *
+ * An exhaustion instant is named when there is one, because "full at 17:42" is the thing a
+ * user can act on; otherwise the projected level stands on its own. Neither is ever stated as
+ * a reading — the copy says "at this pace" and the badge is a projection of a bar, not a bar.
+ */
+function PaceLine({ pace, now }: { pace: PaceForecast; now: number }) {
+  const clock = formatClock(pace.exhaustedAt);
+  const seconds = secondsUntil(pace.exhaustedAt, now);
+
+  return (
+    <p className="card__pace type-caption">
+      <PaceBadge pace={pace} />
+      <span className="card__pace-text">
+        {clock !== null && seconds !== null
+          ? strings.pace.exhausted(clock, formatDuration(seconds))
+          : strings.pace.projected(formatPercent(pace.projectedPercent))}
+      </span>
+    </p>
+  );
 }
 
 /**
@@ -81,6 +108,7 @@ export function ProviderCard({
 }) {
   const headline = headlineWindow(snapshot.windows);
   const others = snapshot.windows.filter((window) => window !== headline);
+  const pace = headline === null ? null : paceFor(snapshot, headline);
   const percent = headline?.usedPercent ?? null;
   // Logging, but with no reading to show: a plan pick or the status line fixes this, and
   // saying so beats the flat "has not reported a limit" the tool itself cannot resolve.
@@ -117,6 +145,7 @@ export function ProviderCard({
           {snapshot.series.length > 0 && (
             <HorizonStrip window={headline} series={snapshot.series} now={now} />
           )}
+          {pace && <PaceLine pace={pace} now={now} />}
         </>
       ) : needsSetup ? (
         <p className="type-body card__quiet">
@@ -135,15 +164,23 @@ export function ProviderCard({
 
       {others.length > 0 && (
         <ul className="card__others">
-          {others.map((window) => (
-            <li key={`${window.limitId}-${window.windowMinutes}`} className="card__other">
-              <span className="type-caption card__other-label">{windowLabel(window)}</span>
-              <span className="type-metric card__other-value">
-                {window.usedPercent === null ? "—" : formatPercent(window.usedPercent)}
-              </span>
-              <ConfidenceBadge confidence={window.confidence} />
-            </li>
-          ))}
+          {others.map((window) => {
+            const otherPace = paceFor(snapshot, window);
+            return (
+              <li key={`${window.limitId}-${window.windowMinutes}`} className="card__other">
+                <span className="type-caption card__other-label">{windowLabel(window)}</span>
+                <span className="type-metric card__other-value">
+                  {window.usedPercent === null ? "—" : formatPercent(window.usedPercent)}
+                </span>
+                <span className="card__other-badges">
+                  {/* The risk word only. A second percentage on the same row would put four
+                      figures across 380px, and the headline already carries the number. */}
+                  {otherPace && <PaceBadge pace={otherPace} />}
+                  <ConfidenceBadge confidence={window.confidence} />
+                </span>
+              </li>
+            );
+          })}
         </ul>
       )}
 

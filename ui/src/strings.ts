@@ -5,7 +5,7 @@
  * here from the start means that phase swaps a module rather than hunting through JSX.
  */
 
-import type { ProviderId, UnavailableReason, WindowKind } from "./types";
+import type { PaceRisk, ProviderId, UnavailableReason, WindowKind } from "./types";
 
 const planHintDefault =
   "Used to estimate how full your limits are. Nothing is sent anywhere to work it out.";
@@ -60,6 +60,23 @@ export const strings = {
     quiet: "no usage",
     summary: (duration: string, tokens: string) =>
       `Usage over the last ${duration}: ${tokens} tokens`,
+  },
+
+  /**
+   * Where a window is heading. The wording never states a projection as a fact: "at this
+   * pace" is doing real work, because the number after it is not a reading.
+   */
+  pace: {
+    projected: (percent: string) => `${percent} at this pace`,
+    /** An instant plus the countdown to it, e.g. "Full 17:42 · 2h 05m". */
+    exhausted: (clock: string, duration: string) => `Full ${clock} · ${duration}`,
+    risk: {
+      healthy: "on pace",
+      "at-risk": "at risk",
+      over: "over",
+    } satisfies Record<PaceRisk, string>,
+    /** Read out for the meter beside the risk word, which is decorative on its own. */
+    label: (percent: string) => `Projected ${percent}`,
   },
 
   card: {

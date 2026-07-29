@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-07-29
+
+- Phase 7: added `core/src/pace.rs` — a pace forecast per quota window, wired into every provider through `snapshot_with_windows` so no provider file learns about it.
+- Phase 7: two horizons, as the blueprint specifies. A session window is projected from an exponentially weighted burn rate (α = 0.3, fifteen-minute bins over four hours); a weekly or monthly one is weighted by the user's own hour-of-week profile over the retained history, scaled by how much heavier the current window has run than that profile predicted.
+- Phase 7: the projection reports the peak of the trajectory, not its endpoint. Against a rolling window usage falls off the far edge as the near edge advances, so a trajectory can cross the ceiling and fall back, and the endpoint would hide exactly the crossing worth warning about.
+- Phase 7: a stale reading never anchors a projection. Codex writes its monthly limit once per plan period, and extrapolating a fortnight-old 72% against a month of spend counted since produced a 999% projection on real logs.
+- Phase 7: a fresh reading anchors its ceiling at the instant it was taken, so twenty minutes of heavy work between the reading and now moves the starting point rather than being discarded.
+- Phase 7: forecasts are counted in equivalent API cost where the window was fully priced and in tokens where it was not. Codex names no model in any record, and a cost-only forecast would exclude the provider whose measured windows make one worth having.
+- Phase 7: nothing is projected below 5% used, from a window with no counted consumption, or from a window whose reported reset has already passed.
+- Phase 7: added the pace badge to the panel — a miniature of the bar it is projecting, with the risk word beside it, so the reading survives colour blindness and greyscale.
+
 ## 2026-07-28
 
 - Phase 6: added the GitHub Copilot CLI provider — reads `~/.copilot/session-state/<uuid>/events.jsonl`, where usage is written once per session at shutdown and an in-flight session is invisible until it exits.

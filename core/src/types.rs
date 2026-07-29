@@ -335,6 +335,12 @@ impl BucketSeries {
         self.buckets.values()
     }
 
+    /// Start of the oldest bucket still held, which is how far back any profile built from
+    /// this series can claim to see.
+    pub fn first_start(&self) -> Option<i64> {
+        self.buckets.keys().next().copied()
+    }
+
     pub fn len(&self) -> usize {
         self.buckets.len()
     }
@@ -406,7 +412,16 @@ impl PaceRisk {
 #[serde(rename_all = "camelCase")]
 pub struct PaceForecast {
     pub limit_id: String,
-    /// Projected usage percentage at the end of the window.
+    /// Window this projects, matched against [`QuotaWindow::window_minutes`].
+    ///
+    /// A limit id alone does not identify a window: Claude Code reports its five-hour and
+    /// its weekly limit under one id, and they run out at very different rates.
+    pub window_minutes: u32,
+    /// Highest usage percentage the projection reaches before the window resets.
+    ///
+    /// The peak rather than the endpoint. Against a rolling window a trajectory can cross the
+    /// ceiling and then fall back as the early spend expires, and reporting where it ends
+    /// would hide exactly the crossing this exists to surface.
     pub projected_percent: f32,
     pub risk: PaceRisk,
     /// When the limit is expected to be hit, if that happens before the window resets.

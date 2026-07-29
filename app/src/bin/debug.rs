@@ -377,6 +377,22 @@ fn print_snapshot(snapshot: &ProviderSnapshot, now: DateTime<Utc>) {
             .unwrap_or_else(|| "none".into())
     );
 
+    for pace in &snapshot.pace {
+        println!(
+            "  pace   {} {} → {:.0}% projected · {:?}{}",
+            pace.limit_id,
+            format_duration(u64::from(pace.window_minutes) * 60),
+            pace.projected_percent,
+            pace.risk,
+            pace.exhausted_at
+                .map(|at| format!(
+                    " · full {}",
+                    at.with_timezone(&Local).format("%Y-%m-%d %H:%M")
+                ))
+                .unwrap_or_default()
+        );
+    }
+
     print_horizon(snapshot, now);
 }
 

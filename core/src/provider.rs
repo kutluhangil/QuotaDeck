@@ -144,6 +144,9 @@ pub fn snapshot_with_windows(
     windows: Vec<crate::types::QuotaWindow>,
 ) -> ProviderSnapshot {
     let cutoff = (now - series_span(&windows)).timestamp();
+    // Built from the whole retained series rather than the trimmed one below: a weekly
+    // forecast weights the remaining hours by a four-week profile the strip never draws.
+    let pace = crate::pace::forecasts(index.bucket_series(), now, &windows);
     ProviderSnapshot {
         id,
         installed: true,
@@ -158,7 +161,7 @@ pub fn snapshot_with_windows(
             .copied()
             .collect(),
         windows,
-        pace: Vec::new(),
+        pace,
         last_activity: index.last_activity(),
         unavailable: None,
     }
