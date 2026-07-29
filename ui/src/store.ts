@@ -3,6 +3,7 @@ import { create } from "zustand";
 import { demoDeck, demoHistory, demoPlans, demoStatusline } from "./demo";
 import { catalogueFor, languageFor, type Catalogue } from "./i18n";
 import type {
+  AccessState,
   DeckState,
   Locale,
   ProviderHistory,
@@ -30,11 +31,17 @@ interface DeckStore {
   statusline: StatuslineState | null;
   /** Set when an install or revert failed, so the panel can say what went wrong. */
   statuslineError: string | null;
+  /** What we may read. Null until the shell answers; a browser build needs no grant. */
+  access: AccessState | null;
   view: "panel" | "settings";
   setView: (view: "panel" | "settings") => void;
   setTrayMode: (mode: TrayMode) => void;
   setTheme: (theme: Settings["theme"]) => void;
   setLocale: (locale: Locale) => void;
+  setDemo: (demo: boolean) => void;
+  /** Open the system folder panel. Resolves once the user has answered it. */
+  requestAccess: () => Promise<void>;
+  forgetAccess: () => Promise<void>;
   setPlan: (provider: ProviderId, planId: string | null) => void;
   toggleThreshold: (provider: ProviderId, threshold: number) => void;
   /** `null` lifts the mute; otherwise the number of minutes to stay quiet for. */
@@ -59,10 +66,12 @@ export const useDeck = create<DeckStore>((set, get) => ({
     plans: {},
     alerts: {},
     mutedUntil: null,
+    demo: false,
   },
   plans: [],
   statusline: null,
   statuslineError: null,
+  access: null,
   view: "panel",
 
   setView: (view) => set({ view }),
@@ -133,6 +142,24 @@ export const useDeck = create<DeckStore>((set, get) => ({
     await send("hide_panel", {});
   },
 
+  setDemo: (demo) => {
+    set({ settings: { ...get().settings, demo } });
+    void send("set_demo", { demo });
+  },
+
+  requestAccess: async () => {
+    const next = await call<AccessState>("request_access", {});
+    // The command answers with the state either way; a cancelled panel is a person who has
+    // not decided, not a failure, and it comes back as the unchanged state.
+    if (next.ok) set({ access: next.value });
+    else set({ access: { ...blankAccess(), error: next.error } });
+  },
+
+  forgetAccess: async () => {
+    const next = await call<AccessState>("forget_access", {});
+    if (next.ok) set({ access: next.value });
+  },
+
   start: async () => {
     if (!inShell) {
       // Design work runs against a fixture so the panel can be built without the shell.
@@ -141,6 +168,9 @@ export const useDeck = create<DeckStore>((set, get) => ({
         history: demoHistory(),
         plans: demoPlans(),
         statusline: demoStatusline(),
+        // A browser has nothing to grant, and leaving this null would hold the panel on a
+        // screen asking for a permission that does not exist here.
+        access: { required: false, granted: true, path: null, error: null },
       });
       applyTheme(get().settings.theme);
       applyLocale(get().settings.locale);
@@ -159,18 +189,60 @@ export const useDeck = create<DeckStore>((set, get) => ({
       void invoke<ProviderHistory[]>("usage_history").then((history) => set({ history }));
     });
 
-    const [deck, history, settings, plans, statusline] = await Promise.all([
+    const [deck, history, settings, plans, statusline, access] = await Promise.all([
       invoke<DeckState>("current_state"),
       invoke<ProviderHistory[]>("usage_history"),
       invoke<Settings>("current_settings"),
       invoke<ProviderPlans[]>("provider_plans"),
       invoke<StatuslineState>("statusline_state"),
+      invoke<AccessState>("access_state"),
     ]);
-    set({ deck, history, settings, plans, statusline });
+    set({ deck, history, settings, plans, statusline, access });
     applyTheme(settings.theme);
     applyLocale(settings.locale);
   },
 }));
+
+/*
+ * A handle on the store during development, so states that only the shell can produce — a
+ * missing folder grant, a failed one — can be put on screen and looked at in a browser.
+ *
+ * `import.meta.env.DEV` is a compile-time constant, so this whole block is removed from a
+ * production build rather than merely skipped at runtime.
+ */
+if (import.meta.env.DEV && typeof window !== "undefined") {
+  (window as unknown as Record<string, unknown>)["__quotadeckStore"] = useDeck;
+}
+
+/** Nothing granted and nothing known. The shape the panel renders its onboarding from. */
+function blankAccess(): AccessState {
+  return { required: true, granted: false, path: null, error: null };
+}
+
+/**
+ * The sample deck, built once.
+ *
+ * A fresh object per call would hand zustand a new snapshot on every render and the panel would
+ * never settle — the same trap the `historyFor` selector fell into in Phase 7.
+ */
+const sample = {
+  deck: demoDeck(),
+  history: demoHistory(),
+};
+
+/**
+ * What the surfaces render: this machine, or the sample when it was asked for.
+ *
+ * The switch lives here rather than in each component so there is exactly one place where a
+ * real reading can be replaced by an invented one.
+ */
+export function useDeckState(): DeckState {
+  return useDeck((state) => (state.settings.demo ? sample.deck : state.deck));
+}
+
+export function useHistory(): ProviderHistory[] {
+  return useDeck((state) => (state.settings.demo ? sample.history : state.history));
+}
 
 /**
  * The catalogue the panel is currently reading from.

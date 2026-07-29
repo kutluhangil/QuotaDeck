@@ -14,6 +14,9 @@ thiserror.workspace = true
 notify.workspace = true
 redb.workspace = true
 
+[target.'cfg(unix)'.dependencies]
+libc.workspace = true
+
 [dev-dependencies]
 criterion.workspace = true
 

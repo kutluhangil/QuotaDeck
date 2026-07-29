@@ -152,6 +152,8 @@ export const en = {
       body: "Quota Deck needs to read the session logs in your home folder. You grant this once, and nothing ever leaves this device.",
       action: "Choose folder",
     },
+    /** Offered beside the grant, so a machine with no tools installed is not a dead end. */
+    demoAction: "See a sample instead",
     scanning: "Reading session logs…",
   },
 
@@ -257,6 +259,23 @@ export const en = {
     statuslineReadings: (count: number, when: string) =>
       count === 1 ? `1 reading, last ${when}` : `${count} readings, last ${when}`,
     statuslineFailed: (reason: string) => `Could not change the setting: ${reason}`,
+
+    accessTitle: "Folder access",
+    /** Names the folder rather than describing it: the grant is over a specific path. */
+    accessGranted: (path: string) => `Reading ${path}`,
+    accessMissing: "No folder has been chosen yet.",
+    accessChoose: "Choose folder",
+    accessRevoke: "Revoke access",
+    accessFailed: (reason: string) => `The stored grant could not be used: ${reason}`,
+    /** Says what the grant is not, which is the part that makes it safe to give. */
+    accessHint:
+      "Read-only, and only the session logs. Provider credentials are never opened. Revoking takes effect at once.",
+
+    demoTitle: "Sample deck",
+    demoOn: "Show a sample",
+    demoOff: "Show my machine",
+    demoHint:
+      "Realistic but invented figures, so the app can be seen working before any tool is installed. The menu bar keeps reporting your real usage.",
   },
 
   /**

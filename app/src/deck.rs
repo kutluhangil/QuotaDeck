@@ -14,6 +14,7 @@ use quotadeck_core::types::{ProviderId, ProviderSnapshot, QuotaWindow};
 use serde::{Deserialize, Serialize};
 
 use crate::i18n::Locale;
+use crate::sandbox::{self, AccessState, ScopedAccess};
 
 /// What the panel renders. Raw log lines never appear here — only folded snapshots.
 #[derive(Debug, Clone, Serialize)]
@@ -122,6 +123,12 @@ pub struct Settings {
     pub alerts: BTreeMap<String, Vec<u8>>,
     /// Nothing is raised before this instant. Set from the panel, in the user's own zone.
     pub muted_until: Option<DateTime<Utc>>,
+    /// Show the sample deck instead of this machine's readings.
+    ///
+    /// Required by the store listing: someone has to be able to see what the app looks like
+    /// before they buy it, and on a machine with no supported tool the real answer is an empty
+    /// panel. Off by default — a sample shown without being asked for is a lie.
+    pub demo: bool,
 }
 
 /// Thresholds a provider raises at unless the user changed them (blueprint §9, Phase 7).
@@ -136,6 +143,7 @@ impl Default for Settings {
             plans: BTreeMap::new(),
             alerts: BTreeMap::new(),
             muted_until: None,
+            demo: false,
         }
     }
 }
@@ -203,13 +211,27 @@ impl Settings {
     }
 }
 
+/// The user's grant over the home directory, and what went wrong if there is none.
+///
+/// One lock over both: the error only ever describes the grant beside it, and splitting them
+/// makes it possible to report a stale reason against a fresh grant.
+#[derive(Default)]
+struct Access {
+    held: Option<ScopedAccess>,
+    error: Option<String>,
+}
+
 /// Handle shared by the read loop, the tray and the command handlers.
 #[derive(Clone)]
 pub struct Deck {
     state: Arc<Mutex<DeckState>>,
     history: Arc<Mutex<Vec<ProviderHistory>>>,
     settings: Arc<Mutex<Settings>>,
+    access: Arc<Mutex<Access>>,
     panel_open: Arc<AtomicBool>,
+    /// True while a modal is on screen. The popover dismisses itself on blur, and an open
+    /// panel steals focus — without this, asking for the folder closes the window that asked.
+    modal_open: Arc<AtomicBool>,
 }
 
 impl Deck {
@@ -218,7 +240,52 @@ impl Deck {
             state: Arc::new(Mutex::new(DeckState::empty())),
             history: Arc::new(Mutex::new(Vec::new())),
             settings: Arc::new(Mutex::new(Settings::load())),
+            access: Arc::new(Mutex::new(Access::default())),
             panel_open: Arc::new(AtomicBool::new(false)),
+            modal_open: Arc::new(AtomicBool::new(false)),
+        }
+    }
+
+    /// Take up the grant made on an earlier launch. Called once, before the first read pass.
+    ///
+    /// A missing grant is the state a new install is in and says nothing; a grant that will
+    /// not resolve is reported, because the folder moving is something the user can fix.
+    pub fn restore_access(&self) {
+        let restored = sandbox::restore();
+        self.with_access(|access| match restored {
+            Ok(held) => {
+                access.held = held;
+                access.error = None;
+            }
+            Err(e) => {
+                access.held = None;
+                access.error = Some(e.to_string());
+            }
+        });
+    }
+
+    /// Replace the grant. The previous one is released as it drops.
+    pub fn set_access(&self, held: Option<ScopedAccess>, error: Option<String>) {
+        self.with_access(|access| {
+            access.held = held;
+            access.error = error;
+        });
+    }
+
+    pub fn access_state(&self) -> AccessState {
+        self.with_access(|access| sandbox::state(access.held.as_ref(), access.error.clone()))
+    }
+
+    /// Whether the read loop can see anything at all. False means every provider would report
+    /// a permission problem, and the panel should be asking for the folder instead.
+    pub fn has_access(&self) -> bool {
+        self.access_state().granted
+    }
+
+    fn with_access<T>(&self, apply: impl FnOnce(&mut Access) -> T) -> T {
+        match self.access.lock() {
+            Ok(mut guard) => apply(&mut guard),
+            Err(poisoned) => apply(&mut poisoned.into_inner()),
         }
     }
 
@@ -265,6 +332,10 @@ impl Deck {
 
     pub fn set_locale(&self, locale: Locale) {
         self.update_settings(|settings| settings.locale = locale);
+    }
+
+    pub fn set_demo(&self, demo: bool) {
+        self.update_settings(|settings| settings.demo = demo);
     }
 
     /// Record the tier the user picked for one provider, or clear it.
@@ -320,6 +391,14 @@ impl Deck {
 
     pub fn set_panel_open(&self, open: bool) {
         self.panel_open.store(open, Ordering::Relaxed);
+    }
+
+    pub fn modal_open(&self) -> bool {
+        self.modal_open.load(Ordering::Relaxed)
+    }
+
+    pub fn set_modal_open(&self, open: bool) {
+        self.modal_open.store(open, Ordering::Relaxed);
     }
 }
 
@@ -448,7 +527,7 @@ mod tests {
         let json = serde_json::to_string(&settings).expect("serialise settings");
         assert_eq!(
             json,
-            r#"{"trayMode":"compact","theme":"dark","locale":"system","plans":{"claude-code":"max-20x"},"alerts":{"codex":[85,95]},"mutedUntil":null}"#
+            r#"{"trayMode":"compact","theme":"dark","locale":"system","plans":{"claude-code":"max-20x"},"alerts":{"codex":[85,95]},"mutedUntil":null,"demo":false}"#
         );
     }
 

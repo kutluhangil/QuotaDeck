@@ -21,6 +21,26 @@ notify = "8"
 redb = "2"
 criterion = "0.7"
 
+# Already in the tree through tao and wry; naming them here adds no crate and no bytes.
+# `libc` is for the `getpwuid` home lookup the App Sandbox forces, and the objc2 crates are
+# for `NSOpenPanel` and security-scoped bookmarks — the only sanctioned way into the real
+# home directory from a sandboxed app.
+libc = "0.2"
+objc2 = "0.6"
+objc2-foundation = { version = "0.3", features = [
+  "NSArray",
+  "NSData",
+  "NSError",
+  "NSString",
+  "NSURL",
+] }
+objc2-app-kit = { version = "0.3", features = [
+  "NSApplication",
+  "NSOpenPanel",
+  "NSSavePanel",
+  "NSWindow",
+] }
+
 # No HTTP client is permitted anywhere in this tree. See CLAUDE.md.
 
 [profile.release]

@@ -38,3 +38,11 @@ serde_json.workspace = true
 tauri = { version = "2", features = ["tray-icon", "image-png", "macos-private-api"] }
 tauri-plugin-positioner = { version = "2", features = ["tray-icon"] }
 tauri-plugin-notification = "2.3.3"
+
+# The App Sandbox path: `NSOpenPanel` for the one grant the user makes, and security-scoped
+# bookmarks to keep it across launches. Both crates are already in the tree through tao and
+# wry, so this adds no crate and no measurable binary size.
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2.workspace = true
+objc2-app-kit.workspace = true
+objc2-foundation.workspace = true

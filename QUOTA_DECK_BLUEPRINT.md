@@ -864,24 +864,29 @@ o yüzden bunlar gerçek fixture edinilene kadar açık kalıyor (§10).
 
 ### Faz 9 — macOS Sandbox ve App Store
 
-- [ ] `Entitlements.plist` (§8.1)
-- [ ] `NSOpenPanel` onboarding akışı
-- [ ] Security-scoped bookmark kaydet / çöz / start / **stop** (Drop impl ile garanti)
-- [ ] Sandbox içinde tam regresyon testi — `sandbox-exec` ile lokal doğrulama
-- [ ] Demo mode
-- [ ] Apple sertifikaları + provisioning profile
-- [ ] `.pkg` üretimi ve Transporter yüklemesi
-- [ ] App Store metadata — marka temizliği kontrolü (§8.3)
-- [ ] Gizlilik beyanı: "Data Not Collected"
+- [x] `Entitlements.plist` (§8.1) — `app/Entitlements.plist` + `app/Entitlements.appstore.plist`
+- [x] `NSOpenPanel` onboarding akışı
+- [x] Security-scoped bookmark kaydet / çöz / start / **stop** (Drop impl ile garanti)
+- [x] Sandbox içinde tam regresyon testi — `scripts/sandbox-check.sh`, ad-hoc imzalı gerçek App
+      Sandbox ile (`sandbox-exec` kullanılmadı: onun profil dili App Sandbox değil, ayrıca
+      deprecated)
+- [x] Demo mode
+- [ ] Apple sertifikaları + provisioning profile — **Apple hesabı gerekiyor**, `docs/STORE.md` §5
+- [x] `.pkg` üretimi ve Transporter yüklemesi — `scripts/appstore.sh` (sertifikalarla çalışır)
+- [x] App Store metadata — marka temizliği kontrolü (§8.3) — `docs/STORE.md` §1–§2
+- [x] Gizlilik beyanı: "Data Not Collected" — `docs/STORE.md` §3
 
 ### Faz 10 — Windows ve Microsoft Store
 
-- [ ] Windows yol çözümü (`%USERPROFILE%`, `%APPDATA%`)
-- [ ] `Shell_NotifyIcon` tray + popover konumlandırma
-- [ ] `webviewInstallMode: offlineInstaller`
-- [ ] MSIX paketleme (x64 + arm64 → `.msixbundle`)
-- [ ] Startup task manifest
-- [ ] Partner Center kaydı ve gönderim
+- [x] Windows yol çözümü (`%USERPROFILE%`, `%APPDATA%`)
+- [x] `Shell_NotifyIcon` tray + popover konumlandırma — tauri `tray-icon` + positioner; tepsi
+      mürekkebi Windows'ta gri, çünkü template görüntü yok ve siyah glif koyu görev çubuğunda
+      görünmez. **Windows makinede el ile doğrulanmadı.**
+- [x] `webviewInstallMode: offlineInstaller` — `app/tauri.msstore.conf.json`
+- [x] MSIX paketleme (x64 + arm64 → `.msixbundle`) — `scripts/msstore.ps1`, **Windows'ta
+      çalıştırılmadı**
+- [x] Startup task manifest — `docs/STORE.md` §6, `Enabled="false"` ile
+- [ ] Partner Center kaydı ve gönderim — **Microsoft hesabı gerekiyor**
 
 ### Faz 11 — v1.1 (yayın sonrası)
 

@@ -71,6 +71,13 @@ jobs:
       - name: Benches compile
         run: cargo bench --workspace --no-run
 
+      # The state every App Store user starts in. Signs an ad-hoc bundle with the shipping
+      # entitlements and asserts that the real home still resolves and that an installed tool
+      # reads as unreachable rather than absent.
+      - name: App Sandbox regression
+        if: matrix.os == 'macos-latest'
+        run: bash scripts/sandbox-check.sh
+
   # Architectural constraints from CLAUDE.md, enforced rather than trusted.
   constraints:
     runs-on: macos-latest

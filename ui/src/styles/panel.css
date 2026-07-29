@@ -565,6 +565,20 @@
   border-color: var(--ink-tertiary);
 }
 
+/* The way out of a dead end, not the fix. Text weight only, so the real action keeps the eye. */
+.empty__action--quiet {
+  margin-block-start: 0;
+  padding: var(--step-1) var(--step-2);
+  border-color: transparent;
+  background: none;
+  color: var(--ink-tertiary);
+}
+
+.empty__action--quiet:hover {
+  border-color: transparent;
+  color: var(--ink-secondary);
+}
+
 .settings {
   display: flex;
   flex-direction: column;

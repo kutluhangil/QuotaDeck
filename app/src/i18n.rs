@@ -87,6 +87,26 @@ impl Language {
         }
     }
 
+    /// The sentence inside `NSOpenPanel`.
+    ///
+    /// Written in Rust because the panel that asks belongs to AppKit, not to the webview. It
+    /// says what is being asked for and what is not: the answer to "why does this want my whole
+    /// home folder" has to be visible at the moment the question is asked.
+    pub fn folder_message(self) -> &'static str {
+        match self {
+            Language::En => "Choose your home folder so Quota Deck can read the session logs your coding tools already write. It is read-only, and nothing leaves this device.",
+            Language::Tr => "Quota Deck'in kodlama araçlarının zaten yazdığı oturum günlüklerini okuyabilmesi için ev klasörünü seç. Yalnızca okunur ve hiçbir şey bu cihazdan çıkmaz.",
+        }
+    }
+
+    /// The panel's confirm button. A verb for what happens, not "OK".
+    pub fn folder_prompt(self) -> &'static str {
+        match self {
+            Language::En => "Grant read access",
+            Language::Tr => "Okuma izni ver",
+        }
+    }
+
     /// How a window is named in a notification. Classified by the reported duration, never by
     /// the provider's slot name.
     pub fn window_label(self, window: &QuotaWindow) -> String {
@@ -186,6 +206,16 @@ mod tests {
             Language::Tr.window_label(&window(WindowKind::Other, 90)),
             "90 dakikalık"
         );
+    }
+
+    #[test]
+    fn the_folder_request_explains_itself_in_both_languages() {
+        // This sentence is the entire answer to "why does this want my home folder", shown at
+        // the moment the system asks. An empty one is a grant nobody should make.
+        for language in [Language::En, Language::Tr] {
+            assert!(language.folder_message().len() > 60, "{language:?}");
+            assert!(!language.folder_prompt().is_empty(), "{language:?}");
+        }
     }
 
     #[test]

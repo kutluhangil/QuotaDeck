@@ -131,6 +131,87 @@ function AlertGroup({ provider }: { provider: ProviderId }) {
   );
 }
 
+/**
+ * The grant, and the way to take it back.
+ *
+ * Hidden entirely where it does not apply: a build that is not sandboxed has nothing to ask
+ * for, and a settings group that explains a permission the user never gave is noise.
+ */
+function AccessGroup() {
+  const strings = useStrings();
+  const access = useDeck((state) => state.access);
+  const requestAccess = useDeck((state) => state.requestAccess);
+  const forgetAccess = useDeck((state) => state.forgetAccess);
+
+  if (access === null || !access.required) return null;
+
+  return (
+    <fieldset className="settings__group">
+      <legend className="type-label settings__legend">{strings.settings.accessTitle}</legend>
+      <p className="type-caption settings__hint">
+        {access.granted && access.path !== null
+          ? strings.settings.accessGranted(access.path)
+          : strings.settings.accessMissing}
+      </p>
+      <div className="settings__row">
+        <button
+          type="button"
+          className="settings__button"
+          onClick={() => void requestAccess()}
+        >
+          <span className="type-body">{strings.settings.accessChoose}</span>
+        </button>
+        {access.granted && (
+          <button type="button" className="settings__button" onClick={() => void forgetAccess()}>
+            <span className="type-body">{strings.settings.accessRevoke}</span>
+          </button>
+        )}
+      </div>
+      <p className="type-caption settings__hint">{strings.settings.accessHint}</p>
+      {access.error !== null && (
+        <p className="type-caption settings__error">
+          {strings.settings.accessFailed(access.error)}
+        </p>
+      )}
+    </fieldset>
+  );
+}
+
+/**
+ * The sample deck.
+ *
+ * Two labelled choices rather than a checkbox, because the off state has to say what it shows
+ * instead. "Sample: off" leaves the user to work out what they are looking at.
+ */
+function DemoGroup() {
+  const strings = useStrings();
+  const demo = useDeck((state) => state.settings.demo);
+  const setDemo = useDeck((state) => state.setDemo);
+
+  return (
+    <fieldset className="settings__group">
+      <legend className="type-label settings__legend">{strings.settings.demoTitle}</legend>
+      <div className="settings__row">
+        {[
+          { on: false, label: strings.settings.demoOff },
+          { on: true, label: strings.settings.demoOn },
+        ].map(({ on, label }) => (
+          <label key={String(on)} className="settings__chip">
+            <input
+              type="radio"
+              name="demo"
+              checked={demo === on}
+              onChange={() => setDemo(on)}
+            />
+            <span className="type-body">{label}</span>
+          </label>
+        ))}
+      </div>
+      <p className="type-caption settings__hint">{strings.settings.demoHint}</p>
+    </fieldset>
+  );
+}
+
 /** Minutes from now until local midnight, so "until tomorrow" means the viewer's tomorrow. */
 function minutesUntilTomorrow(now: number): number {
   const midnight = new Date(now);
@@ -252,6 +333,10 @@ export function SettingsView({ now }: { now: number }) {
         </div>
         <p className="type-caption settings__hint">{strings.settings.languageHint}</p>
       </fieldset>
+
+      {/* Above the plans: a tier picked against a folder we cannot read produces nothing. */}
+      <AccessGroup />
+      <DemoGroup />
 
       {plans.map((entry) => (
         <PlanGroup key={entry.provider} entry={entry} />

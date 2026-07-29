@@ -14,7 +14,7 @@ import {
   RANGE_DAYS,
   type Range,
 } from "./history";
-import { useDeck, useLocale, useStrings } from "./store";
+import { useDeck, useDeckState, useHistory, useLocale, useStrings } from "./store";
 import { paceFor, type ProviderSnapshot } from "./types";
 
 const ranges: Range[] = ["day", "week", "month"];
@@ -89,7 +89,7 @@ function ProviderPanel({
   // Selected whole, narrowed here. `historyFor` builds a fresh empty array for a provider
   // with no history, and a selector that returns one hands zustand a new snapshot on every
   // render.
-  const history = useDeck((state) => state.history);
+  const history = useHistory();
   const hours = historyFor(history, snapshot.id);
   const sum = totals(inRange(hours, range, nowSeconds));
   const cells = dailyCells(hours, HEATMAP_DAYS, nowSeconds);
@@ -153,7 +153,7 @@ function ProviderPanel({
 
 export function Dashboard() {
   const strings = useStrings();
-  const deck = useDeck((state) => state.deck);
+  const deck = useDeckState();
   const start = useDeck((state) => state.start);
   const [range, setRange] = useState<Range>("week");
   const [nowSeconds, setNowSeconds] = useState(() => Math.floor(Date.now() / 1000));

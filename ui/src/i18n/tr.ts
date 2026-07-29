@@ -119,6 +119,7 @@ export const tr: Catalogue = {
       body: "Quota Deck'in ev klasöründeki oturum günlüklerini okuması gerekiyor. Bunu bir kez verirsin ve hiçbir şey bu cihazdan çıkmaz.",
       action: "Klasör seç",
     },
+    demoAction: "Örnek veriyle gör",
     scanning: "Oturum günlükleri okunuyor…",
   },
 
@@ -203,6 +204,21 @@ export const tr: Catalogue = {
       "Henüz okuma yok. Claude Code bunu yalnızca etkileşimli bir oturumda, ilk yanıtından sonra gönderir.",
     statuslineReadings: (count, when) => `${count} okuma, sonuncusu ${when}`,
     statuslineFailed: (reason) => `Ayar değiştirilemedi: ${reason}`,
+
+    accessTitle: "Klasör erişimi",
+    accessGranted: (path) => `${path} okunuyor`,
+    accessMissing: "Henüz bir klasör seçilmedi.",
+    accessChoose: "Klasör seç",
+    accessRevoke: "Erişimi geri al",
+    accessFailed: (reason) => `Kayıtlı izin kullanılamadı: ${reason}`,
+    accessHint:
+      "Yalnızca okuma ve yalnızca oturum günlükleri. Sağlayıcı kimlik dosyaları hiç açılmaz. Geri alma anında geçerli olur.",
+
+    demoTitle: "Örnek veri",
+    demoOn: "Örnek göster",
+    demoOff: "Kendi makinemi göster",
+    demoHint:
+      "Gerçekçi ama uydurma sayılar; hiçbir araç kurulmadan uygulamanın nasıl çalıştığı görülebilsin. Menü çubuğu gerçek kullanımını bildirmeye devam eder.",
   },
 
   a11y: {

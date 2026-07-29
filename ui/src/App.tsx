@@ -5,7 +5,7 @@ import { ProviderCard } from "./components/ProviderCard";
 import { QuietTools } from "./components/QuietTools";
 import { SettingsView } from "./components/SettingsView";
 import { formatClock } from "./format";
-import { reportPanelHeight, useDeck, useLocale, useStrings } from "./store";
+import { reportPanelHeight, useDeck, useDeckState, useLocale, useStrings } from "./store";
 import { awaitingSetup, type ProviderSnapshot } from "./types";
 
 function hasReading(snapshot: ProviderSnapshot): boolean {
@@ -24,7 +24,10 @@ function earnsCard(snapshot: ProviderSnapshot): boolean {
 export function App() {
   const strings = useStrings();
   const locale = useLocale();
-  const deck = useDeck((state) => state.deck);
+  const deck = useDeckState();
+  const access = useDeck((state) => state.access);
+  const setDemo = useDeck((state) => state.setDemo);
+  const requestAccess = useDeck((state) => state.requestAccess);
   const view = useDeck((state) => state.view);
   const setView = useDeck((state) => state.setView);
   const openDashboard = useDeck((state) => state.openDashboard);
@@ -85,6 +88,12 @@ export function App() {
   const quiet = deck.providers.filter((snapshot) => !earnsCard(snapshot));
   const reporting = deck.providers.filter(hasReading).length;
   const updated = formatClock(deck.updatedAt, locale);
+  /*
+   * Asked for before anything else. Without the grant every provider root is unreadable, and
+   * the panel would report three working tools as broken instead of asking for the one thing
+   * that fixes all of them at once.
+   */
+  const needsAccess = access !== null && access.required && !access.granted;
 
   return (
     <div className="panel">
@@ -121,11 +130,31 @@ export function App() {
       >
         {view === "settings" ? (
           <SettingsView now={now} />
+        ) : needsAccess ? (
+          <EmptyState
+            title={strings.empty.noPermission.title}
+            body={
+              access.error === null
+                ? strings.empty.noPermission.body
+                : `${strings.empty.noPermission.body} ${strings.settings.accessFailed(access.error)}`
+            }
+            action={strings.empty.noPermission.action}
+            onAction={() => void requestAccess()}
+            /* A machine with no supported tool would otherwise end here. The sample is the
+               one honest thing left to offer, and it says on the tin that it is a sample. */
+            secondaryAction={strings.empty.demoAction}
+            onSecondaryAction={() => setDemo(true)}
+          />
         ) : deck.providers.length === 0 ? (
           deck.scanning ? (
             <EmptyState title={strings.appName} body={strings.empty.scanning} />
           ) : (
-            <EmptyState title={strings.empty.noTools.title} body={strings.empty.noTools.body} />
+            <EmptyState
+              title={strings.empty.noTools.title}
+              body={strings.empty.noTools.body}
+              action={strings.empty.demoAction}
+              onAction={() => setDemo(true)}
+            />
           )
         ) : (
           <>
@@ -155,7 +184,10 @@ export function App() {
               ? strings.footer.updated(updated)
               : ""}
         </span>
-        <span>{strings.footer.reporting(reporting, deck.providers.length)}</span>
+        {/* Silent while the folder is still being asked for. "0 of 3 reporting" beside a screen
+            explaining that nothing can be read yet is a second answer to a question the user
+            has already been given. */}
+        <span>{needsAccess ? "" : strings.footer.reporting(reporting, deck.providers.length)}</span>
       </footer>
     </div>
   );

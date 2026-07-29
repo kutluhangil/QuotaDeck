@@ -166,6 +166,21 @@ export interface DeckState {
   scanning: boolean;
 }
 
+/**
+ * What we may read, as the backend reports it.
+ *
+ * Under the macOS App Sandbox nothing outside our own container is readable until the user
+ * hands over a folder in the system's own open panel. `required` is false on a build that is
+ * not sandboxed, where there is nothing to ask for.
+ */
+export interface AccessState {
+  required: boolean;
+  granted: boolean;
+  path: string | null;
+  /** Set when a stored grant would not resolve — the folder moved, or it was revoked. */
+  error: string | null;
+}
+
 export type TrayMode = "glyph" | "compact" | "strip";
 
 /**
@@ -194,6 +209,11 @@ export interface Settings {
   alerts: Partial<Record<ProviderId, number[]>>;
   /** ISO-8601. Nothing is raised before this instant. */
   mutedUntil: string | null;
+  /**
+   * Show the sample deck instead of this machine's readings. Off by default: a sample nobody
+   * asked for is indistinguishable from a wrong reading.
+   */
+  demo: boolean;
 }
 
 /** Mirrors `DEFAULT_THRESHOLDS` in `app/src/deck.rs`. */

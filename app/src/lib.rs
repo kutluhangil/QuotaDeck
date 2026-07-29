@@ -8,6 +8,7 @@ pub mod alerts;
 pub mod deck;
 pub mod i18n;
 pub mod icon;
+pub mod sandbox;
 pub mod statusline;
 pub mod tray;
 
@@ -24,6 +25,7 @@ use tauri::{AppHandle, Emitter, Manager};
 use crate::alerts::{Alert, Alerts};
 use crate::deck::{Deck, DeckState, ProviderHistory, Settings, TrayMode};
 use crate::i18n::Locale;
+use crate::sandbox::AccessState;
 use crate::statusline::StatuslineState;
 
 /// Event the panel subscribes to.
@@ -57,8 +59,12 @@ pub fn run() {
             usage_history,
             open_dashboard,
             hide_panel,
+            access_state,
+            request_access,
+            forget_access,
             set_tray_mode,
             set_locale,
+            set_demo,
             set_plan,
             set_alert_thresholds,
             set_mute,
@@ -73,6 +79,11 @@ pub fn run() {
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
 
+            // Before the first read pass: without the grant every provider root is
+            // unreadable, and the panel would show three tools as broken rather than
+            // asking for the one thing that fixes all of them.
+            deck.restore_access();
+
             tray::install(app.handle(), deck.clone())?;
             spawn_read_loop(app.handle().clone(), deck.clone());
             Ok(())
@@ -84,8 +95,12 @@ pub fn run() {
                 return;
             }
             if let tauri::WindowEvent::Focused(false) = event {
-                // A menu bar popover closes when you click away from it.
+                // A menu bar popover closes when you click away from it — unless what took
+                // the focus is a panel we opened on its behalf.
                 if let Some(deck) = window.app_handle().try_state::<Deck>() {
+                    if deck.modal_open() {
+                        return;
+                    }
                     deck.set_panel_open(false);
                 }
                 let _ = window.hide();
@@ -198,6 +213,74 @@ fn hide_panel(app: AppHandle, deck: tauri::State<'_, Deck>) {
     if let Some(window) = app.get_webview_window(PANEL_WINDOW) {
         let _ = window.hide();
     }
+}
+
+/// What the panel knows about our access to the log folder.
+#[tauri::command]
+fn access_state(deck: tauri::State<'_, Deck>) -> AccessState {
+    deck.access_state()
+}
+
+/// Ask the user for the folder, and keep the grant.
+///
+/// `async` on purpose. `NSOpenPanel` is AppKit and has to run on the main thread, and a
+/// synchronous Tauri command already runs there — dispatching to the main thread from the main
+/// thread and then blocking on the answer is a deadlock. This runs on the async runtime and
+/// waits for the main thread to send the outcome back.
+///
+/// Returns the state either way: a cancelled panel is not an error, it is a user who has not
+/// decided yet, and the frontend renders the same screen for both. The `Result` is Tauri's
+/// requirement for an async command holding a borrow, not a failure this can report — the real
+/// failures are carried inside [`AccessState::error`].
+#[tauri::command]
+async fn request_access(
+    app: AppHandle,
+    deck: tauri::State<'_, Deck>,
+) -> std::result::Result<AccessState, String> {
+    let language = deck.settings().locale.language();
+    let deck = (*deck).clone();
+    let (send, receive) = std::sync::mpsc::channel();
+
+    deck.set_modal_open(true);
+    let dispatched = {
+        let deck = deck.clone();
+        app.run_on_main_thread(move || {
+            let outcome = sandbox::choose_home(language.folder_message(), language.folder_prompt());
+            match outcome {
+                // A cancelled panel leaves whatever grant we already had alone.
+                Ok(None) => {}
+                Ok(held) => deck.set_access(held, None),
+                Err(e) => deck.set_access(None, Some(e.to_string())),
+            }
+            let _ = send.send(());
+        })
+    };
+
+    if dispatched.is_ok() {
+        // The panel is modal, so this waits for the person rather than for a timeout.
+        let _ = receive.recv();
+    }
+    deck.set_modal_open(false);
+    Ok(deck.access_state())
+}
+
+/// Drop the grant. The live one is released as its guard drops.
+#[tauri::command]
+fn forget_access(deck: tauri::State<'_, Deck>) -> AccessState {
+    let error = sandbox::forget().err().map(|e| e.to_string());
+    deck.set_access(None, error);
+    deck.access_state()
+}
+
+/// Turn the sample deck on or off.
+///
+/// Persisted here rather than held in the webview so it survives a relaunch, but the fixture
+/// itself lives in the frontend: there is no second copy of fake data in Rust, and the menu bar
+/// keeps reporting the real reading. A fabricated percentage in the menu bar would be a claim
+/// made outside the window that admits it is a sample.
+#[tauri::command]
+fn set_demo(deck: tauri::State<'_, Deck>, demo: bool) {
+    deck.set_demo(demo);
 }
 
 /// The blueprint's dashboard size (§2).

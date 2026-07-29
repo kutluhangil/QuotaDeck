@@ -7,12 +7,31 @@
 //! image, so macOS tints it to match the menu bar and it stays monochrome in both
 //! appearances. Only above the threshold does it become a coloured image. A menu bar item
 //! that is permanently lit is the reason people remove menu bar apps.
+//!
+//! Windows has no template images. A black glyph there is invisible against the dark taskbar
+//! everyone runs by default, so the monochrome ink is a mid grey that holds against both
+//! taskbar themes. Reading `SystemUsesLightTheme` out of the registry would be exact, and it
+//! would cost a Windows API dependency to move a glyph that is sixteen pixels tall between two
+//! greys — [`MONOCHROME_RGB`] is the honest trade.
 
 /// Above this, the glyph stops being monochrome.
 pub const CRITICAL_PERCENT: f32 = 85.0;
 
 /// `--level-critical`, the one colour the tray is ever allowed to use.
 const CRITICAL_RGB: (u8, u8, u8) = (0xFF, 0x5E, 0x5B);
+
+/// The ink below the critical threshold.
+///
+/// Black on macOS, where it is a template image and the system replaces the colour outright.
+/// A readable grey everywhere else, where nothing replaces anything.
+const MONOCHROME_RGB: (u8, u8, u8) = if cfg!(target_os = "macos") {
+    (0, 0, 0)
+} else {
+    (0x9A, 0x9A, 0x9A)
+};
+
+/// Whether the system tints the glyph for us. Only macOS does.
+const TEMPLATE_CAPABLE: bool = cfg!(target_os = "macos");
 
 /// Logical size of a menu bar item. The buffer is rendered at 2x for Retina.
 const LOGICAL: u32 = 16;
@@ -45,7 +64,11 @@ pub fn bar(percent: Option<f32>) -> Glyph {
     let critical = filled > CRITICAL_PERCENT;
 
     // A template image is black with an alpha mask; macOS replaces the colour.
-    let (r, g, b) = if critical { CRITICAL_RGB } else { (0, 0, 0) };
+    let (r, g, b) = if critical {
+        CRITICAL_RGB
+    } else {
+        MONOCHROME_RGB
+    };
 
     let mut rgba = vec![0u8; (width * height * 4) as usize];
 
@@ -105,7 +128,7 @@ pub fn bar(percent: Option<f32>) -> Glyph {
         rgba,
         width,
         height,
-        template: !critical,
+        template: TEMPLATE_CAPABLE && !critical,
     }
 }
 
@@ -130,7 +153,11 @@ pub fn strip(columns: &[f32], percent: Option<f32>) -> Glyph {
     let width = STRIP_LOGICAL_WIDTH * SCALE;
     let height = LOGICAL * SCALE;
     let critical = percent.unwrap_or(0.0) > CRITICAL_PERCENT;
-    let (r, g, b) = if critical { CRITICAL_RGB } else { (0, 0, 0) };
+    let (r, g, b) = if critical {
+        CRITICAL_RGB
+    } else {
+        MONOCHROME_RGB
+    };
 
     let mut rgba = vec![0u8; (width * height * 4) as usize];
 
@@ -178,7 +205,7 @@ pub fn strip(columns: &[f32], percent: Option<f32>) -> Glyph {
         rgba,
         width,
         height,
-        template: !critical,
+        template: TEMPLATE_CAPABLE && !critical,
     }
 }
 
@@ -228,12 +255,18 @@ mod tests {
     fn the_glyph_stays_monochrome_until_the_quota_is_critical() {
         for percent in [0.0, 50.0, 84.9, 85.0] {
             let glyph = bar(Some(percent));
-            assert!(glyph.template, "{percent}% must stay a template image");
+            assert_eq!(
+                glyph.template, TEMPLATE_CAPABLE,
+                "{percent}% must be tinted by the system wherever the system can"
+            );
+            // Grey is not a colour the app chose to mean something; the level ramp is. The
+            // invariant is that the ramp has not reached the menu bar yet.
+            let (r, g, b) = MONOCHROME_RGB;
             assert!(
                 glyph
                     .rgba
                     .chunks(4)
-                    .all(|px| px[0] == 0 && px[1] == 0 && px[2] == 0),
+                    .all(|px| px[0] == r && px[1] == g && px[2] == b),
                 "{percent}% must carry no colour of its own"
             );
         }
@@ -332,12 +365,18 @@ mod tests {
         let values = vec![1.0f32; STRIP_COLUMNS];
         for percent in [0.0, 50.0, 85.0] {
             let glyph = strip(&values, Some(percent));
-            assert!(glyph.template, "{percent}% must stay a template image");
+            assert_eq!(
+                glyph.template, TEMPLATE_CAPABLE,
+                "{percent}% must be tinted by the system wherever the system can"
+            );
+            // Grey is not a colour the app chose to mean something; the level ramp is. The
+            // invariant is that the ramp has not reached the menu bar yet.
+            let (r, g, b) = MONOCHROME_RGB;
             assert!(
                 glyph
                     .rgba
                     .chunks(4)
-                    .all(|px| px[0] == 0 && px[1] == 0 && px[2] == 0),
+                    .all(|px| px[0] == r && px[1] == g && px[2] == b),
                 "{percent}% must carry no colour of its own"
             );
         }

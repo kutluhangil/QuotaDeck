@@ -20,6 +20,7 @@ fn main() -> ExitCode {
 
     match command {
         Some("list") => list(),
+        Some("paths") => paths(),
         Some("statusline") => match args.get(1).map(String::as_str) {
             // Both write to settings.json, so they are spelled out rather than defaulted into.
             // Point HOME at a scratch directory to exercise them without touching a real one.
@@ -59,7 +60,7 @@ fn main() -> ExitCode {
 
 fn usage() {
     eprintln!(
-        "usage:\n  quotadeck list                  detected providers on this machine\n  quotadeck debug <key> [plan]    parse one provider and print what it found\n  quotadeck tray <key>            draw the menu bar item for that provider\n  quotadeck statusline            what connecting the Claude Code status line would change\n  quotadeck statusline install    write the shim into settings.json\n  quotadeck statusline revert     put settings.json back"
+        "usage:\n  quotadeck list                  detected providers on this machine\n  quotadeck paths                 resolved home, data dir and root access\n  quotadeck debug <key> [plan]    parse one provider and print what it found\n  quotadeck tray <key>            draw the menu bar item for that provider\n  quotadeck statusline            what connecting the Claude Code status line would change\n  quotadeck statusline install    write the shim into settings.json\n  quotadeck statusline revert     put settings.json back"
     );
 }
 
@@ -130,6 +131,45 @@ fn print_glyph(name: &str, glyph: &icon::Glyph) {
         println!("  |{row}|");
     }
     println!();
+}
+
+/// Where this process thinks it is, in a shape a shell script can assert on.
+///
+/// This is the sandbox regression harness. Signed with `app/Entitlements.plist` the process is
+/// genuinely sandboxed, and the three lines below are what the sandbox changes: `$HOME` becomes
+/// the container, `home` must not, and every provider root turns `denied` until the user has
+/// handed over the folder. `scripts/sandbox-check.sh` compares the two runs.
+fn paths() -> ExitCode {
+    let show = |value: Option<std::path::PathBuf>| {
+        value.map_or_else(|| "-".to_string(), |path| path.display().to_string())
+    };
+
+    println!(
+        "env-home       {}",
+        show(std::env::var_os("HOME").map(Into::into))
+    );
+    println!(
+        "home           {}",
+        show(quotadeck_core::paths::real_home())
+    );
+    println!("data           {}", show(quotadeck_core::paths::data_dir()));
+
+    for provider in quotadeck_providers::all() {
+        for root in provider.discover_roots() {
+            let state = match access(&root) {
+                RootAccess::Readable => "readable",
+                RootAccess::Denied => "denied",
+                RootAccess::Missing => "missing",
+            };
+            println!(
+                "root {:<9} {:<9} {}",
+                provider.id().key(),
+                state,
+                root.display()
+            );
+        }
+    }
+    ExitCode::SUCCESS
 }
 
 fn list() -> ExitCode {

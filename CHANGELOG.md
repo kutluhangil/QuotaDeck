@@ -1,5 +1,23 @@
 # Changelog
 
+## 2026-07-30
+
+- Phase 9: `paths::real_home` now reads `pw_dir` from the password database rather than `$HOME`. Inside the App Sandbox `$HOME` is rewritten to the container, which would report every installed tool as absent; the two agree everywhere else, so the change costs nothing until it is the only thing telling the truth.
+- Phase 9: our own data directory deliberately still follows `$HOME`, so under the sandbox it lands in the container — the one place the app can write with no permission at all.
+- Phase 9: added `app/src/sandbox.rs` — `NSOpenPanel` for the single grant the user makes, and a security-scoped bookmark so it survives a relaunch. The home directory is what gets picked, once; `~/.claude` and `~/.codex` are hidden, and telling someone to press ⌘⇧. in an open panel is not an onboarding flow.
+- Phase 9: the grant is a `ScopedAccess` whose `Drop` calls `stopAccessingSecurityScopedResource`. Enough unbalanced starts and the kernel stops granting the process anything at all until it is relaunched, so the pairing is a type invariant rather than a discipline.
+- Phase 9: a stale bookmark is rewritten as soon as it resolves. It still works today; leaving it costs the grant eventually.
+- Phase 9: the popover no longer dismisses itself while a modal it opened holds the focus — asking for the folder used to close the window that asked.
+- Phase 9: added `app/Entitlements.plist` with the sandbox and the two file capabilities that are actually used. There is no outbound-connection capability, so the store listing's privacy claim is enforced by the code signature; CI already fails if one is added.
+- Phase 9: added `scripts/sandbox-check.sh`. `sandbox-exec` was rejected — it is deprecated and its profile language is not the App Sandbox. An ad-hoc signature carrying the shipping entitlements is, and it proved the four things that matter: `$HOME` becomes the container, `real_home` does not, our writes stay inside it, and every provider root reports `denied` rather than `missing`. Runs in CI on macOS.
+- Phase 9: a bare Mach-O signed with the sandbox entitlement is killed with SIGTRAP at launch, because the container is named after `CFBundleIdentifier`. The check wraps the debug binary in the smallest bundle that satisfies that.
+- Phase 9: added `quotadeck-debug paths`, which is what the sandbox check asserts on.
+- Phase 9: added the sample deck, off by default and offered from the empty state. A machine with no supported tool shows an empty panel, and an empty panel is indistinguishable from a broken app. The menu bar keeps reporting the real reading — a fabricated percentage outside the window that admits it is a sample would be a claim, not a demo.
+- Phase 9: added `scripts/appstore.sh`. It verifies that the sandbox entitlement actually reached the signature — Asset Validation error 90296 is what its absence looks like from Apple's side — and that no network capability crept in.
+- Phase 9: added `docs/STORE.md` — listing copy, the metadata rule that gets apps rejected for brand stuffing, and the "Data Not Collected" declaration with the architectural reason each answer is true.
+- Phase 10: the tray glyph is grey rather than black off macOS. Windows has no template images, and a black glyph is invisible against the dark taskbar almost everyone runs.
+- Phase 10: added `app/tauri.msstore.conf.json` (`webviewInstallMode: offlineInstaller`, a Store condition) and `scripts/msstore.ps1` for the MSIX route. MSIX because the Store signs it, so no code-signing certificate has to be bought, and `runFullTrust` means none of the macOS grant machinery applies.
+
 ## 2026-07-29
 
 - Phase 8: added the two-language catalogue (`ui/src/i18n/`) with English and Turkish. `Catalogue` is derived from the English object, so a key added there fails the build until it is translated.
