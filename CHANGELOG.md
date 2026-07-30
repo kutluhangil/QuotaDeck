@@ -2,6 +2,12 @@
 
 ## 2026-07-30
 
+- Perf gate: added `core/tests/perf.rs`. The criterion bench measured the two hot paths and asserted nothing, and CI only compiled it — so blueprint §5.5's "red means no merge" was a sentence rather than a gate. All four budgets are now assertions: cold parse of a 160 MB corpus in 65 ms against 3000, a tick over 500 established cursors in 3 ms against 20, an hour of watching costing 65 KB against 5 MB, and 7.3 MB peak resident against 60.
+- Perf gate: the hourly figure is asserted as an equality against the bytes actually appended, not just against the ceiling. A cursor that silently reset would still come in under 5 MB on a quiet hour; only the equality catches it.
+- Perf gate: the budget runs in release and with `--test-threads=1`. A debug build fails a wall-clock budget for reasons that are not regressions, and `ru_maxrss` is a process-wide high-water mark that concurrent tests would misattribute.
+- Perf gate: peak memory is measured through `getrusage`, which macOS reports in bytes and Linux in kilobytes — the same field with two meanings. Windows has no `getrusage`, and the budget is a property of the reader rather than of the platform, so it is asserted where it is free and the gap is stated rather than left to be found.
+- Blueprint: Faz 0–5 checkboxes now match what shipped, with the file or discovery section that proves each. The Horizon's "returning capacity" ghost layer is struck through rather than ticked — it was dropped in Phase 4 for a measured reason, and an unticked box implies it is still owed.
+
 - Phase 9: `paths::real_home` now reads `pw_dir` from the password database rather than `$HOME`. Inside the App Sandbox `$HOME` is rewritten to the container, which would report every installed tool as absent; the two agree everywhere else, so the change costs nothing until it is the only thing telling the truth.
 - Phase 9: our own data directory deliberately still follows `$HOME`, so under the sandbox it lands in the container — the one place the app can write with no permission at all.
 - Phase 9: added `app/src/sandbox.rs` — `NSOpenPanel` for the single grant the user makes, and a security-scoped bookmark so it survives a relaunch. The home directory is what gets picked, once; `~/.claude` and `~/.codex` are hidden, and telling someone to press ⌘⇧. in an open panel is not an onboarding flow.

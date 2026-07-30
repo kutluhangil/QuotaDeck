@@ -71,6 +71,12 @@ jobs:
       - name: Benches compile
         run: cargo bench --workspace --no-run
 
+      # Blueprint §5.5: performance is a feature, so its budget is a merge gate. Release,
+      # because a debug build fails these for reasons unrelated to a regression, and
+      # single-threaded, because the memory assertion reads a process-wide high-water mark.
+      - name: Performance budget
+        run: cargo test -p quotadeck-core --release --test perf -- --ignored --test-threads=1 --nocapture
+
       # The state every App Store user starts in. Signs an ad-hoc bundle with the shipping
       # entitlements and asserts that the real home still resolves and that an installed tool
       # reads as unreachable rather than absent.

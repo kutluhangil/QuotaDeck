@@ -433,6 +433,22 @@ assert: bytes_read_per_hour_simulated < 5 MB
 
 Bu testler kırmızıysa merge yok. Perf bir özellik, sonradan düzeltilecek bir bug değil.
 
+**Uygulama:** `core/tests/perf.rs`. Criterion benchmark'ı (`core/benches/parser.rs`) ölçer ama
+bir şey iddia etmez; bütçe assert'leri bu dosyada ve CI'da `Performance budget` adımı olarak
+release modda, `--test-threads=1` ile koşar (tek iş parçacığı `ru_maxrss` süreç geneli olduğu
+için zorunlu). `peak_rss` macOS ve Linux'ta `getrusage` ile ölçülür; Windows'ta `getrusage`
+yok ve tek bir assert için `GetProcessMemoryInfo` bağlaması yazmaya değmez — bütçe okuyucunun
+özelliği, platformun değil.
+
+Bu makinede ölçülen (160 MB korpus, release):
+
+| Bütçe | Sınır | Ölçülen |
+|---|---|---|
+| `cold_parse` | < 3000 ms | 65 ms |
+| `warm_tick` | < 20 ms | 3 ms (500 imleç, 0 bayt) |
+| `bytes_read_per_hour` | < 5 MB | 65 KB — ve eklenen bayta **eşit** |
+| `peak_rss` | < 60 MB | 7,3 MB |
+
 ---
 
 ## 6. Pencere Motoru ve Tahmin
@@ -767,65 +783,67 @@ Her faz bağımsız çalışabilir bir çıktı üretir. Faz sonunda **sen** com
 
 Bu faz atlanamaz. Bütün planın varsayımlarını kendi makinende doğrular.
 
-- [ ] `~/.claude/projects/` içinde JSONL var mı? Bir satır örneği çıkar, `usage` alanlarını doğrula
-- [ ] `~/.codex/sessions/` içinde en yeni `rollout-*.jsonl` bul. `rate_limits` **dolu mu, null mu?** (Bu tek bulgu Codex'in L1 mi L2 mi olacağını belirler)
-- [ ] Kurulu diğer araçları listele: `ls ~/.kimi ~/.gemini ~/.qwen ~/.local/share/opencode` vb.
-- [ ] Her bulunan araç için: 1 örnek satır + dosya sayısı + toplam boyut → `docs/DISCOVERY.md`
-- [ ] Claude Code `settings.json` içinde `statusLine` mekanizmasını test et — bize ne gönderiyor?
-- [ ] `CLAUDE_CODE_ENABLE_TELEMETRY=1` OTLP çıkışını test et — hangi metrikler geliyor?
-- [ ] `ccusage` kur, `npx ccusage@latest daily` çalıştır, çıktısını referans doğruluk temeli olarak kaydet
+- [x] `~/.claude/projects/` içinde JSONL var mı? Bir satır örneği çıkar, `usage` alanlarını doğrula — `docs/DISCOVERY.md` §5
+- [x] `~/.codex/sessions/` içinde en yeni `rollout-*.jsonl` bul. `rate_limits` **dolu mu, null mu?** — dolu, L1 doğrulandı (§2)
+- [x] Kurulu diğer araçları listele: `ls ~/.kimi ~/.gemini ~/.qwen ~/.local/share/opencode` vb. — §1
+- [x] Her bulunan araç için: 1 örnek satır + dosya sayısı + toplam boyut → `docs/DISCOVERY.md`
+- [x] Claude Code `settings.json` içinde `statusLine` mekanizmasını test et — canlı yakalandı (§3.1)
+- [x] `CLAUDE_CODE_ENABLE_TELEMETRY=1` OTLP çıkışını test et — test edildi ve **reddedildi** (§4): dinleyen soket gerektiriyor
+- [x] `ccusage` kur, `npx ccusage@latest daily` çalıştır, çıktısını referans doğruluk temeli olarak kaydet — §8, kalan fark §9b'de hesaplandı
 
 **Çıktı:** `docs/DISCOVERY.md` — gerçek makinedeki gerçek durum. Sonraki her faz bunu referans alır.
 
 ### Faz 1 — Rust Çekirdek İskeleti
 
-- [ ] Cargo workspace: `core/`, `providers/`, `app/`
-- [ ] `Provider` trait + `ProviderId` + `ProviderSnapshot` tipleri
-- [ ] `FileCursor` + incremental reader + partial-line buffer
-- [ ] Dosya rotasyonu tespiti (inode / file_index)
-- [ ] `notify` watcher + 750 ms debounce
-- [ ] `redb` store + batched writer (500 kayıt / 60 sn)
-- [ ] Birim testler: fixture JSONL ile parse, dedup, rotasyon
-- [ ] `benches/` criterion iskeleti
+- [x] Cargo workspace: `core/`, `providers/`, `app/`
+- [x] `Provider` trait + `ProviderId` + `ProviderSnapshot` tipleri — `core/src/provider.rs`, `core/src/types.rs`
+- [x] `FileCursor` + incremental reader + partial-line buffer — `core/src/cursor.rs`, `core/src/reader.rs`
+- [x] Dosya rotasyonu tespiti (inode / file_index) — `FileIdentity`, her iki platform için ayrı `of_file`
+- [x] `notify` watcher + 750 ms debounce — `core/src/watcher.rs`, `DEFAULT_DEBOUNCE`
+- [x] `redb` store + batched writer (500 kayıt / 60 sn) — `core/src/store.rs`, `DEFAULT_MAX_PENDING` / `DEFAULT_MAX_AGE`
+- [x] Birim testler: fixture JSONL ile parse, dedup, rotasyon
+- [x] `benches/` criterion iskeleti — `core/benches/parser.rs`; bütçe assert'leri `core/tests/perf.rs` (§5.5)
 
 ### Faz 2 — Codex Sağlayıcısı (ilk uçtan uca)
 
-- [ ] `discover_roots()` — macOS/Windows yol çözümü
-- [ ] `rollout-*.jsonl` parser, `token_count` + `rate_limits` çıkarımı
-- [ ] `rate_limits: null` fallback zinciri (en yeni non-null kaydı bul → yaşı hesapla → bayatsa L2)
-- [ ] `primary`/`secondary` → `QuotaWindow` eşlemesi
-- [ ] `Confidence` seviyesi doğru atanıyor mu — test
-- [ ] CLI doğrulama komutu: `cargo run -- debug codex` → terminalde tablo
+- [x] `discover_roots()` — macOS/Windows/Linux yol çözümü (`core/src/discovery.rs`, `core/src/paths.rs`)
+- [x] `rollout-*.jsonl` parser, `token_count` + `rate_limits` çıkarımı — `providers/src/codex.rs`
+- [x] `rate_limits: null` fallback zinciri (en yeni non-null kaydı bul → yaşı hesapla → bayatsa L2)
+- [x] `primary`/`secondary` → `QuotaWindow` eşlemesi — **anahtar adına göre değil, `window_minutes`'a göre** (§2.2)
+- [x] `Confidence` seviyesi doğru atanıyor mu — test
+- [x] CLI doğrulama komutu: `cargo run -- debug codex` → terminalde tablo
 
 ### Faz 3 — Tray + Panel (ilk görsel çıktı)
 
-- [ ] Tauri v2 kurulumu, capability whitelist (fs plugin frontend'e **verilmez**)
-- [ ] Tray ikonu + üç mod (glif / kompakt / şerit)
-- [ ] `tauri-plugin-positioner` ile popover konumlandırma
-- [ ] macOS: `NSPanel` davranışı — focus çalmama, dışarı tıklayınca kapanma
-- [ ] Tasarım token'ları CSS custom property olarak (`tokens.css`)
-- [ ] Martian Mono + Inter gömülü (lisans dosyaları `licenses/` altına)
-- [ ] Codex kartı render — henüz Horizon yok, basit bar
-- [ ] Dark + light tema
+- [x] Tauri v2 kurulumu, capability whitelist (fs plugin frontend'e **verilmez**) — CI'da `constraints` işi bunu zorluyor
+- [x] Tray ikonu + üç mod (glif / kompakt / şerit) — `app/src/tray.rs`, `TrayMode`
+- [x] `tauri-plugin-positioner` ile popover konumlandırma
+- [x] macOS: `NSPanel` davranışı — focus çalmama, dışarı tıklayınca kapanma
+- [x] Tasarım token'ları CSS custom property olarak (`tokens.css`)
+- [x] Martian Mono + Inter gömülü (lisans dosyaları `licenses/` altına)
+- [x] Codex kartı render — henüz Horizon yok, basit bar
+- [x] Dark + light tema
 
 ### Faz 4 — İmza Öğe: Horizon Şeridi
 
-- [ ] `Bucket` serisi Rust'tan gelir (5 dk çözünürlük, ring buffer)
-- [ ] Canvas veya SVG render — 60 fps değil, **1 fps yeter** (bilinçli karar, batarya)
-- [ ] Kayan pencere animasyonu: bloklar sola akar
-- [ ] "Geri dönen kapasite" hayalet katmanı
-- [ ] `prefers-reduced-motion` → animasyon kapalı, statik gösterim
-- [ ] Hover: o kovadaki token/maliyet tooltip'i
+- [x] `Bucket` serisi Rust'tan gelir (5 dk çözünürlük, ring buffer) — `core/src/horizon.rs`
+- [x] Canvas veya SVG render — SVG; kare hızı yok, şerit yalnızca snapshot geldiğinde hareket eder
+- [x] Kayan pencere animasyonu: bloklar sola akar — CSS transition, snapshot başına bir kez
+- [ ] ~~"Geri dönen kapasite" hayalet katmanı~~ — **kaldırıldı.** Yalnızca kayan pencerede doğru;
+      ölçülen iki sağlayıcı bu konuda anlaşmıyor (Codex keyfi bir anda sıfırlıyor). Şerit artık
+      yalnızca kanıtlayabildiği aralığı çiziyor.
+- [x] `prefers-reduced-motion` → animasyon kapalı, statik gösterim
+- [x] Hover: o kovadaki token/maliyet tooltip'i — eksen etiketleri yerinde değişir, kart oynamaz
 
 ### Faz 5 — Claude Code Sağlayıcısı
 
-- [ ] `~/.claude/projects/**/*.jsonl` parser
-- [ ] `(message.id, requestId)` dedup — **bu adım atlanırsa maliyet 2-3× şişer**
-- [ ] Kayan pencere motoru (5s + 7g)
-- [ ] Plan seçimi UI'ı (Pro / Max 5× / Max 20×) + tahmini tavan
-- [ ] LiteLLM fiyat tablosu gömülü (JSON, build-time)
-- [ ] "Tahmini" güven rozeti her yerde görünür
-- [ ] Faz 0'da çalışan bulunduysa: statusline veya OTLP ile L1'e yükseltme
+- [x] `~/.claude/projects/**/*.jsonl` parser — alt ajan ve workflow transkriptleri dâhil
+- [x] `(message.id, requestId)` dedup — gerçek loglarda 3412 satırın %45,8'i tekrardı
+- [x] Kayan pencere motoru (5s + 7g)
+- [x] Plan seçimi UI'ı (Pro / Max 5× / Max 20×) + tahmini tavan — varsayılan "seçilmedi", tahmin üretmez
+- [x] LiteLLM fiyat tablosu gömülü (JSON, build-time) — en uzun model öneki eşleşmesi, aile değil
+- [x] "Tahmini" güven rozeti her yerde görünür
+- [x] Faz 0'da çalışan bulunduysa: statusline ile L1'e yükseltme — OTLP reddedildi (§4), statusline shim opt-in
 
 ### Faz 6 — Sağlayıcı Genişletme
 
