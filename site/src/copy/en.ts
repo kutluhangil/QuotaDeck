@@ -23,8 +23,15 @@ export const en = {
     home: "Quota Deck",
     download: "Download",
     privacy: "Privacy",
-    /** Each language names itself, so someone who lands in the wrong one can get out. */
-    otherLanguage: { href: "/tr/", label: "Türkçe" },
+    skip: "Skip to content",
+    /**
+     * Both languages are always on screen and the current one is marked, so the way out of a
+     * language you cannot read is visible rather than something to be worked out. Each entry
+     * links to the same page in the other language, not to its home page.
+     */
+    language: { label: "Language", en: "English", tr: "Türkçe", enShort: "EN", trShort: "TR" },
+    /** The panel has the same three choices in its own settings; the words match. */
+    theme: { label: "Theme", system: "Follow the system", light: "Light", dark: "Dark" },
   },
 
   hero: {
@@ -77,6 +84,28 @@ export const en = {
     body: "Some tools write their real remaining percentage into their own logs. Some do not. The panel never blurs the two: a filled blue mark means the tool stated that number itself, and a hollow ring means we worked it out from token counts and the plan you picked. Nothing is guessed silently — a tool with no plan set shows no percentage at all.",
     measured: "measured — the tool reported this",
     estimated: "estimated — worked out on this machine",
+    /**
+     * The panel's row, drawn on the page in the same four columns and the same ink. Someone
+     * who reads it here can read the app before installing it — and it is drawn in CSS, so it
+     * follows whichever theme the reader picked rather than being a second screenshot.
+     */
+    anatomy: {
+      title: "One row, four columns",
+      lede: "A tool can report several windows at once. Each gets a row of the same shape, because a weekly ceiling stops the work exactly as hard as a five-hour one.",
+      sample: {
+        tool: "Codex",
+        window: "5-hour window",
+        percent: "78%",
+        countdown: "2h 14m",
+        caption: "Sample values. The bar takes colour from the level, and nothing else on the row does.",
+      },
+      columns: [
+        { label: "Source", body: "Filled means the tool stated this number. Hollow means it was worked out here." },
+        { label: "Level", body: "How full the window is. The one place colour is allowed to mean something." },
+        { label: "Used", body: "The same figure in numbers, set in tabular figures so it cannot shift the row as it ticks." },
+        { label: "Resets in", body: "When the window slides far enough for the work to continue." },
+      ],
+    },
   },
 
   privacy: {
@@ -189,6 +218,8 @@ export const en = {
     title: "Download",
     lede: "Nothing is released yet. The three build routes are done and run in CI; what is left needs a developer account and a machine of each kind, and neither is something a commit can produce.",
     statusPending: "Not released yet",
+    copyCommand: "Copy",
+    copiedCommand: "Copied",
     build: "Build it yourself",
     buildLede:
       "The repository builds on all three. Rust and Node are the only prerequisites; the Linux build additionally needs the WebKitGTK and AppIndicator development packages, which the script names.",

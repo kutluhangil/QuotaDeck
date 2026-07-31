@@ -1,6 +1,10 @@
 ---
 import type { Copy } from "../copy/en";
 import "../styles/site.css";
+// Raw text rather than a bundled module: this one runs inline and blocking, before the first
+// paint, so a reader who chose light does not get a dark page flashed at them first. Its hash
+// is pinned in `vercel.json`'s CSP and `scripts/check-csp.mjs` fails the build if they drift.
+import themeInit from "../scripts/theme-init.js?raw";
 
 interface Props {
   copy: Copy;
@@ -9,9 +13,31 @@ interface Props {
   title?: string;
 }
 
-const { copy, current, title } = Astro.props;
+const { copy, current = "home", title } = Astro.props;
 /** Turkish pages sit under `/tr/`; English is at the root. */
 const base = copy.lang === "tr" ? "/tr" : "";
+
+/**
+ * The same page in the given language. The language control has to land on the page the
+ * reader is on — sending someone from the privacy page to a Turkish home page makes them
+ * find their place again, which is the cost the control was supposed to remove.
+ */
+const pathIn = (lang: "en" | "tr") => {
+  const prefix = lang === "tr" ? "/tr" : "";
+  if (current === "home") return `${prefix}/`;
+  return `${prefix}/${current}/`;
+};
+
+const languages = [
+  { lang: "en" as const, label: copy.nav.language.en, short: copy.nav.language.enShort },
+  { lang: "tr" as const, label: copy.nav.language.tr, short: copy.nav.language.trShort },
+];
+
+const themes = [
+  { value: "system", label: copy.nav.theme.system },
+  { value: "light", label: copy.nav.theme.light },
+  { value: "dark", label: copy.nav.theme.dark },
+];
 ---
 
 <!doctype html>
@@ -24,19 +50,24 @@ const base = copy.lang === "tr" ? "/tr" : "";
     <meta property="og:title" content={title ?? copy.meta.title} />
     <meta property="og:description" content={copy.meta.description} />
     <meta property="og:type" content="website" />
-    {/* The panel is dark by default and the site follows it, but the tokens carry a light
-        theme too — telling the browser means form controls and scrollbars follow as well. */}
+    {/* The tokens carry both themes; telling the browser means form controls, scrollbars and
+        the space beyond the page follow whichever one is showing. */}
     <meta name="color-scheme" content="dark light" />
-    <link rel="alternate" hreflang="en" href={new URL("/", Astro.site)} />
-    <link rel="alternate" hreflang="tr" href={new URL("/tr/", Astro.site)} />
+    <link rel="alternate" hreflang="en" href={new URL(pathIn("en"), Astro.site)} />
+    <link rel="alternate" hreflang="tr" href={new URL(pathIn("tr"), Astro.site)} />
+    <link rel="alternate" hreflang="x-default" href={new URL(pathIn("en"), Astro.site)} />
+    <script is:inline set:html={themeInit} />
   </head>
   <body>
+    <a class="skip" href="#main">{copy.nav.skip}</a>
+
     <header class="site-head">
       <div class="wrap site-head__inner">
         <a class="site-head__mark" href={`${base}/`}>
           <span class="glyph" aria-hidden="true"></span>
           <strong>{copy.nav.home}</strong>
         </a>
+
         <nav class="site-head__nav" aria-label={copy.nav.home}>
           <a
             class="site-head__link"
@@ -52,16 +83,51 @@ const base = copy.lang === "tr" ? "/tr" : "";
           >
             {copy.nav.privacy}
           </a>
-          {/* Names itself in its own language: someone who landed in a language they cannot
-              read has to be able to find the way out of it. */}
-          <a class="site-head__lang" href={copy.nav.otherLanguage.href} lang={copy.lang === "tr" ? "en" : "tr"}>
-            {copy.nav.otherLanguage.label}
-          </a>
+
+          {/* Both languages stay on screen, the current one marked. A reader who landed in a
+              language they cannot read should not have to recognise a word to get out of it. */}
+          <div class="segmented" role="group" aria-label={copy.nav.language.label}>
+            {
+              languages.map((entry) =>
+                entry.lang === copy.lang ? (
+                  <span class="segmented__opt is-on" aria-current="true" lang={entry.lang}>
+                    <span aria-hidden="true">{entry.short}</span>
+                    <span class="sr-only">{entry.label}</span>
+                  </span>
+                ) : (
+                  <a class="segmented__opt" href={pathIn(entry.lang)} lang={entry.lang} hreflang={entry.lang}>
+                    <span aria-hidden="true">{entry.short}</span>
+                    <span class="sr-only">{entry.label}</span>
+                  </a>
+                ),
+              )
+            }
+          </div>
+
+          {/* Hidden until the inline script sets `data-js`: with no JavaScript the page still
+              has both themes, it just follows the system. A control that cannot act is worse
+              than no control. */}
+          <div class="segmented theme-switch" role="group" aria-label={copy.nav.theme.label}>
+            {
+              themes.map((entry) => (
+                <button
+                  type="button"
+                  class="segmented__opt"
+                  data-theme-set={entry.value}
+                  aria-pressed="false"
+                  title={entry.label}
+                >
+                  <span class={`theme-icon theme-icon--${entry.value}`} aria-hidden="true" />
+                  <span class="sr-only">{entry.label}</span>
+                </button>
+              ))
+            }
+          </div>
         </nav>
       </div>
     </header>
 
-    <main>
+    <main id="main">
       <slot />
     </main>
 
@@ -74,5 +140,72 @@ const base = copy.lang === "tr" ? "/tr" : "";
         </span>
       </div>
     </footer>
+
+    <script>
+      /**
+       * Everything the page needs after the first paint: which theme button is lit, what a
+       * click on one does, and the copy buttons on the download page. Bundled and served from
+       * this origin, so the CSP stays `script-src 'self'` plus the one pinned inline hash.
+       */
+      const KEY = "quotadeck-theme";
+      const root = document.documentElement;
+
+      const themeButtons = Array.from(
+        document.querySelectorAll<HTMLButtonElement>("[data-theme-set]"),
+      );
+
+      const read = (): string => {
+        try {
+          return localStorage.getItem(KEY) ?? "system";
+        } catch (error) {
+          // Storage blocked. The choice cannot be remembered, but it can still be made for
+          // this page view, so the control keeps working.
+          return "system";
+        }
+      };
+
+      const apply = (choice: string) => {
+        if (choice === "light" || choice === "dark") root.setAttribute("data-theme", choice);
+        else root.removeAttribute("data-theme");
+        for (const button of themeButtons) {
+          button.setAttribute("aria-pressed", String(button.dataset.themeSet === choice));
+        }
+      };
+
+      apply(read());
+
+      for (const button of themeButtons) {
+        button.addEventListener("click", () => {
+          const choice = button.dataset.themeSet ?? "system";
+          try {
+            if (choice === "system") localStorage.removeItem(KEY);
+            else localStorage.setItem(KEY, choice);
+          } catch (error) {
+            // Same as above: the theme still changes, it is just not remembered.
+          }
+          apply(choice);
+        });
+      }
+
+      // The build commands on the download page. The button is rendered hidden and only shown
+      // once this runs, because a copy button that cannot copy is a broken button.
+      for (const button of Array.from(
+        document.querySelectorAll<HTMLButtonElement>("[data-copy]"),
+      )) {
+        button.hidden = false;
+        button.addEventListener("click", async () => {
+          await navigator.clipboard.writeText(button.dataset.copy ?? "");
+          const done = button.dataset.copiedLabel;
+          const idle = button.dataset.idleLabel;
+          if (!done || !idle) return;
+          button.textContent = done;
+          button.classList.add("is-done");
+          window.setTimeout(() => {
+            button.textContent = idle;
+            button.classList.remove("is-done");
+          }, 1600);
+        });
+      }
+    </script>
   </body>
 </html>

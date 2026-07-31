@@ -21,7 +21,9 @@ export const tr: Copy = {
     home: "Quota Deck",
     download: "İndir",
     privacy: "Gizlilik",
-    otherLanguage: { href: "/", label: "English" },
+    skip: "İçeriğe geç",
+    language: { label: "Dil", en: "English", tr: "Türkçe", enShort: "EN", trShort: "TR" },
+    theme: { label: "Tema", system: "Sistemi izle", light: "Açık", dark: "Koyu" },
   },
 
   hero: {
@@ -74,6 +76,23 @@ export const tr: Copy = {
     body: "Bazı araçlar kalan yüzdelerini kendi günlüklerine yazıyor, bazıları yazmıyor. Panel bu ikisini asla birbirine karıştırmıyor: dolu mavi işaret sayıyı aracın kendisinin bildirdiği anlamına geliyor, içi boş halka ise token sayımından ve senin seçtiğin plandan hesaplandığı. Hiçbir şey sessizce varsayılmıyor — planı seçilmemiş bir araç hiç yüzde göstermiyor.",
     measured: "ölçüldü — araç bunu kendi bildirdi",
     estimated: "tahmin — bu makinede hesaplandı",
+    anatomy: {
+      title: "Bir satır, dört sütun",
+      lede: "Bir araç aynı anda birkaç pencere bildirebilir. Her biri aynı biçimde bir satır alır, çünkü haftalık bir tavan işi tam olarak beş saatlik biri kadar sert durduruyor.",
+      sample: {
+        tool: "Codex",
+        window: "5 saatlik pencere",
+        percent: "%78",
+        countdown: "2sa 14dk",
+        caption: "Örnek değerler. Rengi seviyeden yalnızca çubuk alıyor, satırdaki başka hiçbir şey almıyor.",
+      },
+      columns: [
+        { label: "Kaynak", body: "Dolu: bu sayıyı aracın kendisi bildirdi. İçi boş: burada hesaplandı." },
+        { label: "Seviye", body: "Pencerenin ne kadarı dolu. Rengin bir şey ifade etmesine izin verilen tek yer." },
+        { label: "Harcanan", body: "Aynı değer sayıyla. Tablo rakamlarıyla dizildi, yani ilerlerken satırı kaydıramaz." },
+        { label: "Sıfırlanma", body: "Pencerenin işin sürmesine yetecek kadar kayacağı an." },
+      ],
+    },
   },
 
   privacy: {
@@ -186,6 +205,8 @@ export const tr: Copy = {
     title: "İndir",
     lede: "Henüz hiçbir sürüm yayında değil. Üç derleme yolu da hazır ve CI'da çalışıyor; kalan kısım geliştirici hesabı ve her türden bir makine istiyor, ikisi de bir commit'in üretebileceği şeyler değil.",
     statusPending: "Henüz yayında değil",
+    copyCommand: "Kopyala",
+    copiedCommand: "Kopyalandı",
     build: "Kendin derle",
     buildLede:
       "Depo üçünde de derleniyor. Tek önkoşul Rust ve Node; Linux derlemesi ayrıca WebKitGTK ve AppIndicator geliştirme paketlerini istiyor, betik hangileri olduğunu yazıyor.",

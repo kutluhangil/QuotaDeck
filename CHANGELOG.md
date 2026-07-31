@@ -2,6 +2,16 @@
 
 ## 2026-07-31
 
+- Site: added a theme switch — follow the system, light, dark. The choice is stored and applied by a small inline script before the first paint, because a stored light theme applied one frame late is a dark page flashed at the reader, which is the exact thing the choice was made to avoid. The control is hidden until that script runs: with no JavaScript the page still has both themes, it just follows the system, and a control that cannot act is worse than no control.
+- Site: the language control now shows both languages with the current one marked, and each entry links to the same page in the other language rather than to its home page. The `hreflang` pair is per page for the same reason, with an `x-default` alongside.
+- Site: added the panel's row drawn in CSS — source mark, level bar, percentage, countdown — with the four columns named underneath. It is a diagram rather than a second screenshot so it takes the theme the reader picked, and the sample row is `aria-hidden` with the same four facts written out below it, so a screen reader gets the explanation instead of a recital of invented numbers.
+- Site: build commands on the download page gained a copy button. It renders hidden and the script reveals it, and the confirmation is the button changing its own word — not green, because the level ramp means one thing in this product and a copied command is not a quota.
+- Site: the CSP gained `script-src 'self'` plus a pinned sha256 for each inline script, and `scripts/check-csp.mjs` now runs after every build. It reads the emitted HTML rather than the source, so an edited script that was never re-pinned fails the build — a mismatch `astro dev` cannot show, since it serves no policy at all.
+- Site: the shadow under the screenshot became a token with a value per theme. A 45% black shadow reads as depth on the dark page and as dirt on the light one.
+- Site: added a skip link, and the header bar now wraps instead of clipping — it carries five controls before the content starts.
+- Version raised from `0.1.0` to `1.0.0` in `app/tauri.conf.json` and the workspace `Cargo.toml`. The App Store refuses a version number it has already accepted, so the first submission has to carry the number the product ships under.
+- `docs/RELEASE_CHECKLIST.md` now opens with the verified state of the code side — clippy, 240 tests, the four performance budgets with their measured figures, the panel typecheck, the site build and the six local routes — so the list of what is left is read against what is already proven.
+
 - Panel: every limit is now a row of its own — four aligned columns of source mark, bar, percentage and countdown. The worst window used to get a 28px display number and the rest a bare list, which made two windows of one limit look like two different kinds of fact. A weekly ceiling stops the work exactly as hard as a five-hour one.
 - Panel: the grid lives on the list rather than on each row, so the percentage column holds still down the whole card while the readings tick.
 - Panel: rows are ordered shortest window first. The backend's order is the order the provider wrote its log in, which is not an order.

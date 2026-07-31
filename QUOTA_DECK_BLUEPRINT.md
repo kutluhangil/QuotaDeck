@@ -969,6 +969,17 @@ mal olmuyor" olan bir ürünün sayfası 78 KB'lık bir paketle açılmamalı.
       derlemeyi kırıyor, `ui/src/i18n` ile aynı disiplin
 - [x] Yazı tipleri kendi sunucumuzdan. Ağ isteği atmadığını söyleyen bir sayfa, bunu söylerken
       bir font CDN'inden iki dosya istememeli — CI bunu grep'liyor
+- [x] Tema anahtarı: sistem / açık / koyu. Seçim `localStorage`'da, ilk boyamadan önce satır
+      içi bir betikle uygulanıyor — açık temayı seçmiş birine önce koyu bir sayfa çakmamak için.
+      JavaScript yoksa anahtar hiç görünmüyor, sayfa sistemi izlemeye devam ediyor
+- [x] Dil anahtarı: iki dil de ekranda, açık olan işaretli. Her giriş **aynı sayfanın** öbür
+      dildeki karşılığına gidiyor, ana sayfasına değil (`hreflang` çiftleri de sayfa başına)
+- [x] Panelin satırı sayfada CSS ile çiziliyor (kaynak / seviye / harcanan / sıfırlanma).
+      İkinci bir ekran görüntüsü değil, çünkü okurun seçtiği temayı izlemesi gerekiyor
+- [x] Sayfa artık betik taşıdığı için CSP'ye `script-src 'self'` + satır içi betiklerin
+      sha256'ları eklendi. `site/scripts/check-csp.mjs` derlemeden sonra **üretilen HTML'i**
+      okuyup her satır içi betiğin karşılığını `vercel.json`'da arıyor; bulamazsa derleme
+      kırılıyor — `astro dev` hiçbir politika sunmadığı için bu hata yalnızca üretimde çıkardı
 - [x] Ayrı `site.yml` workflow'u; app'in üç platformlu hattını bekletmiyor
 - [x] `vercel.json` — CSP `default-src 'none'`, sayfanın iddiasını başlıkla da tekrarlıyor
 - [ ] Alan adı ve Vercel projesi — **hesap gerekiyor**

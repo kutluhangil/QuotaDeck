@@ -25,7 +25,21 @@ const { copy } = Astro.props;
             </div>
             <p class="platform__detail">{item.detail}</p>
             <p class="platform__blocked">{item.blocked}</p>
-            <pre class="code">{item.command}</pre>
+            {/* The button starts hidden and the script shows it: a copy button on a page with
+                no scripting is a button that does nothing when pressed. */}
+            <div class="code-block">
+              <pre class="code">{item.command}</pre>
+              <button
+                type="button"
+                class="code-copy"
+                hidden
+                data-copy={item.command}
+                data-idle-label={copy.download.copyCommand}
+                data-copied-label={copy.download.copiedCommand}
+              >
+                {copy.download.copyCommand}
+              </button>
+            </div>
           </article>
         ))
       }

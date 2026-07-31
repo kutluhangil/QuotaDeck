@@ -21,6 +21,26 @@
   box-sizing: border-box;
 }
 
+/*
+ * Two things the panel has no use for and a page does: how far the screenshot is lifted off
+ * the page, and how heavy that shadow is allowed to be. A 45% black shadow reads as depth on
+ * the dark theme and as dirt on the light one, so it is a token with both values rather than
+ * one figure that only ever looked right in the theme it was written in.
+ */
+:root {
+  --lift: 0 24px 60px rgb(0 0 0 / 0.45);
+}
+
+:root[data-theme="light"] {
+  --lift: 0 18px 44px rgb(16 21 31 / 0.13);
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --lift: 0 18px 44px rgb(16 21 31 / 0.13);
+  }
+}
+
 html {
   /* Anchors from the nav land below the sticky bar rather than under it. */
   scroll-padding-block-start: 5rem;
@@ -75,10 +95,14 @@ a {
 
 .site-head__inner {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: var(--step-4);
-  block-size: 4rem;
+  gap: var(--step-3) var(--step-4);
+  /* Grows rather than clips: the bar now carries two switches as well as the two links, and a
+     narrow phone should wrap them onto a second line instead of pushing them off the edge. */
+  min-block-size: 4rem;
+  padding-block: var(--step-2);
 }
 
 .site-head__mark {
@@ -91,8 +115,9 @@ a {
 
 .site-head__nav {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: var(--step-4);
+  gap: var(--step-3) var(--step-4);
 }
 
 .site-head__link {
@@ -105,17 +130,131 @@ a {
   color: var(--ink-primary);
 }
 
-.site-head__lang {
-  color: var(--ink-tertiary);
-  text-decoration: none;
-  padding: var(--step-1) var(--step-2);
+/* ---- header controls ------------------------------------------------------ */
+
+/*
+ * One shape for both switches. Language and theme are the same kind of thing — a small set of
+ * exclusive choices with one of them currently true — so they are drawn the same way, and the
+ * lit segment is what tells the reader where they are.
+ */
+.segmented {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
   border: var(--hairline) solid var(--rule);
-  border-radius: var(--radius);
+  border-radius: 999px;
+  background: var(--surface-hull);
 }
 
-.site-head__lang:hover {
+.segmented__opt {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-inline-size: 1.75rem;
+  block-size: 1.75rem;
+  padding-inline: var(--step-2);
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  color: var(--ink-tertiary);
+  font-family: var(--face-data);
+  font-size: 0.6875rem;
+  letter-spacing: 0.04em;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.segmented__opt:hover {
   color: var(--ink-primary);
-  border-color: var(--ink-tertiary);
+}
+
+.segmented__opt.is-on,
+.segmented__opt[aria-pressed="true"] {
+  background: var(--surface-raised);
+  color: var(--ink-primary);
+}
+
+/* Only shown once the inline script has run — see `src/layouts/Base.astro`. */
+.theme-switch {
+  display: none;
+}
+
+:root[data-js] .theme-switch {
+  display: inline-flex;
+}
+
+/*
+ * Three icons rather than three words: the row is already carrying two nav links and a
+ * language pair, and "Follow the system" does not shorten in either language. Each one keeps
+ * its full name in the tooltip and in the accessible name.
+ */
+.theme-icon {
+  display: block;
+  inline-size: 12px;
+  block-size: 12px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+}
+
+/* Half lit, half not: the system decides which. */
+.theme-icon--system {
+  border: 1.5px solid currentcolor;
+  background: linear-gradient(to right, currentcolor 50%, transparent 50%);
+}
+
+/* A disc with four rays, drawn as offset shadows rather than shipped as an icon file. */
+.theme-icon--light {
+  inline-size: 7px;
+  block-size: 7px;
+  margin: 2.5px;
+  background: currentcolor;
+  box-shadow:
+    0 -6px 0 -2px currentcolor,
+    0 6px 0 -2px currentcolor,
+    -6px 0 0 -2px currentcolor,
+    6px 0 0 -2px currentcolor;
+}
+
+/* An inset shadow eats the disc from one side, which leaves a crescent. */
+.theme-icon--dark {
+  box-shadow: inset -3.5px -3.5px 0 0.5px currentcolor;
+  transform: rotate(-20deg);
+}
+
+/* ---- skip link ------------------------------------------------------------ */
+
+/*
+ * Off screen until it is focused. The header carries five controls before the content starts;
+ * a keyboard reader should not have to walk all of them on every page.
+ */
+.skip {
+  position: absolute;
+  inset-block-start: var(--step-2);
+  inset-inline-start: var(--step-2);
+  z-index: 20;
+  padding: var(--step-2) var(--step-3);
+  border: var(--hairline) solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--surface-raised);
+  color: var(--ink-primary);
+  text-decoration: none;
+  transform: translateY(-200%);
+}
+
+.skip:focus-visible {
+  transform: none;
+}
+
+.sr-only {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 /*
@@ -250,7 +389,7 @@ a {
   border-radius: 12px;
   border: var(--hairline) solid var(--rule);
   /* Lifted off the page the way the popover is lifted off the desktop. */
-  box-shadow: 0 24px 60px rgb(0 0 0 / 0.45);
+  box-shadow: var(--lift);
   margin-inline: auto;
 }
 
@@ -332,6 +471,153 @@ a {
 
 .mark--derived .mark__dot {
   border: 1.5px solid var(--ink-tertiary);
+}
+
+/* ---- the row, drawn ------------------------------------------------------- */
+
+.anatomy {
+  margin-block-start: clamp(2rem, 4vw, 3rem);
+}
+
+.anatomy__title {
+  margin: 0 0 var(--step-2);
+  font-size: 1.125rem;
+  letter-spacing: -0.01em;
+}
+
+.anatomy__row {
+  margin-block-start: var(--step-4);
+  padding: var(--step-4);
+  border: var(--hairline) solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--surface-hull);
+  /* The panel's own width is the honest frame for the panel's own row. */
+  max-inline-size: 34rem;
+}
+
+.anatomy__tool {
+  font-weight: 600;
+  font-size: 0.9375rem;
+}
+
+.anatomy__window {
+  display: block;
+  margin-block-start: 2px;
+  color: var(--ink-tertiary);
+  font-size: 0.8125rem;
+}
+
+/*
+ * The four columns, in the app's order and the app's proportions: the mark is a fixed 9px,
+ * the bar takes whatever is left, and the two figures are as wide as their longest value so
+ * that a row cannot reflow while it ticks.
+ */
+.anatomy__cells,
+.anatomy__legend {
+  display: grid;
+  /* Wider than the panel's own first column: this is a diagram, and the mark's column has to
+     be able to hold the word that names it. The rest keeps the app's proportions. */
+  grid-template-columns: 3.5rem minmax(6rem, 1fr) 3.25rem 4.25rem;
+  align-items: center;
+  gap: var(--step-3);
+}
+
+.anatomy__cells {
+  margin-block-start: var(--step-4);
+}
+
+.anatomy__source {
+  display: block;
+  inline-size: 9px;
+  block-size: 9px;
+  border-radius: 50%;
+  background: var(--measured);
+}
+
+.anatomy__track {
+  display: block;
+  block-size: 6px;
+  border-radius: 3px;
+  background: var(--track);
+  overflow: hidden;
+}
+
+.anatomy__fill {
+  display: block;
+  inline-size: 78%;
+  block-size: 100%;
+  border-radius: 3px;
+  background: var(--level-tight);
+}
+
+.anatomy__cell--percent,
+.anatomy__cell--countdown {
+  font-family: var(--face-data);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.8125rem;
+  text-align: end;
+}
+
+.anatomy__cell--percent {
+  color: var(--ink-primary);
+}
+
+.anatomy__cell--countdown {
+  color: var(--ink-tertiary);
+}
+
+/* Callout labels under the columns they name, each opening with the rule that points at it. */
+.anatomy__legend {
+  margin-block-start: var(--step-2);
+  align-items: start;
+}
+
+/* Each label sits the way its column's content sits, so the callout points at the right thing. */
+.anatomy__legend-item:nth-child(3),
+.anatomy__legend-item:nth-child(4) {
+  text-align: end;
+}
+
+.anatomy__legend-item {
+  padding-block-start: var(--step-2);
+  border-block-start: var(--hairline) solid var(--rule);
+  color: var(--ink-tertiary);
+  font-family: var(--face-ui);
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  line-height: 1.3;
+}
+
+.anatomy__keys {
+  margin: var(--step-5) 0 0;
+  display: grid;
+  gap: var(--step-4);
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+}
+
+.anatomy__key-term {
+  color: var(--ink-primary);
+  font-family: var(--face-ui);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.anatomy__key-body {
+  margin: var(--step-1) 0 0;
+  color: var(--ink-secondary);
+  font-size: 0.9375rem;
+}
+
+/* At phone width the four columns stop being readable as columns; the legend row goes and the
+   prose keys below carry the same four facts. */
+@media (max-width: 30rem) {
+  .anatomy__legend {
+    display: none;
+  }
 }
 
 /* ---- budget table -------------------------------------------------------- */
@@ -513,6 +799,46 @@ a {
   margin: 0;
   color: var(--ink-tertiary);
   font-size: 0.875rem;
+}
+
+/* The button sits beside the command rather than on top of it: these commands are longer than
+   the card is wide, and a floating button would cover the end of the one being copied. */
+.code-block {
+  display: flex;
+  align-items: center;
+  gap: var(--step-2);
+}
+
+.code-block .code {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+}
+
+.code-copy {
+  flex: 0 0 auto;
+  align-self: stretch;
+  padding: var(--step-1) var(--step-2);
+  border: var(--hairline) solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--surface-hull);
+  color: var(--ink-tertiary);
+  font-family: var(--face-ui);
+  font-size: 0.6875rem;
+  cursor: pointer;
+}
+
+.code-copy:hover {
+  color: var(--ink-primary);
+}
+
+/*
+ * The confirmation is the same button changing its word, not a toast: the button already has
+ * the reader's attention and the state it reports is its own. Deliberately not green — the
+ * level ramp means one thing in this product, and a copied command is not a quota.
+ */
+.code-copy.is-done {
+  color: var(--ink-primary);
+  border-color: var(--ink-tertiary);
 }
 
 .code {

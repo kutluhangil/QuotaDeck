@@ -64,6 +64,56 @@ const base = copy.lang === "tr" ? "/tr" : "";
         {copy.trust.estimated}
       </span>
     </div>
+
+    {/*
+      The panel's row, rebuilt in CSS rather than shipped as a second screenshot — it takes the
+      ink of whichever theme the reader picked, and it stays legible when the page is zoomed.
+      Marked `aria-hidden` and followed by the same four facts in prose: a screen reader gets
+      the explanation, not a recital of sample numbers.
+    */}
+    <div class="anatomy">
+      <h3 class="anatomy__title">{copy.trust.anatomy.title}</h3>
+      <p class="tile__body measure">{copy.trust.anatomy.lede}</p>
+
+      <div class="anatomy__row" aria-hidden="true">
+        <span class="anatomy__tool">{copy.trust.anatomy.sample.tool}</span>
+        <span class="anatomy__window">{copy.trust.anatomy.sample.window}</span>
+        <span class="anatomy__cells">
+          <span class="anatomy__cell anatomy__cell--source">
+            <span class="anatomy__source"></span>
+          </span>
+          <span class="anatomy__cell anatomy__cell--bar">
+            <span class="anatomy__track"><span class="anatomy__fill"></span></span>
+          </span>
+          <span class="anatomy__cell anatomy__cell--percent">
+            {copy.trust.anatomy.sample.percent}
+          </span>
+          <span class="anatomy__cell anatomy__cell--countdown">
+            {copy.trust.anatomy.sample.countdown}
+          </span>
+        </span>
+        <span class="anatomy__legend">
+          {
+            copy.trust.anatomy.columns.map((column) => (
+              <span class="anatomy__legend-item">{column.label}</span>
+            ))
+          }
+        </span>
+      </div>
+
+      <p class="note">{copy.trust.anatomy.sample.caption}</p>
+
+      <dl class="anatomy__keys">
+        {
+          copy.trust.anatomy.columns.map((column) => (
+            <div class="anatomy__key">
+              <dt class="anatomy__key-term">{column.label}</dt>
+              <dd class="anatomy__key-body">{column.body}</dd>
+            </div>
+          ))
+        }
+      </dl>
+    </div>
   </div>
 </section>
 
