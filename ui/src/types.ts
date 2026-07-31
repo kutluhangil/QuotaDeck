@@ -267,6 +267,31 @@ export function paceFor(
   );
 }
 
+/**
+ * Shortest window first.
+ *
+ * The order the backend emits is the order the provider wrote its log in, which is not an
+ * order. Reading down from the limit that bites in an hour to the one that bites next week is,
+ * and a fixed order means rows do not swap places as the readings change.
+ */
+export function sortedWindows(windows: QuotaWindow[]): QuotaWindow[] {
+  return [...windows].sort((a, b) => a.windowMinutes - b.windowMinutes);
+}
+
+/**
+ * The window to worry about first: the one closest to full.
+ *
+ * A provider can report several independent limits, so no fixed slot ordering is assumed. Both
+ * surfaces take their headline reading, their status word and their Horizon strip from this.
+ */
+export function worstWindow(windows: QuotaWindow[]): QuotaWindow | null {
+  const measurable = windows.filter((window) => window.usedPercent !== null);
+  if (measurable.length === 0) return windows[0] ?? null;
+  return measurable.reduce((worst, window) =>
+    (window.usedPercent ?? 0) > (worst.usedPercent ?? 0) ? window : worst,
+  );
+}
+
 /** Highest reported usage across every window a provider exposes. */
 export function peakPercent(snapshot: ProviderSnapshot): number | null {
   const values = snapshot.windows

@@ -25,6 +25,12 @@
 - Phase 12: added `.github/workflows/site.yml`, on its own path filter. A marketing page failing to render should not sit behind a three-platform Rust matrix, and a broken Rust build should not stop the page going out.
 - Phase 12: added `site/vercel.json` with `default-src 'none'`. The page's claim about the app, restated as a header about the page.
 
+- The dashboard now draws its windows with the panel's grammar: the same four-column rows, the same identity square, the same status word. Phase 12 changed one surface and left the other reading the same limits a different way, which is two things to learn for one fact. `sortedWindows` and `worstWindow` moved to `types.ts` so both surfaces share one implementation rather than two copies that drift.
+- The dashboard's window rows reuse `.card__rows` from `panel.css` rather than restating the grid, with only the column gaps widened for the card that has the room.
+- Blueprint Ek A: the acceptance criteria now say which are green and name the CI step that proves each. Six of eleven were already true and unticked, which made the list read as if nothing had been verified. The five that are left are the ones that need a human — a 72-hour soak, its memory reading, and VoiceOver.
+- Added `docs/RELEASE_CHECKLIST.md` — everything left that a commit cannot do, in the order it should be done, with the reason each one needs an account, a machine or a decision.
+- `app/MacAppStore.provisionprofile` is gitignored. It carries the Team ID and the chain it was issued against; `scripts/appstore.sh` reads it from the working tree, not from the repository.
+
 - Phase 11: Linux is the third desktop. No path resolution changed — `core/src/paths.rs` already followed XDG, and the provider roots (`~/.claude`, `~/.codex`, `~/.copilot`) are the same directories there.
 - Phase 11: the tray item is a different object on Linux. StatusNotifierItem carries no click event — Tauri documents `TrayIconEvent` as never emitted — so the left button opens the menu and the menu's own entry opens the panel. An indicator with no menu is frequently not drawn at all, so the menu is load-bearing twice over.
 - Phase 11: no icon geometry either, so nothing can be positioned under the item. The panel goes to the top right, where the indicator area sits on GNOME, Cinnamon, Budgie and XFCE. KDE's default tray is bottom right and the panel does not follow it — stated in `docs/STORE.md` §7 rather than left to be discovered.

@@ -19,7 +19,9 @@ import { useLocale, useStrings } from "../store";
 import {
   awaitingSetup,
   paceFor,
+  sortedWindows,
   totalTokens,
+  worstWindow,
   type Locale,
   type ProviderSnapshot,
   type QuotaWindow,
@@ -27,29 +29,6 @@ import {
 import { ConfidenceBadge } from "./ConfidenceBadge";
 import { HorizonStrip } from "./HorizonStrip";
 import { WindowRow } from "./WindowRow";
-
-/**
- * The window the user needs to worry about first: the one closest to full. A provider can
- * report several independent limits, so no fixed slot ordering is assumed.
- */
-function headlineWindow(windows: QuotaWindow[]): QuotaWindow | null {
-  const measurable = windows.filter((window) => window.usedPercent !== null);
-  if (measurable.length === 0) return windows[0] ?? null;
-  return measurable.reduce((worst, window) =>
-    (window.usedPercent ?? 0) > (worst.usedPercent ?? 0) ? window : worst,
-  );
-}
-
-/**
- * Shortest window first.
- *
- * The order the backend happens to emit is the order the provider wrote its log in, which is
- * not an order at all. Reading down from the limit that bites in an hour to the one that bites
- * next week is; and a fixed order means the rows do not swap places as the readings change.
- */
-function byWindowLength(windows: QuotaWindow[]): QuotaWindow[] {
-  return [...windows].sort((a, b) => a.windowMinutes - b.windowMinutes);
-}
 
 /**
  * When the headline window lets go, as a clock time.
@@ -114,8 +93,8 @@ export function ProviderCard({
   const locale: Locale = useLocale();
   const nameId = useId();
   const name = strings.provider[snapshot.id];
-  const headline = headlineWindow(snapshot.windows);
-  const rows = byWindowLength(snapshot.windows);
+  const headline = worstWindow(snapshot.windows);
+  const rows = sortedWindows(snapshot.windows);
   const pace = headline === null ? null : paceFor(snapshot, headline);
   const percent = headline?.usedPercent ?? null;
   // Logging, but with no reading to show: a plan pick or the status line fixes this, and

@@ -3,6 +3,9 @@
 What the listings say, why they say it that way, and the parts that need an account rather than
 a commit. Blueprint §8 is the decision record; this is the copy and the checklist.
 
+The account-side work is written out step by step, in order, in `docs/RELEASE_CHECKLIST.md`.
+This file is the reference it points at.
+
 ## 1. Naming — the rejection this avoids
 
 Apple's metadata rule is specific: putting another company's product name in your title to catch

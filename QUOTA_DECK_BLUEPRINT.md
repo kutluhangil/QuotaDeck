@@ -1080,14 +1080,18 @@ Faz 0 ve her yeni sağlayıcı eklerken başvurulacak kanonik kaynaklar:
 
 ## Ek A — Kabul Kriterleri (v1.0 yayın öncesi)
 
-- [ ] Faz 0'da tespit edilen tüm kurulu araçlar doğru algılanıyor
-- [ ] En az 1 sağlayıcıda gerçek L1 verisi gösteriliyor
-- [ ] Perf bütçesinin tamamı CI'da yeşil
-- [ ] Sandbox içinde 72 saat kesintisiz çalışma testi geçti
-- [ ] Bellek 72 saat sonunda başlangıç değerinin %20'sinden fazla artmamış (sızıntı yok)
-- [ ] Kod tabanında hiçbir HTTP istemcisi bağımlılığı yok (`cargo tree | grep -E 'reqwest|hyper|ureq'` boş)
-- [ ] Hiçbir auth/credential dosyası referansı yok (`rg -i 'auth\.json|credentials|keychain'` boş)
-- [ ] TR ve EN yerelleştirmesi tam
-- [ ] Demo mode satın alma olmadan tüm arayüzü gösteriyor
-- [ ] Marka taraması: uygulama adı, alt başlık, ikon ve ekran görüntülerinde üçüncü parti marka yok
-- [ ] Light ve dark tema, `prefers-reduced-motion` ve VoiceOver test edildi
+Otomatik doğrulananlar CI adımını da yazıyor; kalanlar elle yapılacak ve
+`docs/RELEASE_CHECKLIST.md`'de kimin yapacağıyla birlikte duruyor.
+
+- [x] Faz 0'da tespit edilen kurulu araçlar doğru algılanıyor — üçü de (`providers/tests/real_logs.rs`)
+- [x] En az 1 sağlayıcıda gerçek L1 verisi gösteriliyor — Codex, `rate_limits` alanından
+- [x] Perf bütçesinin tamamı CI'da yeşil — `Performance budget` adımı, dört bütçe de assertion
+- [ ] Sandbox içinde 72 saat kesintisiz çalışma testi geçti — **elle, imzalı derleme gerekiyor**
+- [ ] Bellek 72 saat sonunda başlangıç değerinin %20'sinden fazla artmamış — aynı koşuda ölçülecek
+- [x] Kod tabanında hiçbir HTTP istemcisi bağımlılığı yok — `constraints / No HTTP client dependency`
+- [x] Hiçbir auth/credential dosyası referansı yok — `constraints / No credential or auth-file access`
+- [x] TR ve EN yerelleştirmesi tam — anahtar ve arite karşılaştırması test ediyor (`ui/src/i18n/i18n.test.ts`)
+- [x] Demo mode satın alma olmadan tüm arayüzü gösteriyor — üç sağlayıcı, ölçülmüş + tahmin + sessiz
+- [x] Marka taraması: ad, alt başlık, ikon ve ekran görüntülerinde üçüncü parti marka yok — `docs/STORE.md` §1
+- [ ] Light ve dark tema, `prefers-reduced-motion` ve VoiceOver test edildi — tema ve hareket doğrulandı;
+      **VoiceOver elle kalıyor**

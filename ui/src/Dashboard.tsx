@@ -3,8 +3,18 @@ import { useEffect, useId, useRef, useState } from "react";
 import { ConfidenceBadge } from "./components/ConfidenceBadge";
 import { EmptyState } from "./components/EmptyState";
 import { Heatmap } from "./components/Heatmap";
-import { PaceBadge } from "./components/PaceBadge";
-import { formatCost, formatPercent, formatTokens, windowLabel } from "./format";
+import { WindowRow } from "./components/WindowRow";
+import {
+  formatCost,
+  formatDuration,
+  formatPercent,
+  formatSpan,
+  formatTokens,
+  levelFor,
+  levelForRisk,
+  secondsUntil,
+  windowLabel,
+} from "./format";
 import {
   dailyCells,
   historyFor,
@@ -14,8 +24,9 @@ import {
   RANGE_DAYS,
   type Range,
 } from "./history";
+import { identityHue } from "./identity";
 import { useDeck, useDeckState, useHistory, useLocale, useStrings } from "./store";
-import { paceFor, type ProviderSnapshot } from "./types";
+import { paceFor, sortedWindows, worstWindow, type ProviderSnapshot } from "./types";
 
 const ranges: Range[] = ["day", "week", "month"];
 
@@ -94,31 +105,57 @@ function ProviderPanel({
   const sum = totals(inRange(hours, range, nowSeconds));
   const cells = dailyCells(hours, HEATMAP_DAYS, nowSeconds);
 
+  const name = strings.provider[snapshot.id];
+  const headline = worstWindow(snapshot.windows);
+  const headlinePace = headline === null ? null : paceFor(snapshot, headline);
+  const level = headline?.usedPercent == null ? null : levelFor(headline.usedPercent);
+
   return (
     <article className="board__card" aria-labelledby={nameId}>
       <header className="board__card-head">
         <h2 className="type-label board__name" id={nameId}>
-          {strings.provider[snapshot.id]}
+          <span className="card__dot" data-hue={identityHue(snapshot.id)} aria-hidden="true" />
+          {name}
         </h2>
+        <span className="card__head-right">
+          {headline && <ConfidenceBadge confidence={headline.confidence} />}
+          {level && (
+            <span className="type-caption card__status" data-level={level}>
+              {strings.status[level]}
+            </span>
+          )}
+        </span>
       </header>
 
       {snapshot.windows.length > 0 ? (
-        <ul className="board__windows">
-          {snapshot.windows.map((window) => {
-            const pace = paceFor(snapshot, window);
+        /* The same four columns the panel draws. Two surfaces reading the same limits in two
+           different grammars is two things to learn for one fact. */
+        <ul className="card__rows" role="list" aria-label={strings.a11y.windows(name)}>
+          {sortedWindows(snapshot.windows).map((window) => {
+            const seconds = secondsUntil(window.resetsAt, nowSeconds * 1000);
             return (
-              <li key={`${window.limitId}-${window.windowMinutes}`} className="board__window">
-                <span className="type-caption board__window-label">
-                  {windowLabel(window, strings)}
-                </span>
-                <span className="type-metric board__window-value">
-                  {window.usedPercent === null ? "—" : formatPercent(window.usedPercent, locale)}
-                </span>
-                {pace ? <PaceBadge pace={pace} /> : <span />}
-                <ConfidenceBadge confidence={window.confidence} />
-              </li>
+              <WindowRow
+                key={`${window.limitId}-${window.windowMinutes}`}
+                label={formatSpan(window.windowMinutes * 60, strings)}
+                spokenLabel={windowLabel(window, strings)}
+                percent={window.usedPercent}
+                confidence={window.confidence}
+                meta={seconds === null ? "" : formatDuration(seconds, strings)}
+              />
             );
           })}
+          {headlinePace && (
+            <WindowRow
+              kind="pace"
+              label={strings.pace.rowLabel}
+              spokenLabel={strings.pace.label(
+                formatPercent(headlinePace.projectedPercent, locale),
+              )}
+              percent={headlinePace.projectedPercent}
+              level={levelForRisk(headlinePace.risk)}
+              meta={strings.pace.risk[headlinePace.risk]}
+            />
+          )}
         </ul>
       ) : (
         <p className="type-body board__quiet">

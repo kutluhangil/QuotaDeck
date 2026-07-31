@@ -141,11 +141,16 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: var(--step-3);
 }
 
 .board__name {
   color: var(--ink-secondary);
   margin: 0;
+  /* Carries the identity square, the same way the panel's card heading does. */
+  display: flex;
+  align-items: center;
+  gap: var(--step-2);
 }
 
 .board__quiet {
@@ -153,29 +158,14 @@
   margin: 0;
 }
 
-.board__windows {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--step-2);
-}
-
-/* The dashboard has the width the panel does not: every window gets its own forecast here. */
-.board__window {
-  display: grid;
-  grid-template-columns: 1fr auto auto auto;
-  align-items: center;
-  gap: var(--step-3);
-}
-
-.board__window-label {
-  color: var(--ink-tertiary);
-}
-
-.board__window-value {
-  color: var(--ink-primary);
+/*
+ * Window rows are `.card__rows` from `panel.css`, shared rather than restated — one grammar for
+ * one fact, on both surfaces. The card here is wider, so the label and countdown columns get
+ * the room the 380px panel could not give them.
+ */
+.board__card .card__rows {
+  column-gap: var(--step-3);
+  row-gap: var(--step-2);
 }
 
 .board__totals {
