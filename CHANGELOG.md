@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-07-31
+
+- Phase 11: Linux is the third desktop. No path resolution changed — `core/src/paths.rs` already followed XDG, and the provider roots (`~/.claude`, `~/.codex`, `~/.copilot`) are the same directories there.
+- Phase 11: the tray item is a different object on Linux. StatusNotifierItem carries no click event — Tauri documents `TrayIconEvent` as never emitted — so the left button opens the menu and the menu's own entry opens the panel. An indicator with no menu is frequently not drawn at all, so the menu is load-bearing twice over.
+- Phase 11: no icon geometry either, so nothing can be positioned under the item. The panel goes to the top right, where the indicator area sits on GNOME, Cinnamon, Budgie and XFCE. KDE's default tray is bottom right and the panel does not follow it — stated in `docs/STORE.md` §7 rather than left to be discovered.
+- Phase 11: compact mode no longer drops the glyph off macOS. Linux only draws a tray title when an icon anchors it, and Windows does not draw one at all — dropping the icon left an empty Windows tray item, which is a bug that shipped in Phase 10.
+- Phase 11: the tray glyph's monochrome ink argument now covers Linux as well. Most desktops ship a dark panel, so the same mid grey holds; unlike Windows there is not even a `SystemUsesLightTheme` equivalent to read.
+- Phase 11: added `ui/src/platform.ts`. Two catalogue strings name the surface the tray item lives in, and the three platforms call it three different things — a menu bar, the taskbar, a tray. Read from the user agent rather than through `@tauri-apps/plugin-os`: a dependency, a capability entry and an IPC round trip to learn one word.
+- Phase 11: both catalogues take the platform as a parameter for those two strings, so each language writes its own word rather than receiving an English one interpolated into a translated sentence.
+- Phase 11: added `app/tauri.linux.conf.json` and `scripts/linux.sh` — `.deb` and `.rpm` for the two package-manager families, an AppImage for the distributions covered by neither. Runtime dependencies are declared, `libayatana-appindicator3-1` included, because without it the item is not drawn.
+- Phase 11: no Flathub or Snap submission. Both want an account and a review queue, and neither buys anything here — there is no sandbox grant to declare, no network capability to justify, and no update channel the package managers do not already provide.
+- Phase 11: `scripts/linux.sh` greps `cargo tree` for an HTTP client and fails the build if one is there. On macOS the entitlement file enforces the listing's privacy claim; on Linux nothing does, so the dependency tree is what stands in for it.
+- Phase 11: CI runs `ubuntu-latest` in the matrix — compile, clippy, tests, perf budget. Hand verification on a real desktop session still needs a Linux machine and stays open in the blueprint.
+
 ## 2026-07-30
 
 - Perf gate: added `core/tests/perf.rs`. The criterion bench measured the two hot paths and asserted nothing, and CI only compiled it — so blueprint §5.5's "red means no merge" was a sentence rather than a gate. All four budgets are now assertions: cold parse of a 160 MB corpus in 65 ms against 3000, a tick over 500 established cursors in 3 ms against 20, an hour of watching costing 65 KB against 5 MB, and 7.3 MB peak resident against 60.

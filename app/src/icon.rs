@@ -8,11 +8,12 @@
 //! appearances. Only above the threshold does it become a coloured image. A menu bar item
 //! that is permanently lit is the reason people remove menu bar apps.
 //!
-//! Windows has no template images. A black glyph there is invisible against the dark taskbar
-//! everyone runs by default, so the monochrome ink is a mid grey that holds against both
-//! taskbar themes. Reading `SystemUsesLightTheme` out of the registry would be exact, and it
-//! would cost a Windows API dependency to move a glyph that is sixteen pixels tall between two
-//! greys — [`MONOCHROME_RGB`] is the honest trade.
+//! Only macOS has template images. A black glyph is invisible against the dark Windows taskbar
+//! everyone runs by default, and against the dark panel most Linux desktops ship, so the
+//! monochrome ink is a mid grey that holds against either. Reading `SystemUsesLightTheme` out
+//! of the registry would be exact on Windows, and it would cost a Windows API dependency to
+//! move a glyph that is sixteen pixels tall between two greys — [`MONOCHROME_RGB`] is the
+//! honest trade, and Linux has no equivalent to read in the first place.
 
 /// Above this, the glyph stops being monochrome.
 pub const CRITICAL_PERCENT: f32 = 85.0;

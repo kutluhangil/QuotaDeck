@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import type { HostPlatform } from "../platform";
 import type { ProviderId } from "../types";
 import { en } from "./en";
 import { tr } from "./tr";
@@ -13,6 +14,8 @@ import { LANGUAGES, catalogueFor, intlLocale, languageFor } from "./index";
  * disappears from the sentence. TypeScript alone does not catch that — `(a, b) => "x"` is
  * assignable to a two-argument signature with either arity written out.
  */
+const PLATFORMS: HostPlatform[] = ["macos", "windows", "linux"];
+
 function shape(value: unknown, path = ""): Map<string, string> {
   const leaves = new Map<string, string>();
   if (typeof value === "function") {
@@ -50,6 +53,24 @@ describe("catalogues", () => {
   it("leave nothing blank", () => {
     for (const [path, value] of Object.entries(flatten(tr))) {
       expect(value.trim(), `tr.${path} is empty`).not.toBe("");
+    }
+  });
+
+  it("call the tray's surface what each desktop calls it", () => {
+    // The three platforms name this strip three different things, and the copy is written
+    // around the noun. A catalogue that returned the same word for all three would read as
+    // "Menu bar" on a machine that has no menu bar.
+    for (const catalogue of [en, tr]) {
+      const surfaces = PLATFORMS.map((platform) => catalogue.settings.trayTitle(platform));
+      expect(new Set(surfaces).size, `${surfaces.join(", ")} are not three distinct names`).toBe(
+        PLATFORMS.length,
+      );
+      // The sample-deck sentence names the same surface, and it is the one place where the
+      // noun sits inside a sentence rather than on its own.
+      for (const platform of PLATFORMS) {
+        const surface = catalogue.settings.trayTitle(platform).toLowerCase();
+        expect(catalogue.settings.demoHint(platform).toLowerCase()).toContain(surface);
+      }
     }
   });
 

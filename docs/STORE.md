@@ -124,7 +124,33 @@ Windows this is a manifest extension rather than a registry write, added to the 
 they expect to control it, and an app that adds itself to login without asking is one people
 distrust. Not yet verified against a real MSIX build — that needs a Windows machine.
 
-## 7. Screenshots
+## 7. Linux
+
+No store. Flathub and Snap each want an account and a review queue, and neither buys anything
+here: there is no sandbox grant to declare, no network capability to justify, and no update
+channel the two package managers do not already provide. `scripts/linux.sh` builds all three
+formats — `.deb` and `.rpm` for the families that install and update through a package manager,
+and an AppImage as the single file that runs on a distribution covered by neither, without root.
+
+Runtime dependencies are declared in `app/tauri.linux.conf.json`: `libwebkit2gtk-4.1-0` for the
+webview, `libgtk-3-0`, and `libayatana-appindicator3-1` for the tray. The last one is not
+optional — without it the item is not drawn at all on desktops using the StatusNotifierItem
+protocol, which is most of them.
+
+Three platform differences the listing should not promise away:
+
+- **No click on the tray icon.** The protocol carries no click event, so the left button opens
+  the menu and the menu's first entry opens the panel.
+- **No icon geometry.** Nothing can be positioned under the item, so the panel is placed at the
+  top right — where the indicator area sits on GNOME, Cinnamon, Budgie and XFCE. KDE's default
+  tray is bottom right, and the panel does not follow it.
+- **Transparency needs a compositor.** Without one the panel's rounded corners fall back to
+  opaque. Every current desktop composites by default; a bare window manager does not.
+
+Verified in CI on `ubuntu-latest` (compile, clippy, tests, perf budget). Not yet run by hand on
+a real desktop session — that needs a Linux machine.
+
+## 8. Screenshots
 
 Six per platform, all from the sample deck so no real usage or path is shown:
 

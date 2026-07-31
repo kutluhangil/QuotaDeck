@@ -42,7 +42,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, windows-latest]
+        os: [macos-latest, windows-latest, ubuntu-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v5
@@ -50,6 +50,17 @@ jobs:
         with:
           components: clippy, rustfmt
       - uses: Swatinem/rust-cache@v2
+
+      # The webview and the tray are system libraries on Linux, so nothing here compiles
+      # without them. `libayatana-appindicator3-dev` is the tray: without it the item is not
+      # drawn at all on the desktops that use the StatusNotifierItem protocol.
+      - name: Linux system dependencies
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev \
+            librsvg2-dev patchelf
 
       # The Tauri build embeds the panel, so the Rust crates cannot compile without it.
       - name: Fetch panel build

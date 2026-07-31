@@ -906,7 +906,25 @@ o yüzden bunlar gerçek fixture edinilene kadar açık kalıyor (§10).
 - [x] Startup task manifest — `docs/STORE.md` §6, `Enabled="false"` ile
 - [ ] Partner Center kaydı ve gönderim — **Microsoft hesabı gerekiyor**
 
-### Faz 11 — v1.1 (yayın sonrası)
+### Faz 11 — Linux
+
+Üçüncü masaüstü. Mağaza yok: Flathub ve Snap'in ikisi de hesap ve inceleme kuyruğu istiyor,
+ikisi de burada bir şey satın almıyor — verilecek bir sandbox izni, gerekçelendirilecek bir ağ
+yeteneği ve paket yöneticisinin zaten sağlamadığı bir güncelleme kanalı yok.
+
+- [x] XDG yol çözümü (`XDG_DATA_HOME`, `~/.local/share`) — `core/src/paths.rs`, zaten vardı
+- [x] Sağlayıcı kökleri Linux'ta aynı (`~/.claude`, `~/.codex`, `~/.copilot`) — değişiklik gerekmedi
+- [x] Tray: sol tık menüyü açar. StatusNotifierItem tıklama olayı taşımıyor (`TrayIconEvent`
+      Linux'ta hiç yayılmıyor), menü de ikonun çizilmesi için zaten zorunlu
+- [x] Kompakt mod ikonu bırakmıyor — Linux başlığı ikon olmadan göstermiyor, Windows hiç
+      göstermiyor. İkonu düşürmek Windows'ta boş bir tepsi öğesi bırakıyordu (bu turda düzeltildi)
+- [x] Panel konumu: ikon geometrisi yok, sağ üste yerleşiyor (§ `docs/STORE.md` §7)
+- [x] `deb` / `rpm` / `appimage` paketleri — `app/tauri.linux.conf.json`, `scripts/linux.sh`
+- [x] Çalışma zamanı bağımlılıkları paketlerde beyan edildi (`libayatana-appindicator3-1` dâhil)
+- [x] CI'da `ubuntu-latest` — derleme, clippy, test, perf bütçesi
+- [ ] Gerçek bir masaüstü oturumunda elle doğrulama — **Linux makine gerekiyor**
+
+### Faz 12 — v1.1 (yayın sonrası)
 
 - [ ] Kaçak ajan tespiti (§6.3)
 - [ ] Antigravity sağlayıcısı — deneysel bayrak, varsayılan kapalı

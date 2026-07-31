@@ -1,5 +1,6 @@
 import { formatClock } from "../format";
 import type { Catalogue } from "../i18n";
+import { hostPlatform } from "../platform";
 import { useDeck, useLocale, useStrings } from "../store";
 import { DEFAULT_THRESHOLDS, thresholdsFor } from "../types";
 import type { Locale, ProviderId, ProviderPlans, Settings, TrayMode } from "../types";
@@ -207,7 +208,7 @@ function DemoGroup() {
           </label>
         ))}
       </div>
-      <p className="type-caption settings__hint">{strings.settings.demoHint}</p>
+      <p className="type-caption settings__hint">{strings.settings.demoHint(hostPlatform())}</p>
     </fieldset>
   );
 }
@@ -274,7 +275,9 @@ export function SettingsView({ now }: { now: number }) {
   return (
     <div className="settings">
       <fieldset className="settings__group">
-        <legend className="type-label settings__legend">{strings.settings.trayTitle}</legend>
+        <legend className="type-label settings__legend">
+          {strings.settings.trayTitle(hostPlatform())}
+        </legend>
         {trayModes(strings).map(({ mode, label, hint }) => (
           <label key={mode} className="settings__option">
             <input

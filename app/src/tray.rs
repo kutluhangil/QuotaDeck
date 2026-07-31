@@ -3,6 +3,15 @@
 //! Left click toggles the panel, right click opens the only menu the app has. With the
 //! accessory activation policy there is no dock icon, so that menu is the sole way to quit
 //! and it must always be reachable.
+//!
+//! # Linux is a different item
+//!
+//! The StatusNotifierItem protocol behind the Linux tray has no click events — Tauri documents
+//! `TrayIconEvent` as never emitted there — and no geometry, so nothing can be positioned
+//! relative to the icon. Left click opens the menu instead, the menu's own entry opens the
+//! panel, and the panel is placed against the screen rather than against the item. The menu is
+//! also load-bearing for a second reason: an indicator with no menu is frequently not drawn at
+//! all.
 
 use quotadeck_core::horizon;
 use tauri::image::Image;
@@ -18,6 +27,12 @@ use crate::icon;
 const TRAY_ID: &str = "deck";
 const PANEL: &str = "panel";
 
+/// Whether the platform tells us the icon was clicked. Only the two that have their own tray
+/// API do; everything else goes through StatusNotifierItem, which carries neither clicks nor
+/// geometry, and there the left button has to fall back to the menu — the alternative is an
+/// item that cannot open anything.
+const CLICK_TOGGLES_PANEL: bool = cfg!(any(target_os = "macos", target_os = "windows"));
+
 pub fn install<R: Runtime>(app: &AppHandle<R>, deck: Deck) -> tauri::Result<()> {
     let menu = build_menu(app, deck.settings().locale.language())?;
 
@@ -26,8 +41,9 @@ pub fn install<R: Runtime>(app: &AppHandle<R>, deck: Deck) -> tauri::Result<()> 
         .icon(glyph_image(&icon::bar(None)))
         .icon_as_template(true)
         .menu(&menu)
-        // The menu belongs to the right button; the left button is the panel toggle.
-        .show_menu_on_left_click(false)
+        // The menu belongs to the right button; the left button is the panel toggle — except
+        // where the left button reports nothing, and the menu has to answer both.
+        .show_menu_on_left_click(!CLICK_TOGGLES_PANEL)
         .on_menu_event(|app, event| match event.id().as_ref() {
             "open" => show_panel(app),
             "quit" => app.exit(0),
@@ -82,15 +98,29 @@ pub fn refresh<R: Runtime>(app: &AppHandle<R>, state: &DeckState, settings: Sett
     let peak = state.peak_percent();
 
     match settings.tray_mode {
-        TrayMode::Compact => {
-            // Text only: a number next to a bar saying the same thing is one thing too many.
-            let title = peak.map(|percent| format!("{}%", percent.round()));
-            let _ = tray.set_title(title.as_deref());
-            let _ = tray.set_icon(None);
-        }
+        TrayMode::Compact => set_compact(&tray, peak),
         TrayMode::Glyph => set_icon(&tray, &icon::bar(peak)),
         TrayMode::Strip => set_icon(&tray, &strip_for(state)),
     }
+}
+
+/// The reading as text rather than as a shape.
+///
+/// macOS draws the title itself, so the glyph comes off and a number next to a bar saying the
+/// same thing is avoided. The other two platforms cannot do that: Linux only draws a title when
+/// an icon is there to anchor it, and Windows does not draw one at all. Keeping the glyph on
+/// both means compact reads as glyph-plus-number on Linux and as plain glyph on Windows —
+/// where dropping the icon would have left an item with nothing in it.
+fn set_compact<R: Runtime>(tray: &tauri::tray::TrayIcon<R>, peak: Option<f32>) {
+    let title = peak.map(|percent| format!("{}%", percent.round()));
+    if cfg!(target_os = "macos") {
+        let _ = tray.set_icon(None);
+    } else {
+        let glyph = icon::bar(peak);
+        let _ = tray.set_icon_as_template(glyph.template);
+        let _ = tray.set_icon(Some(glyph_image(&glyph)));
+    }
+    let _ = tray.set_title(title.as_deref());
 }
 
 /// Fold the headline provider's series into the tray's column count.
@@ -147,8 +177,14 @@ fn place_and_show<R: Runtime>(app: &AppHandle<R>) {
     let Some(window) = app.get_webview_window(PANEL) else {
         return;
     };
-    // Under the tray item, not wherever the window happened to be last.
-    let _ = window.move_window(Position::TrayBottomCenter);
+    // Under the tray item, not wherever the window happened to be last. Linux reports no
+    // geometry for the item, so there is nothing to be under and the panel goes to the corner
+    // the indicator area occupies on the desktops that ship one.
+    let _ = window.move_window(if CLICK_TOGGLES_PANEL {
+        Position::TrayBottomCenter
+    } else {
+        Position::TopRight
+    });
     let _ = window.show();
     // Focus is what makes the click-away dismissal work: without it the window never
     // receives the blur that hides it.

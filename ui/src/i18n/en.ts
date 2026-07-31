@@ -9,7 +9,25 @@
  * viewer's own conventions — see `intlLocale` in `./index.ts`.
  */
 
+import type { HostPlatform } from "../platform";
 import type { PaceRisk, ProviderId, UnavailableReason, WindowKind } from "../types";
+
+/**
+ * What this desktop calls the strip the tray item lives in.
+ *
+ * Each catalogue writes its own, because the word has to fit the sentence around it — English
+ * wants it lowercase mid-sentence and capitalised as a heading, and the next language may want
+ * a suffix on it.
+ */
+const surfaces: Record<HostPlatform, string> = {
+  macos: "menu bar",
+  windows: "taskbar",
+  linux: "tray",
+};
+
+function sentenceCase(value: string): string {
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
 
 const planHintDefault =
   "Used to estimate how full your limits are. Nothing is sent anywhere to work it out.";
@@ -191,7 +209,7 @@ export const en = {
 
   settings: {
     title: "Settings",
-    trayTitle: "Menu bar",
+    trayTitle: (platform: HostPlatform) => sentenceCase(surfaces[platform]),
     trayGlyph: "Glyph",
     trayGlyphHint: "A single bar. No numbers, no colour until it matters.",
     trayCompact: "Percentage",
@@ -274,8 +292,8 @@ export const en = {
     demoTitle: "Sample deck",
     demoOn: "Show a sample",
     demoOff: "Show my machine",
-    demoHint:
-      "Realistic but invented figures, so the app can be seen working before any tool is installed. The menu bar keeps reporting your real usage.",
+    demoHint: (platform: HostPlatform) =>
+      `Realistic but invented figures, so the app can be seen working before any tool is installed. The ${surfaces[platform]} keeps reporting your real usage.`,
   },
 
   /**

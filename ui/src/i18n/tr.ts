@@ -5,8 +5,19 @@
  * Product names — Quota Deck, Claude Code, Codex — stay in their original form.
  */
 
+import type { HostPlatform } from "../platform";
 import type { ProviderId } from "../types";
 import type { Catalogue } from "./en";
+
+/**
+ * Bu masaüstünün tepsi öğesinin durduğu şeride verdiği ad. Cümlenin başında da geçtiği için
+ * hepsi ek almadan, yalın hâlde yazıldı.
+ */
+const surfaces: Record<HostPlatform, string> = {
+  macos: "Menü çubuğu",
+  windows: "Görev çubuğu",
+  linux: "Tepsi",
+};
 
 const planHintDefault =
   "Limitlerinin ne kadar dolduğunu tahmin etmek için kullanılır. Bunu hesaplamak için hiçbir yere bir şey gönderilmez.";
@@ -151,7 +162,7 @@ export const tr: Catalogue = {
 
   settings: {
     title: "Ayarlar",
-    trayTitle: "Menü çubuğu",
+    trayTitle: (platform: HostPlatform) => surfaces[platform],
     trayGlyph: "Simge",
     trayGlyphHint: "Tek bir çubuk. Gerekmedikçe ne sayı ne renk.",
     trayCompact: "Yüzde",
@@ -217,8 +228,8 @@ export const tr: Catalogue = {
     demoTitle: "Örnek veri",
     demoOn: "Örnek göster",
     demoOff: "Kendi makinemi göster",
-    demoHint:
-      "Gerçekçi ama uydurma sayılar; hiçbir araç kurulmadan uygulamanın nasıl çalıştığı görülebilsin. Menü çubuğu gerçek kullanımını bildirmeye devam eder.",
+    demoHint: (platform: HostPlatform) =>
+      `Gerçekçi ama uydurma sayılar; hiçbir araç kurulmadan uygulamanın nasıl çalıştığı görülebilsin. ${surfaces[platform]} gerçek kullanımını bildirmeye devam eder.`,
   },
 
   a11y: {
