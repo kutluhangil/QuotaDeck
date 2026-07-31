@@ -11,16 +11,36 @@ kabul kriterleri blueprint Ek A.
 
 ---
 
-## 0. Önce karar ver — üçü de kodu etkiliyor
+## Kod tarafı — son doğrulama (2026-07-31, `ed9c996` + sürüm yükseltmesi)
+
+Hepsi bu makinede koşuldu, hepsi yeşil. CI aynılarını her push'ta tekrar koşuyor.
+
+- [x] `cargo clippy --workspace --all-targets -- -D warnings` — temiz
+- [x] `cargo test --workspace` — 240 test geçti, 0 başarısız
+- [x] Perf bütçesi (`cargo test -p quotadeck-core --release --test perf -- --ignored`) — dördü de bütçe içinde:
+      cold parse 69 ms / 160,3 MB (500 dosya), sıcak tik 3,4 ms ve **0 byte** okuma (500 imleç),
+      bir saatlik izleme yalnızca eklenen 65 343 byte'ı okudu, tepe RSS 6,9 MB
+- [x] `ui` — `tsc --noEmit` temiz, 47 vitest geçti
+- [x] `site` — 6 sayfa derlendi (EN + TR), yerelde `127.0.0.1:4321` üzerinde altı rota da 200
+- [x] Çalışma ağacı temiz, `main` üzerinde
+
+Blueprint Faz 0–12 kapalı. Bu dosyanın geri kalanındaki kutuların **hiçbiri bir commit'le
+kapanmıyor**; sürüm numarası hariç, o da aşağıda kapatıldı.
+
+---
+
+## 0. Önce karar ver — üçü de kodu etkiliyor (biri kapandı)
 
 ### 0.1 Sürüm numarası
 
-`app/tauri.conf.json` hâlâ `"version": "0.1.0"`. Mağazaya `1.0.0` gitmeli; App Store bir kez
-yükledikten sonra aynı sürüm numarasını ikinci kez kabul etmiyor.
+Mağazaya `1.0.0` gitmeli; App Store bir kez yükledikten sonra aynı sürüm numarasını ikinci kez
+kabul etmiyor.
 
-- [ ] `app/tauri.conf.json` → `"version": "1.0.0"`
+- [x] `app/tauri.conf.json` → `"version": "1.0.0"`
+- [x] `Cargo.toml` `[workspace.package]` → `version = "1.0.0"` (üç crate de bu sürümü alıyor,
+      `Cargo.lock` tazelendi)
 
-Kod tarafı: tek satır, söylediğin an yapılır.
+Bundan sonrası sürüm artırımı: her mağaza gönderimi bir öncekinden büyük bir numara istiyor.
 
 ### 0.2 Fiyat
 
@@ -270,7 +290,7 @@ ps -o rss=,comm= -p $(pgrep -f "Quota Deck")
 
 ## 7. Önerilen sıra
 
-1. §0 — üç kararı ver (sürüm, fiyat, alan adı)
+1. §0 — kalan iki kararı ver (fiyat, alan adı); sürüm `1.0.0` olarak kapatıldı
 2. §1.1–1.3 — Apple sertifikaları ve anahtarı. En uzun kuyruk burada
 3. §5.3 — gerçek veriyle bir kez bak. Bir hata varsa mağazaya gitmeden önce çıksın
 4. §1.4–1.6 — App Store Connect ve ilk yükleme

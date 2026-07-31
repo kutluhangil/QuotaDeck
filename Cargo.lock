@@ -2904,7 +2904,7 @@ dependencies = [
 
 [[package]]
 name = "quotadeck-app"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "chrono",
  "objc2",
@@ -2922,7 +2922,7 @@ dependencies = [
 
 [[package]]
 name = "quotadeck-core"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "chrono",
  "criterion",
@@ -2936,7 +2936,7 @@ dependencies = [
 
 [[package]]
 name = "quotadeck-providers"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "chrono",
  "quotadeck-core",
