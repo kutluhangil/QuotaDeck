@@ -1,0 +1,177 @@
+---
+import type { Copy } from "../copy/en";
+
+interface Props {
+  copy: Copy;
+}
+
+const { copy } = Astro.props;
+const base = copy.lang === "tr" ? "/tr" : "";
+---
+
+<section class="wrap hero">
+  <div>
+    <h1 class="hero__title">{copy.hero.title}</h1>
+    <p class="hero__lede measure">{copy.hero.lede}</p>
+    <p class="claim">{copy.hero.claim}</p>
+    <p class="claim__note measure">{copy.hero.claimNote}</p>
+    <div class="actions">
+      <a class="button" href={`${base}/download/`}>{copy.hero.download}</a>
+      <a class="button button--quiet" href="#how">{copy.hero.how}</a>
+    </div>
+  </div>
+  <figure class="shot">
+    <img
+      src={copy.hero.shot.src}
+      alt={copy.hero.shot.alt}
+      width="379"
+      height="595"
+      loading="eager"
+    />
+    <figcaption>{copy.hero.shot.caption}</figcaption>
+  </figure>
+</section>
+
+<section class="section">
+  <div class="wrap">
+    <h2 class="section__title">{copy.features.title}</h2>
+    <div class="grid">
+      {
+        copy.features.items.map((item) => (
+          <article class="tile">
+            <h3 class="tile__title">{item.title}</h3>
+            <p class="tile__body">{item.body}</p>
+          </article>
+        ))
+      }
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="wrap">
+    <h2 class="section__title">{copy.trust.title}</h2>
+    <p class="section__lede measure">{copy.trust.body}</p>
+    {/* The two marks from the panel itself, at the size the panel draws them. Someone who has
+        seen them here recognises them in the app. */}
+    <div class="marks">
+      <span class="mark mark--measured">
+        <span class="mark__dot" aria-hidden="true"></span>
+        {copy.trust.measured}
+      </span>
+      <span class="mark mark--derived">
+        <span class="mark__dot" aria-hidden="true"></span>
+        {copy.trust.estimated}
+      </span>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="how">
+  <div class="wrap">
+    <h2 class="section__title">{copy.privacy.title}</h2>
+    <p class="section__lede measure">{copy.privacy.lede}</p>
+    <div class="grid">
+      {
+        copy.privacy.items.map((item, index) => (
+          <article class="tile">
+            <span class="tile__index">{String(index + 1).padStart(2, "0")}</span>
+            <h3 class="tile__title">{item.title}</h3>
+            <p class="tile__body">{item.body}</p>
+          </article>
+        ))
+      }
+    </div>
+    <div class="measure" style="margin-block-start: var(--step-5)">
+      <h3 class="tile__title">{copy.privacy.why.title}</h3>
+      <p class="tile__body">{copy.privacy.why.body}</p>
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="wrap">
+    <h2 class="section__title">{copy.performance.title}</h2>
+    <p class="section__lede measure">{copy.performance.lede}</p>
+    <div class="table-scroll">
+      <table class="table">
+        <thead>
+          <tr>
+            <th scope="col">{copy.performance.columns.metric}</th>
+            <th scope="col">{copy.performance.columns.budget}</th>
+            <th scope="col">{copy.performance.columns.measured}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {
+            copy.performance.rows.map((row) => (
+              <tr>
+                <td>{row.metric}</td>
+                <td class="table__figure">{row.budget}</td>
+                <td class="table__figure table__figure--measured">{row.measured}</td>
+              </tr>
+            ))
+          }
+        </tbody>
+      </table>
+    </div>
+    <p class="note measure">{copy.performance.note}</p>
+  </div>
+</section>
+
+<section class="section">
+  <div class="wrap">
+    <h2 class="section__title">{copy.providers.title}</h2>
+    <p class="section__lede measure">{copy.providers.lede}</p>
+    <h3 class="tile__title">{copy.providers.shipping}</h3>
+    <ul class="rows">
+      {
+        copy.providers.list.map((provider) => (
+          <li class="row-item">
+            <span class="row-item__name">{provider.name}</span>
+            <span class="row-item__detail">{provider.detail}</span>
+          </li>
+        ))
+      }
+    </ul>
+    <p class="note measure">{copy.providers.plannedNote}</p>
+  </div>
+</section>
+
+<section class="section">
+  <div class="wrap">
+    <h2 class="section__title">{copy.platforms.title}</h2>
+    <div class="grid">
+      {
+        copy.platforms.items.map((platform) => (
+          <article class="tile">
+            <h3 class="tile__title">{platform.name}</h3>
+            <p class="tile__body">{platform.body}</p>
+          </article>
+        ))
+      }
+    </div>
+    {/* Said on the page rather than discovered after installing. A listing that promises away
+        a platform difference is a listing that earns a one-star review. */}
+    <div class="measure" style="margin-block-start: var(--step-5)">
+      <h3 class="tile__title">{copy.platforms.caveat.title}</h3>
+      <p class="tile__body">{copy.platforms.caveat.body}</p>
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="wrap">
+    <h2 class="section__title">{copy.faq.title}</h2>
+    <div class="faq">
+      {
+        copy.faq.items.map((item) => (
+          <details class="faq__item">
+            <summary class="faq__q">{item.q}</summary>
+            <p class="faq__a">{item.a}</p>
+          </details>
+        ))
+      }
+    </div>
+  </div>
+</section>

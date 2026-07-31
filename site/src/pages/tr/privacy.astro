@@ -1,0 +1,9 @@
+---
+import Privacy from "../../components/Privacy.astro";
+import { tr } from "../../copy/tr";
+import Base from "../../layouts/Base.astro";
+---
+
+<Base copy={tr} current="privacy" title={`${tr.privacyPage.title} — ${tr.nav.home}`}>
+  <Privacy copy={tr} />
+</Base>

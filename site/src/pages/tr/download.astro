@@ -1,0 +1,9 @@
+---
+import Download from "../../components/Download.astro";
+import { tr } from "../../copy/tr";
+import Base from "../../layouts/Base.astro";
+---
+
+<Base copy={tr} current="download" title={`${tr.download.title} — ${tr.nav.home}`}>
+  <Download copy={tr} />
+</Base>

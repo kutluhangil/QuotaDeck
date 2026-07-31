@@ -6,6 +6,11 @@
 /ui/node_modules
 /ui/dist
 
+# Marketing site
+/site/node_modules
+/site/dist
+/site/.astro
+
 # Tauri generated schemas
 /app/gen
 

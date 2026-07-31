@@ -1,0 +1,9 @@
+---
+import Privacy from "../components/Privacy.astro";
+import { en } from "../copy/en";
+import Base from "../layouts/Base.astro";
+---
+
+<Base copy={en} current="privacy" title={`${en.privacyPage.title} — ${en.nav.home}`}>
+  <Privacy copy={en} />
+</Base>

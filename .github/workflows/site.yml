@@ -1,0 +1,47 @@
+name: Site
+
+# Its own workflow rather than a job inside CI. The app's pipeline builds three platforms and
+# runs the performance budget; a marketing page failing to render should not sit in that queue,
+# and a broken Rust build should not stop the page from going out.
+on:
+  push:
+    branches: [main]
+    paths: ["site/**", "shared/**", ".github/workflows/site.yml"]
+  pull_request:
+    paths: ["site/**", "shared/**", ".github/workflows/site.yml"]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+
+      - name: Install
+        run: npm ci --prefix site
+
+      # The Turkish copy is typed as the English one, so a key added on one side and not the
+      # other fails here rather than shipping a page with an English sentence in it.
+      - name: Typecheck and build
+        run: npm run build --prefix site
+
+      # The page states that the app makes no network request. A page that itself pulled a font
+      # or a script off someone else's server while saying so would undo the claim it makes.
+      - name: No third-party requests in the built pages
+        run: |
+          if grep -rInoE 'https?://[^"'"'"' )]+' site/dist --include='*.html' --include='*.css' \
+              | grep -viE 'quotadeck\.app|github\.com|schema\.org|www\.w3\.org'; then
+            echo "::error::the built site references a third-party origin; fonts and scripts must be self-hosted"
+            exit 1
+          fi
+
+      - name: Upload site build
+        uses: actions/upload-artifact@v4
+        with:
+          name: site-dist
+          path: site/dist
+          retention-days: 7

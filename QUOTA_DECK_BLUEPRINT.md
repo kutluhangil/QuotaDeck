@@ -951,7 +951,31 @@ yeteneği ve paket yöneticisinin zaten sağlamadığı bir güncelleme kanalı 
 - [x] CI'da `ubuntu-latest` — derleme, clippy, test, perf bütçesi
 - [ ] Gerçek bir masaüstü oturumunda elle doğrulama — **Linux makine gerekiyor**
 
-### Faz 12 — v1.1 (yayın sonrası)
+### Faz 12 — Tanıtım sitesi
+
+`site/`, Astro statik, EN + TR. Uygulamanın kendi zincirinin (Vite + React) yerine Astro: bu
+sayfa varsayılan olarak sıfır JavaScript gönderiyor ve manşet iddiası "çalışması hiçbir şeye
+mal olmuyor" olan bir ürünün sayfası 78 KB'lık bir paketle açılmamalı.
+
+- [x] `shared/tokens.css` — palet, tip ölçeği ve boşluk adımı tek dosya; hem panel hem site
+      onu okuyor, yani ikisi elle birbirinden uzaklaşamıyor
+- [x] `/` — hero, panel ekran görüntüsü, özellikler, ölçüldü/tahmin ayrımı, "nasıl doğru
+      olabiliyor" (dördü de CI'da doğrulanan olgular), perf bütçesi tablosu, sağlayıcılar,
+      üç masaüstü, SSS
+- [x] `/download` — üç platform kutusu. Hiçbiri yayında değil; sahte indirme bağlantısı yerine
+      neyin beklendiği ve derleme betiğinin adı yazıyor
+- [x] `/privacy` — `docs/STORE.md` §3'ün uzun hâli
+- [x] TR çeviri (`/tr/`), `Copy` tipiyle zorlanıyor — İngilizceye eklenip çevrilmeyen anahtar
+      derlemeyi kırıyor, `ui/src/i18n` ile aynı disiplin
+- [x] Yazı tipleri kendi sunucumuzdan. Ağ isteği atmadığını söyleyen bir sayfa, bunu söylerken
+      bir font CDN'inden iki dosya istememeli — CI bunu grep'liyor
+- [x] Ayrı `site.yml` workflow'u; app'in üç platformlu hattını bekletmiyor
+- [x] `vercel.json` — CSP `default-src 'none'`, sayfanın iddiasını başlıkla da tekrarlıyor
+- [ ] Alan adı ve Vercel projesi — **hesap gerekiyor**
+- [ ] Windows ve Linux ekran görüntüleri — **o makineler gerekiyor**. macOS panelinin EN ve TR
+      görüntüleri örnek veriyle çekildi; diğer ikisi uydurulmuyor
+
+### Faz 13 — v1.1 (yayın sonrası)
 
 - [ ] Kaçak ajan tespiti (§6.3)
 - [ ] Antigravity sağlayıcısı — deneysel bayrak, varsayılan kapalı

@@ -1,0 +1,9 @@
+---
+import Home from "../../components/Home.astro";
+import { tr } from "../../copy/tr";
+import Base from "../../layouts/Base.astro";
+---
+
+<Base copy={tr} current="home">
+  <Home copy={tr} />
+</Base>

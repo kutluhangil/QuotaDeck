@@ -1,0 +1,27 @@
+---
+import type { Copy } from "../copy/en";
+
+interface Props {
+  copy: Copy;
+}
+
+const { copy } = Astro.props;
+---
+
+<section class="section section--flush">
+  <div class="wrap">
+    <h1 class="section__title">{copy.privacyPage.title}</h1>
+    <p class="section__lede measure">{copy.privacyPage.lede}</p>
+
+    <ul class="rows measure" style="max-inline-size: 46rem">
+      {
+        copy.privacyPage.sections.map((section) => (
+          <li class="row-item">
+            <span class="row-item__name">{section.title}</span>
+            <span class="row-item__detail">{section.body}</span>
+          </li>
+        ))
+      }
+    </ul>
+  </div>
+</section>

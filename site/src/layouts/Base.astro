@@ -1,0 +1,78 @@
+---
+import type { Copy } from "../copy/en";
+import "../styles/site.css";
+
+interface Props {
+  copy: Copy;
+  /** Which nav entry is the page being looked at. */
+  current?: "home" | "download" | "privacy";
+  title?: string;
+}
+
+const { copy, current, title } = Astro.props;
+/** Turkish pages sit under `/tr/`; English is at the root. */
+const base = copy.lang === "tr" ? "/tr" : "";
+---
+
+<!doctype html>
+<html lang={copy.lang}>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title ?? copy.meta.title}</title>
+    <meta name="description" content={copy.meta.description} />
+    <meta property="og:title" content={title ?? copy.meta.title} />
+    <meta property="og:description" content={copy.meta.description} />
+    <meta property="og:type" content="website" />
+    {/* The panel is dark by default and the site follows it, but the tokens carry a light
+        theme too — telling the browser means form controls and scrollbars follow as well. */}
+    <meta name="color-scheme" content="dark light" />
+    <link rel="alternate" hreflang="en" href={new URL("/", Astro.site)} />
+    <link rel="alternate" hreflang="tr" href={new URL("/tr/", Astro.site)} />
+  </head>
+  <body>
+    <header class="site-head">
+      <div class="wrap site-head__inner">
+        <a class="site-head__mark" href={`${base}/`}>
+          <span class="glyph" aria-hidden="true"></span>
+          <strong>{copy.nav.home}</strong>
+        </a>
+        <nav class="site-head__nav" aria-label={copy.nav.home}>
+          <a
+            class="site-head__link"
+            href={`${base}/download/`}
+            aria-current={current === "download" ? "page" : undefined}
+          >
+            {copy.nav.download}
+          </a>
+          <a
+            class="site-head__link"
+            href={`${base}/privacy/`}
+            aria-current={current === "privacy" ? "page" : undefined}
+          >
+            {copy.nav.privacy}
+          </a>
+          {/* Names itself in its own language: someone who landed in a language they cannot
+              read has to be able to find the way out of it. */}
+          <a class="site-head__lang" href={copy.nav.otherLanguage.href} lang={copy.lang === "tr" ? "en" : "tr"}>
+            {copy.nav.otherLanguage.label}
+          </a>
+        </nav>
+      </div>
+    </header>
+
+    <main>
+      <slot />
+    </main>
+
+    <footer class="site-foot">
+      <div class="wrap site-foot__inner">
+        <span>{copy.footer.tagline}</span>
+        <span class="site-foot__links">
+          <a href={copy.download.sourceHref} rel="noopener">{copy.footer.source}</a>
+          <a href={`${base}/privacy/`}>{copy.footer.privacy}</a>
+        </span>
+      </div>
+    </footer>
+  </body>
+</html>

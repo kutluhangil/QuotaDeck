@@ -1,0 +1,46 @@
+---
+import type { Copy } from "../copy/en";
+
+interface Props {
+  copy: Copy;
+}
+
+const { copy } = Astro.props;
+---
+
+<section class="section section--flush">
+  <div class="wrap">
+    <h1 class="section__title">{copy.download.title}</h1>
+    <p class="section__lede measure">{copy.download.lede}</p>
+
+    <div class="grid">
+      {
+        copy.download.items.map((item) => (
+          <article class="platform">
+            <div class="platform__head">
+              <h2 class="platform__name">{item.name}</h2>
+              {/* Not a button. There is nothing to download yet, and a disabled control that
+                  looks like a download link is worse than a sentence saying so. */}
+              <span class="platform__status">{copy.download.statusPending}</span>
+            </div>
+            <p class="platform__detail">{item.detail}</p>
+            <p class="platform__blocked">{item.blocked}</p>
+            <pre class="code">{item.command}</pre>
+          </article>
+        ))
+      }
+    </div>
+
+    <div class="measure" style="margin-block-start: var(--step-5)">
+      <h2 class="tile__title">{copy.download.build}</h2>
+      <p class="tile__body">{copy.download.buildLede}</p>
+      <h2 class="tile__title" style="margin-block-start: var(--step-4)">
+        {copy.download.sourceTitle}
+      </h2>
+      <p class="tile__body">
+        {copy.download.sourceBody}{" "}
+        <a href={copy.download.sourceHref} rel="noopener">{copy.download.sourceLink}</a>
+      </p>
+    </div>
+  </div>
+</section>

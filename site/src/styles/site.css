@@ -1,0 +1,558 @@
+/*
+ * The site's own layer, on top of the app's tokens.
+ *
+ * `shared/tokens.css` is the same file the panel imports — the palette, the type scale and the
+ * spacing step all come from there, so the site cannot drift away from the product by hand. What
+ * is here is only what a web page needs and a 380px popover does not: a measure, a page grid,
+ * and type sizes that work above 15px.
+ *
+ * Fonts are self-hosted. A page whose headline claim is that the app makes no network request
+ * should not open by asking a font CDN for two files.
+ */
+
+@import "@fontsource-variable/inter/index.css";
+@import "@fontsource/martian-mono/400.css";
+@import "@fontsource/martian-mono/500.css";
+@import "../../../shared/tokens.css";
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  /* Anchors from the nav land below the sticky bar rather than under it. */
+  scroll-padding-block-start: 5rem;
+}
+
+body {
+  margin: 0;
+  background: var(--surface-abyss);
+  color: var(--ink-primary);
+  font-family: var(--face-ui);
+  font-size: 16px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+img {
+  max-inline-size: 100%;
+  block-size: auto;
+  display: block;
+}
+
+a {
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--measured);
+  outline-offset: 3px;
+  border-radius: 3px;
+}
+
+/* ---- page frame ---------------------------------------------------------- */
+
+.wrap {
+  inline-size: min(100% - 2.5rem, 66rem);
+  margin-inline: auto;
+}
+
+/* Prose columns stop well short of the frame: a 66rem line of 16px text is unreadable. */
+.measure {
+  max-inline-size: 42rem;
+}
+
+.site-head {
+  position: sticky;
+  inset-block-start: 0;
+  z-index: 10;
+  background: color-mix(in srgb, var(--surface-abyss) 88%, transparent);
+  backdrop-filter: blur(12px);
+  border-block-end: var(--hairline) solid var(--rule);
+}
+
+.site-head__inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--step-4);
+  block-size: 4rem;
+}
+
+.site-head__mark {
+  display: flex;
+  align-items: center;
+  gap: var(--step-2);
+  text-decoration: none;
+  color: var(--ink-primary);
+}
+
+.site-head__nav {
+  display: flex;
+  align-items: center;
+  gap: var(--step-4);
+}
+
+.site-head__link {
+  color: var(--ink-secondary);
+  text-decoration: none;
+}
+
+.site-head__link:hover,
+.site-head__link[aria-current="page"] {
+  color: var(--ink-primary);
+}
+
+.site-head__lang {
+  color: var(--ink-tertiary);
+  text-decoration: none;
+  padding: var(--step-1) var(--step-2);
+  border: var(--hairline) solid var(--rule);
+  border-radius: var(--radius);
+}
+
+.site-head__lang:hover {
+  color: var(--ink-primary);
+  border-color: var(--ink-tertiary);
+}
+
+/*
+ * The app's own mark, rebuilt from the same three bands resting on a horizon. Drawn in CSS
+ * rather than shipped as an image so it takes the ink colour of whatever theme is showing.
+ */
+.glyph {
+  inline-size: 16px;
+  block-size: 12px;
+  flex: 0 0 auto;
+  display: block;
+  border-block-end: 1.5px solid currentcolor;
+  background-repeat: no-repeat;
+  background-image:
+    linear-gradient(var(--ink-tertiary) 0 0),
+    linear-gradient(var(--ink-secondary) 0 0),
+    linear-gradient(currentcolor 0 0);
+  background-size:
+    3px 4px,
+    3px 7px,
+    4px 10px;
+  background-position:
+    0 calc(100% - 1.5px),
+    5px calc(100% - 1.5px),
+    10px calc(100% - 1.5px);
+}
+
+.section {
+  padding-block: clamp(3rem, 8vw, 6rem);
+  border-block-start: var(--hairline) solid var(--rule);
+}
+
+.section--flush {
+  border-block-start: none;
+}
+
+.section__title {
+  font-size: clamp(1.5rem, 3vw, 2rem);
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  margin: 0 0 var(--step-3);
+}
+
+.section__lede {
+  margin: 0 0 var(--step-5);
+  color: var(--ink-secondary);
+}
+
+/* ---- hero ---------------------------------------------------------------- */
+
+.hero {
+  padding-block: clamp(3rem, 9vw, 7rem) clamp(2rem, 5vw, 4rem);
+  display: grid;
+  gap: clamp(2rem, 5vw, 4rem);
+  grid-template-columns: 1fr;
+  align-items: center;
+}
+
+@media (min-width: 60rem) {
+  .hero {
+    grid-template-columns: 1.15fr 0.85fr;
+  }
+}
+
+.hero__title {
+  font-size: clamp(2.25rem, 6vw, 3.75rem);
+  line-height: 1.05;
+  letter-spacing: -0.035em;
+  margin: 0 0 var(--step-4);
+}
+
+.hero__lede {
+  font-size: clamp(1rem, 1.6vw, 1.175rem);
+  color: var(--ink-secondary);
+  margin: 0 0 var(--step-5);
+}
+
+/*
+ * The one claim the whole product rests on, set in the data face because it is closer to a
+ * measurement than to a slogan — and immediately followed by the reason it is checkable.
+ */
+.claim {
+  font-family: var(--face-data);
+  font-size: clamp(0.9rem, 1.5vw, 1.05rem);
+  letter-spacing: -0.01em;
+  color: var(--ink-primary);
+  margin: 0 0 var(--step-2);
+}
+
+.claim__note {
+  color: var(--ink-tertiary);
+  font-size: 0.875rem;
+  margin: 0 0 var(--step-5);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--step-3);
+}
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--step-2);
+  padding: var(--step-3) var(--step-4);
+  border-radius: var(--radius);
+  border: var(--hairline) solid var(--rule);
+  text-decoration: none;
+  color: var(--ink-primary);
+  background: var(--surface-raised);
+}
+
+.button:hover {
+  border-color: var(--ink-tertiary);
+}
+
+.button--quiet {
+  background: none;
+  color: var(--ink-secondary);
+}
+
+.button--quiet:hover {
+  color: var(--ink-primary);
+}
+
+.shot {
+  margin: 0;
+}
+
+.shot img {
+  border-radius: 12px;
+  border: var(--hairline) solid var(--rule);
+  /* Lifted off the page the way the popover is lifted off the desktop. */
+  box-shadow: 0 24px 60px rgb(0 0 0 / 0.45);
+  margin-inline: auto;
+}
+
+.shot figcaption {
+  margin-block-start: var(--step-3);
+  color: var(--ink-tertiary);
+  font-size: 0.8125rem;
+  text-align: center;
+}
+
+/* ---- grids --------------------------------------------------------------- */
+
+.grid {
+  display: grid;
+  gap: var(--step-4);
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+}
+
+.tile {
+  padding: var(--step-4);
+  border: var(--hairline) solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--surface-hull);
+}
+
+.tile__title {
+  margin: 0 0 var(--step-2);
+  font-size: 1rem;
+  letter-spacing: -0.01em;
+}
+
+.tile__body {
+  margin: 0;
+  color: var(--ink-secondary);
+  font-size: 0.9375rem;
+}
+
+/* A numbered claim about the build. The index is set in the data face — these are facts with
+   an order, not decoration. */
+.tile__index {
+  display: block;
+  font-family: var(--face-data);
+  font-size: 0.75rem;
+  color: var(--ink-tertiary);
+  margin-block-end: var(--step-2);
+}
+
+/* ---- the confidence pair ------------------------------------------------- */
+
+.marks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--step-4);
+  margin-block-start: var(--step-4);
+}
+
+.mark {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--step-2);
+  color: var(--ink-secondary);
+  font-size: 0.9375rem;
+}
+
+.mark__dot {
+  inline-size: 9px;
+  block-size: 9px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+}
+
+.mark--measured .mark__dot {
+  background: var(--measured);
+}
+
+.mark--measured {
+  color: var(--measured);
+}
+
+.mark--derived .mark__dot {
+  border: 1.5px solid var(--ink-tertiary);
+}
+
+/* ---- budget table -------------------------------------------------------- */
+
+.table-scroll {
+  overflow-x: auto;
+}
+
+.table {
+  inline-size: 100%;
+  border-collapse: collapse;
+  font-size: 0.9375rem;
+}
+
+.table th,
+.table td {
+  text-align: start;
+  padding: var(--step-3) var(--step-3) var(--step-3) 0;
+  border-block-end: var(--hairline) solid var(--rule);
+  white-space: nowrap;
+}
+
+.table th {
+  color: var(--ink-tertiary);
+  font-weight: 600;
+  font-size: 0.8125rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.table td:first-child {
+  color: var(--ink-primary);
+  white-space: normal;
+}
+
+.table__figure {
+  font-family: var(--face-data);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-secondary);
+}
+
+/* The measured column is the point of the table, so it is the one that is not grey. */
+.table__figure--measured {
+  color: var(--level-ample);
+}
+
+.note {
+  margin-block-start: var(--step-4);
+  color: var(--ink-tertiary);
+  font-size: 0.8125rem;
+}
+
+/* ---- lists --------------------------------------------------------------- */
+
+.rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--step-3);
+}
+
+.row-item {
+  display: grid;
+  gap: var(--step-1) var(--step-4);
+  grid-template-columns: 1fr;
+  padding-block-end: var(--step-3);
+  border-block-end: var(--hairline) solid var(--rule);
+}
+
+@media (min-width: 45rem) {
+  .row-item {
+    grid-template-columns: 12rem 1fr;
+  }
+}
+
+.row-item__name {
+  color: var(--ink-primary);
+  font-weight: 600;
+}
+
+.row-item__detail {
+  color: var(--ink-secondary);
+  font-size: 0.9375rem;
+}
+
+/* ---- faq ----------------------------------------------------------------- */
+
+.faq {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.faq__item {
+  border-block-end: var(--hairline) solid var(--rule);
+}
+
+.faq__q {
+  padding-block: var(--step-4);
+  cursor: default;
+  color: var(--ink-primary);
+  list-style: none;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--step-4);
+}
+
+.faq__q::-webkit-details-marker {
+  display: none;
+}
+
+.faq__q::after {
+  content: "+";
+  color: var(--ink-tertiary);
+  font-family: var(--face-data);
+}
+
+.faq__item[open] .faq__q::after {
+  content: "−";
+}
+
+.faq__a {
+  margin: 0;
+  padding-block-end: var(--step-4);
+  color: var(--ink-secondary);
+  max-inline-size: 46rem;
+}
+
+/* ---- download ------------------------------------------------------------ */
+
+.platform {
+  display: flex;
+  flex-direction: column;
+  gap: var(--step-3);
+  padding: var(--step-4);
+  border: var(--hairline) solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--surface-hull);
+}
+
+.platform__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--step-3);
+}
+
+.platform__name {
+  margin: 0;
+  font-size: 1.125rem;
+  letter-spacing: -0.01em;
+}
+
+/*
+ * Deliberately not amber. The level ramp means one thing in this product — a quota running out
+ * — and an unreleased build is not that.
+ */
+.platform__status {
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-tertiary);
+  border: var(--hairline) solid var(--rule);
+  border-radius: 999px;
+  padding: 2px var(--step-2);
+  white-space: nowrap;
+}
+
+.platform__detail {
+  margin: 0;
+  color: var(--ink-secondary);
+  font-size: 0.9375rem;
+}
+
+.platform__blocked {
+  margin: 0;
+  color: var(--ink-tertiary);
+  font-size: 0.875rem;
+}
+
+.code {
+  font-family: var(--face-data);
+  font-size: 0.8125rem;
+  background: var(--surface-raised);
+  border-radius: var(--radius);
+  padding: var(--step-2) var(--step-3);
+  margin: 0;
+  color: var(--ink-secondary);
+  overflow-x: auto;
+}
+
+/* ---- footer -------------------------------------------------------------- */
+
+.site-foot {
+  border-block-start: var(--hairline) solid var(--rule);
+  padding-block: var(--step-5);
+  color: var(--ink-tertiary);
+  font-size: 0.875rem;
+}
+
+.site-foot__inner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--step-3);
+}
+
+.site-foot__links {
+  display: flex;
+  gap: var(--step-4);
+}
+
+.site-foot a {
+  color: var(--ink-tertiary);
+  text-decoration: none;
+}
+
+.site-foot a:hover {
+  color: var(--ink-primary);
+}

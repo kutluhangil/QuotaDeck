@@ -1,7 +1,8 @@
 @import "@fontsource-variable/inter/index.css";
 @import "@fontsource/martian-mono/400.css";
 @import "@fontsource/martian-mono/500.css";
-@import "./tokens.css";
+/* Shared with the marketing site, so the two cannot drift apart by hand. */
+@import "../../../shared/tokens.css";
 
 *,
 *::before,

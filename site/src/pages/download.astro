@@ -1,0 +1,9 @@
+---
+import Download from "../components/Download.astro";
+import { en } from "../copy/en";
+import Base from "../layouts/Base.astro";
+---
+
+<Base copy={en} current="download" title={`${en.download.title} — ${en.nav.home}`}>
+  <Download copy={en} />
+</Base>
