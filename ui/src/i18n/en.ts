@@ -44,7 +44,6 @@ export const en = {
 
   header: {
     settings: "Settings",
-    expand: "Open dashboard",
   },
 
   footer: {
@@ -52,6 +51,28 @@ export const en = {
     /** Says how many detected tools actually have a reading to show. */
     reporting: (reporting: number, total: number) =>
       total === 0 ? "" : `${reporting} of ${total} reporting`,
+    dashboard: "Dashboard",
+    /**
+     * With no dock icon, the tray menu used to be the only way out. It is a right click on
+     * macOS and Windows and a left click on Linux, which is three different gestures for the
+     * one action every user eventually wants — so it is also a button.
+     */
+    quit: "Quit",
+  },
+
+  /**
+   * The reading as a word, so the level survives colour blindness and a greyscale screenshot.
+   * Taken from the fullest window a tool reports, which is the one that will stop the work.
+   */
+  status: {
+    ample: "Good",
+    tight: "Caution",
+    critical: "Critical",
+  },
+
+  filters: {
+    all: "All",
+    label: "Show one tool",
   },
 
   /**
@@ -108,6 +129,8 @@ export const en = {
     } satisfies Record<PaceRisk, string>,
     /** Read out for the meter beside the risk word, which is decorative on its own. */
     label: (percent: string) => `Projected ${percent}`,
+    /** Names the projection row where the other rows carry a window length. */
+    rowLabel: "Pace",
   },
 
   card: {
@@ -135,8 +158,9 @@ export const en = {
   },
 
   quiet: {
-    /** Collapsed section for installed tools with nothing to show. */
-    heading: (count: number) => (count === 1 ? "1 tool is quiet" : `${count} tools are quiet`),
+    /** Collapsed section for tools that are not on this machine at all. */
+    heading: (count: number) =>
+      count === 1 ? "1 tool not installed" : `${count} tools not installed`,
   },
 
   dashboard: {
@@ -305,8 +329,14 @@ export const en = {
     tools: "Tracked tools",
     settingsRegion: "Settings",
     status: "Status",
-    /** The panel's own toolbar: the dashboard and settings buttons. */
+    /** The panel's own toolbar: the settings button. */
     panelActions: "Panel actions",
+    /** The bar along the bottom: the dashboard and quit buttons. */
+    footerActions: "Actions",
+    /** Names what a provider's rows belong to, since the card's heading is above them. */
+    windows: (provider: string) => `${provider} limits`,
+    /** The mark beside a percentage says where the number came from; this reads it out. */
+    source: (source: string) => `Source: ${source}`,
   },
 };
 

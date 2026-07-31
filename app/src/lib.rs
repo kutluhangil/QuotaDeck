@@ -59,6 +59,7 @@ pub fn run() {
             usage_history,
             open_dashboard,
             hide_panel,
+            quit_app,
             access_state,
             request_access,
             forget_access,
@@ -213,6 +214,17 @@ fn hide_panel(app: AppHandle, deck: tauri::State<'_, Deck>) {
     if let Some(window) = app.get_webview_window(PANEL_WINDOW) {
         let _ = window.hide();
     }
+}
+
+/// Leave.
+///
+/// The tray menu already offers this, but reaching that menu is a right click on macOS and
+/// Windows and a left click on Linux — three gestures for one action, none of them written down
+/// anywhere. With no dock icon and no window in the switcher, an app nobody can work out how to
+/// close is an app that gets force-quit.
+#[tauri::command]
+fn quit_app(app: AppHandle) {
+    app.exit(0);
 }
 
 /// What the panel knows about our access to the log folder.

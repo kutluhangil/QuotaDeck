@@ -562,6 +562,18 @@ Menü çubuğu paneli rastgele duvar kağıdının üstünde durur — kendi kap
 
 **Kural:** Seviye rengi yalnızca gerçek doluluk göstergelerinde kullanılır. Buton, başlık, ikon, çerçeve — asla. Kırmızı gördüğünde kullanıcı tek şey anlamalı: kota bitiyor.
 
+**Kuralın tek istisnası — durum kelimesi.** Kart başlığının sağındaki `İyi / Dikkat / Kritik`
+bir başlık değil, bir okuma: altındaki en dolu çubuğun söylediğini kelimeyle söylüyor ve gri
+tonlamalı bir ekran görüntüsünde ayakta kalan tek biçim o. Yeşil "İyi" yine de renk almıyor —
+her kartta sürekli yanan bir yeşil, rampayı iyi haber üstünde harcayıp kötü habere bir şey
+bırakmıyor (aynı gerekçe `PaceBadge`'de de geçerli).
+
+**Kimlik rengi seviye rengi değildir.** Sağlayıcı adının yanındaki kare, hangi araç olduğunu
+söyler; ne kadar dolu olduğunu değil. Bu yüzden hem paleti (mor–camgöbeği yayı, rampanın
+yeşil/kehribar/mercan bantlarının dışında) hem de biçimi ayrı: okuma taşıyan her işaret daire,
+kimlik işareti kare. Sadece renkle ayrılsaydı, beyaz kartta camgöbeği bir kimlik ile yeşil bir
+seviye er ya da geç birbirine karışırdı.
+
 ### 7.3 Tipografi
 
 | Rol | Yüz | Neden |
@@ -585,28 +597,43 @@ Sağlayıcı adları küçük, harf aralıklı, büyük harf — bir aletin pane
 
 ```
 ┌────────────────────────────────────────┐
-│  ⌁ QUOTA DECK              ⚙  ⤢        │  48px başlık
+│  ⌁ QUOTA DECK                  Ayarlar │  48px başlık
 ├────────────────────────────────────────┤
-│  CODEX                    ✦ ölçüldü    │
-│  68%                          5 saatlik│
-│  ▓▓▓▓▓▓▓▓▓▓▓▓▓▓░░░░░░░                │
+│  [Tümü] [▪Claude Code] [▪Codex]        │  2 araçtan itibaren
+├────────────────────────────────────────┤
+│  ▪ CLAUDE CODE      ✦ ölçüldü  Kritik  │
+│  ✦ 5s  ▓▓▓▓░░░░░░░░░░   %44   1sa 16dk │
+│  ✦ 7g  ▓▓▓▓▓▓▓▓▓▓▓▓▓░   %95   2g 14sa  │
+│    Hız ▒▒▒▒▒▒▒▒▒▒▒▒▒▒  %118   aşıyor   │
 │  [Horizon şeridi ————————————]         │  ← imza
-│  17:42'de sıfırlanır · hafta %31       │
+│  23:19 sıfırlanır          bugün $86   │
 ├────────────────────────────────────────┤
-│  CLAUDE CODE              ≈ tahmini    │
-│  ~41%                         5 saatlik│
-│  ▓▓▓▓▓▓▓▓░░░░░░░░░░░░░░░               │
-│  [Horizon şeridi ————————————]         │
-│  ~19:10 · $4.82 bugün                  │
-├────────────────────────────────────────┤
-│  KIMI                     ✦ ölçüldü    │
+│  ▪ CODEX            ✦ ölçüldü  Dikkat  │
 │  ...                                   │
 ├────────────────────────────────────────┤
-│  3 araç sessiz  ▾                      │  katlanmış: kullanılmayanlar
+│  [▪Copilot CLI  limit bildirmedi]      │  kurulu ama sessiz
+│  13 araç kurulu değil  ▾               │  katlanmış
 ├────────────────────────────────────────┤
-│  Tümü · Geçmiş · Ayarlar               │  40px alt bar
+│  09:41 güncellendi · 2/3   Pano · Çık  │  40px alt bar
 └────────────────────────────────────────┘
 ```
+
+**Her limit bir satır.** Eskiden en dolu pencere 28px'lik bir sayı alıyor, kalanlar çıplak bir
+listeye düşüyordu — aynı limitin iki penceresi iki farklı türden olguymuş gibi görünüyordu.
+Değiller: haftalık bir tavan işi tam olarak beş saatlik kadar durdurur. Dört sütun ızgara
+kartın üstünde paylaşılıyor, yüzdeler tabular figürle alt alta hizalanıyor ve okumalar
+tıkırdarken sütun kımıldamıyor.
+
+**Hız satırı içi boş çerçeveyle çiziliyor.** Üstündeki her şey bu diskten alınmış bir okuma; o
+ise onlardan ileri çekilmiş bir çizgi. Rampa yine de dolgusuna ulaşıyor — öngörülen %90 ölçülen
+%90 kadar kırmızıyı hak ediyor.
+
+**Kurulu ama sessiz araçlar hap olarak duruyor, kurulu olmayanlar katlanmış kalıyor.** İlki
+canlı bir okuma (algılama çalıştı, araç kullanılmamış); ikincisi haber değil — on altı
+sağlayıcı var, çoğu makinede iki tanesi kurulu, on dört hap üstteki kartları gömerdi.
+
+**Çık bir düğme.** Dock ikonu yok; tepsi menüsü macOS ve Windows'ta sağ tık, Linux'ta sol tık.
+Tek bir eylem için üç ayrı jest, hiçbiri hiçbir yerde yazmıyor.
 
 **Güven rozetleri** — küçük, sessiz, ama her zaman görünür:
 - `✦ ölçüldü` — mavi nokta, L1

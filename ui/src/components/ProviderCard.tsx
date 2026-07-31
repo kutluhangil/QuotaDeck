@@ -6,11 +6,14 @@ import {
   formatDuration,
   formatPercent,
   formatRelative,
+  formatSpan,
   formatTokens,
   levelFor,
+  levelForRisk,
   secondsUntil,
   windowLabel,
 } from "../format";
+import { identityHue } from "../identity";
 import type { Catalogue } from "../i18n";
 import { useLocale, useStrings } from "../store";
 import {
@@ -18,14 +21,12 @@ import {
   paceFor,
   totalTokens,
   type Locale,
-  type PaceForecast,
   type ProviderSnapshot,
   type QuotaWindow,
 } from "../types";
 import { ConfidenceBadge } from "./ConfidenceBadge";
 import { HorizonStrip } from "./HorizonStrip";
-import { PaceBadge } from "./PaceBadge";
-import { UsageBar } from "./UsageBar";
+import { WindowRow } from "./WindowRow";
 
 /**
  * The window the user needs to worry about first: the one closest to full. A provider can
@@ -39,42 +40,29 @@ function headlineWindow(windows: QuotaWindow[]): QuotaWindow | null {
   );
 }
 
-function ResetLine({ window, now }: { window: QuotaWindow; now: number }) {
+/**
+ * Shortest window first.
+ *
+ * The order the backend happens to emit is the order the provider wrote its log in, which is
+ * not an order at all. Reading down from the limit that bites in an hour to the one that bites
+ * next week is; and a fixed order means the rows do not swap places as the readings change.
+ */
+function byWindowLength(windows: QuotaWindow[]): QuotaWindow[] {
+  return [...windows].sort((a, b) => a.windowMinutes - b.windowMinutes);
+}
+
+/**
+ * When the headline window lets go, as a clock time.
+ *
+ * The countdown that used to sit beside it has moved onto the row itself, where it is one of
+ * four aligned columns instead of a second half of a sentence.
+ */
+function ResetLine({ window }: { window: QuotaWindow }) {
   const strings = useStrings();
   const locale = useLocale();
   const clock = formatClock(window.resetsAt, locale);
   if (clock === null) return <span>{strings.card.noReset}</span>;
-
-  const at = Date.parse(window.resetsAt ?? "");
-  const seconds = Number.isNaN(at) ? null : Math.floor((at - now) / 1000);
-  if (seconds === null || seconds <= 0) return <span>{strings.card.resetsAt(clock)}</span>;
-
-  return <span>{`${strings.card.resetsAt(clock)} · ${formatDuration(seconds, strings)}`}</span>;
-}
-
-/**
- * Where the headline window is heading.
- *
- * An exhaustion instant is named when there is one, because "full at 17:42" is the thing a
- * user can act on; otherwise the projected level stands on its own. Neither is ever stated as
- * a reading — the copy says "at this pace" and the badge is a projection of a bar, not a bar.
- */
-function PaceLine({ pace, now }: { pace: PaceForecast; now: number }) {
-  const strings = useStrings();
-  const locale = useLocale();
-  const clock = formatClock(pace.exhaustedAt, locale);
-  const seconds = secondsUntil(pace.exhaustedAt, now);
-
-  return (
-    <p className="card__pace type-caption">
-      <PaceBadge pace={pace} />
-      <span className="card__pace-text">
-        {clock !== null && seconds !== null
-          ? strings.pace.exhausted(clock, formatDuration(seconds, strings))
-          : strings.pace.projected(formatPercent(pace.projectedPercent, locale))}
-      </span>
-    </p>
-  );
+  return <span>{strings.card.resetsAt(clock)}</span>;
 }
 
 /**
@@ -106,6 +94,12 @@ function TodayLine({ snapshot, now }: { snapshot: ProviderSnapshot; now: number 
   return <span>{last ? strings.card.lastActivity(last) : strings.card.neverUsed}</span>;
 }
 
+/** The countdown a row shows on the right: how long until this window lets go. */
+function resetMeta(window: QuotaWindow, now: number, strings: Catalogue): string {
+  const seconds = secondsUntil(window.resetsAt, now);
+  return seconds === null ? "" : formatDuration(seconds, strings);
+}
+
 export function ProviderCard({
   snapshot,
   now,
@@ -119,50 +113,79 @@ export function ProviderCard({
   const strings: Catalogue = useStrings();
   const locale: Locale = useLocale();
   const nameId = useId();
+  const name = strings.provider[snapshot.id];
   const headline = headlineWindow(snapshot.windows);
-  const others = snapshot.windows.filter((window) => window !== headline);
+  const rows = byWindowLength(snapshot.windows);
   const pace = headline === null ? null : paceFor(snapshot, headline);
   const percent = headline?.usedPercent ?? null;
   // Logging, but with no reading to show: a plan pick or the status line fixes this, and
   // saying so beats the flat "has not reported a limit" the tool itself cannot resolve.
   const needsSetup = awaitingSetup(snapshot);
-  // The level ramp reaches the headline number only once the quota is actually at risk.
-  // Below that the number stays neutral, so red in this panel means exactly one thing.
-  const critical = percent !== null && levelFor(percent) === "critical";
+  /*
+   * The fullest window as a word. It sits in the heading row, which §7.2 keeps the ramp off —
+   * but the rule is about decoration, and this is a reading: it says the same thing as the
+   * worst bar below it, in the one form that survives a greyscale screenshot.
+   */
+  const level = percent === null ? null : levelFor(percent);
+  const paceClock = pace === null ? null : formatClock(pace.exhaustedAt, locale);
 
   return (
     <article className="card" aria-labelledby={nameId}>
       <header className="card__head">
         <h2 className="type-label card__name" id={nameId}>
-          {strings.provider[snapshot.id]}
+          <span className="card__dot" data-hue={identityHue(snapshot.id)} aria-hidden="true" />
+          {name}
         </h2>
-        {headline ? (
-          <ConfidenceBadge confidence={headline.confidence} />
-        ) : (
+        <span className="card__head-right">
+          {/* One badge with its word per card, so the marks on the rows below have been
+              introduced before they are relied on. */}
           <ConfidenceBadge
-            confidence={{
-              level: "unavailable",
-              reason: snapshot.unavailable ?? "never-reported",
-            }}
+            confidence={
+              headline?.confidence ?? {
+                level: "unavailable",
+                reason: snapshot.unavailable ?? "never-reported",
+              }
+            }
           />
-        )}
+          {level && (
+            <span className="type-caption card__status" data-level={level}>
+              {strings.status[level]}
+            </span>
+          )}
+        </span>
       </header>
 
-      {headline && percent !== null ? (
+      {percent !== null ? (
         <>
-          {/* Hidden from assistive technology, not from anyone else: the meter below states
-              the same window and the same percentage, with the bounds this pair cannot. */}
-          <div className="card__reading" aria-hidden="true">
-            <span className="type-display card__percent" data-critical={critical}>
-              {formatPercent(percent, locale)}
-            </span>
-            <span className="type-caption card__window">{windowLabel(headline, strings)}</span>
-          </div>
-          <UsageBar percent={percent} windowName={windowLabel(headline, strings)} />
-          {snapshot.series.length > 0 && (
+          <ul className="card__rows" role="list" aria-label={strings.a11y.windows(name)}>
+            {rows.map((window) => (
+              <WindowRow
+                key={`${window.limitId}-${window.windowMinutes}`}
+                label={formatSpan(window.windowMinutes * 60, strings)}
+                spokenLabel={windowLabel(window, strings)}
+                percent={window.usedPercent}
+                confidence={window.confidence}
+                meta={resetMeta(window, now, strings)}
+              />
+            ))}
+            {pace && (
+              <WindowRow
+                kind="pace"
+                label={strings.pace.rowLabel}
+                spokenLabel={strings.pace.label(formatPercent(pace.projectedPercent, locale))}
+                percent={pace.projectedPercent}
+                level={levelForRisk(pace.risk)}
+                meta={
+                  paceClock === null
+                    ? strings.pace.risk[pace.risk]
+                    : `${strings.pace.risk[pace.risk]} · ${paceClock}`
+                }
+              />
+            )}
+          </ul>
+          {snapshot.series.length > 0 && headline && (
             <HorizonStrip window={headline} series={snapshot.series} now={now} />
           )}
-          {pace && <PaceLine pace={pace} now={now} />}
         </>
       ) : needsSetup ? (
         <p className="type-body card__quiet">
@@ -179,32 +202,8 @@ export function ProviderCard({
         </p>
       )}
 
-      {others.length > 0 && (
-        <ul className="card__others">
-          {others.map((window) => {
-            const otherPace = paceFor(snapshot, window);
-            return (
-              <li key={`${window.limitId}-${window.windowMinutes}`} className="card__other">
-                <span className="type-caption card__other-label">
-                  {windowLabel(window, strings)}
-                </span>
-                <span className="type-metric card__other-value">
-                  {window.usedPercent === null ? "—" : formatPercent(window.usedPercent, locale)}
-                </span>
-                <span className="card__other-badges">
-                  {/* The risk word only. A second percentage on the same row would put four
-                      figures across 380px, and the headline already carries the number. */}
-                  {otherPace && <PaceBadge pace={otherPace} />}
-                  <ConfidenceBadge confidence={window.confidence} />
-                </span>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-
       <footer className="type-caption card__foot">
-        {headline ? <ResetLine window={headline} now={now} /> : null}
+        {headline ? <ResetLine window={headline} /> : null}
         <span className="card__foot-right">
           <TodayLine snapshot={snapshot} now={now} />
         </span>

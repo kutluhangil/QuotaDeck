@@ -3,23 +3,33 @@
  * the backend sends folded snapshots only.
  */
 
-export type ProviderId =
-  | "claude-code"
-  | "codex"
-  | "copilot-cli"
-  | "kimi"
-  | "gemini-cli"
-  | "qwen"
-  | "opencode"
-  | "amp"
-  | "droid"
-  | "codebuff"
-  | "hermes"
-  | "pi-agent"
-  | "goose"
-  | "kilo"
-  | "openclaw"
-  | "antigravity";
+/**
+ * Every provider the backend can report, in a fixed order.
+ *
+ * An array rather than a bare union because the order is load-bearing: the panel's identity
+ * colours are assigned by position, and a colour that moved when a provider was inserted
+ * above it would repaint tools the user had already learned to recognise.
+ */
+export const PROVIDER_IDS = [
+  "claude-code",
+  "codex",
+  "copilot-cli",
+  "kimi",
+  "gemini-cli",
+  "qwen",
+  "opencode",
+  "amp",
+  "droid",
+  "codebuff",
+  "hermes",
+  "pi-agent",
+  "goose",
+  "kilo",
+  "openclaw",
+  "antigravity",
+] as const;
+
+export type ProviderId = (typeof PROVIDER_IDS)[number];
 
 export type UnavailableReason =
   | "not-installed"

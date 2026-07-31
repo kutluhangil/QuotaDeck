@@ -62,6 +62,8 @@
   display: flex;
   align-items: center;
   gap: var(--step-1);
+  /* Never gives ground to the status text beside it in the footer. */
+  flex: 0 0 auto;
 }
 
 .panel__action {
@@ -75,15 +77,29 @@
   background: var(--surface-raised);
 }
 
+/*
+ * The action bar. Reading on the left, the two things a person does from here on the right —
+ * open the history, or leave. Quit is a button rather than only a tray menu entry because the
+ * gesture that opens that menu is a different one on each of the three desktops.
+ */
 .panel__foot {
   block-size: var(--footer-height);
   flex: 0 0 auto;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding-inline: var(--step-4);
+  gap: var(--step-2);
+  padding-inline: var(--step-3);
   border-block-start: var(--hairline) solid var(--rule);
   color: var(--ink-tertiary);
+}
+
+/* Truncates rather than wrapping: the bar is a fixed 40px and the buttons keep their room. */
+.panel__status {
+  min-inline-size: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .panel__body {
@@ -115,27 +131,62 @@
 
 .card__name {
   margin: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--step-2);
   color: var(--ink-secondary);
 }
 
-.card__reading {
+/*
+ * The provider's identity mark. Its hues live outside the ramp's bands on purpose — this says
+ * *which* tool, never *how full* — and it is the only colour on the card that is not a reading.
+ *
+ * A square, where every mark that carries a reading is a circle. Hue alone would be a thin
+ * distinction to hang that on: a cyan identity and a green level sit close enough on a white
+ * card that someone would eventually read one as the other. Shape does not.
+ */
+.card__dot {
+  inline-size: 6px;
+  block-size: 6px;
+  flex: 0 0 auto;
+  border-radius: 1px;
+  background: var(--id-0);
+}
+
+.card__dot[data-hue="1"] {
+  background: var(--id-1);
+}
+
+.card__dot[data-hue="2"] {
+  background: var(--id-2);
+}
+
+.card__dot[data-hue="3"] {
+  background: var(--id-3);
+}
+
+.card__head-right {
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--step-2);
+  align-items: center;
+  gap: var(--step-3);
 }
 
-.card__percent {
-  color: var(--ink-primary);
+/*
+ * The fullest window as a word.
+ *
+ * Neutral while there is nothing to say. A green "Good" on every card all day would spend the
+ * ramp on good news and leave nothing for bad — the same rule the pace badge follows.
+ */
+.card__status {
+  color: var(--ink-secondary);
 }
 
-/* The one place the ramp touches type, and only when the quota is genuinely at risk. */
-.card__percent[data-critical="true"] {
+.card__status[data-level="tight"] {
+  color: var(--level-tight);
+}
+
+.card__status[data-level="critical"] {
   color: var(--level-critical);
-}
-
-.card__window {
-  color: var(--ink-tertiary);
 }
 
 .card__quiet {
@@ -143,36 +194,80 @@
   color: var(--ink-tertiary);
 }
 
-.card__others {
+/*
+ * Every limit on its own line, four columns wide.
+ *
+ * The grid is on the list rather than on each row so the percentage and the countdown line up
+ * down the whole card; `display: contents` on the row hands its four children straight to that
+ * grid. The explicit `role` is what keeps the list semantics that `display: contents` and
+ * `list-style: none` each strip on their own.
+ */
+.card__rows {
   list-style: none;
   margin: 0;
   padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--step-1);
-}
-
-.card__other {
   display: grid;
-  grid-template-columns: 1fr auto auto;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
   align-items: center;
-  gap: var(--step-2);
+  column-gap: var(--step-2);
+  row-gap: var(--step-1);
 }
 
-/* Both badges share the last cell so the percentage column stays aligned whether or not a
-   window has a forecast to show. */
-.card__other-badges {
+.row {
+  display: contents;
+}
+
+.row__label {
   display: flex;
   align-items: center;
-  gap: var(--step-2);
-}
-
-.card__other-label {
+  gap: 5px;
   color: var(--ink-tertiary);
+  white-space: nowrap;
 }
 
-.card__other-value {
+.row__bar {
+  display: block;
+  /* Without this the bar refuses to shrink below its content and pushes the columns apart. */
+  min-inline-size: 0;
+}
+
+/* A window the provider named but did not fill in. An empty track says "no reading" where a
+   zero-width fill would say "nothing used". */
+.row__bar-empty {
+  display: block;
+  block-size: 6px;
+  border-radius: 3px;
+  background: var(--track);
+  opacity: 0.5;
+}
+
+.row__value {
   color: var(--ink-secondary);
+  text-align: end;
+}
+
+.row__meta {
+  color: var(--ink-tertiary);
+  text-align: end;
+  white-space: nowrap;
+}
+
+/*
+ * The projection row.
+ *
+ * A hollow track rather than a filled one: everything above it is a reading taken from this
+ * disk, and this one is a line drawn forward from those. The level ramp still reaches its fill,
+ * because a projected 90% is worth the same red as a measured one.
+ */
+.row[data-kind="pace"] .bar {
+  background: none;
+  box-shadow: inset 0 0 0 var(--hairline) var(--rule);
+}
+
+/* And the fill sits back from the readings above it. Enough to tell the two apart at a glance,
+   not enough to lose the level. */
+.row[data-kind="pace"] .bar__fill {
+  opacity: 0.7;
 }
 
 .card__foot {
@@ -363,22 +458,10 @@
 }
 
 /*
- * Pace: where a window is heading.
- *
- * A row of its own under the strip, because it is the one line on the card that talks about
- * the future and it must not be mistaken for the reading above it.
+ * Pace, as the dashboard still draws it: a word with a miniature meter beside it. The panel
+ * gives the projection a full row instead, so this shape survives only where there is no room
+ * for one.
  */
-.card__pace {
-  display: flex;
-  align-items: center;
-  gap: var(--step-2);
-  color: var(--ink-secondary);
-}
-
-.card__pace-text {
-  color: var(--ink-tertiary);
-}
-
 .pace {
   display: inline-flex;
   align-items: center;
@@ -489,6 +572,75 @@
 
 .badge--idle .badge__mark {
   border: 1.5px solid var(--rule);
+}
+
+/* Mark only, inside a window row. The word is on the card's own badge, one row up. */
+.badge--compact {
+  gap: 0;
+}
+
+/*
+ * Installed tools with nothing to report.
+ *
+ * A competitor puts service-status badges in this spot, fetched from a status page. This app
+ * makes no network request, so these say what can actually be seen from this disk.
+ */
+.pills {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--step-1);
+}
+
+.pills__pill {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: var(--step-1) var(--step-2);
+  border: var(--hairline) solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--surface-hull);
+}
+
+.pills__name {
+  color: var(--ink-secondary);
+}
+
+.pills__reason {
+  color: var(--ink-tertiary);
+}
+
+/*
+ * Narrowing the panel to one tool. Drawn only from two tools up, so the row never appears just
+ * to offer a choice that cannot change anything.
+ */
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--step-1);
+}
+
+.filters__chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: var(--step-1) var(--step-2);
+  border: var(--hairline) solid transparent;
+  border-radius: var(--radius);
+  color: var(--ink-tertiary);
+}
+
+.filters__chip:hover {
+  color: var(--ink-secondary);
+  background: var(--surface-hull);
+}
+
+.filters__chip[aria-pressed="true"] {
+  color: var(--ink-primary);
+  background: var(--surface-raised);
+  border-color: var(--rule);
 }
 
 .quiet {

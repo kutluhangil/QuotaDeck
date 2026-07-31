@@ -34,13 +34,25 @@ export const tr: Catalogue = {
 
   header: {
     settings: "Ayarlar",
-    expand: "Panoyu aç",
   },
 
   footer: {
     updated: (time) => `${time} güncellendi`,
     reporting: (reporting, total) =>
       total === 0 ? "" : `${total} araçtan ${reporting} tanesi bildiriyor`,
+    dashboard: "Pano",
+    quit: "Çık",
+  },
+
+  status: {
+    ample: "İyi",
+    tight: "Dikkat",
+    critical: "Kritik",
+  },
+
+  filters: {
+    all: "Tümü",
+    label: "Tek araç göster",
   },
 
   units: {
@@ -84,6 +96,7 @@ export const tr: Catalogue = {
       over: "aşıyor",
     },
     label: (percent) => `Öngörülen ${percent}`,
+    rowLabel: "Hız",
   },
 
   card: {
@@ -102,7 +115,7 @@ export const tr: Catalogue = {
 
   quiet: {
     /** Turkish does not mark the plural after a numeral, so one form serves every count. */
-    heading: (count) => `${count} araç sessiz`,
+    heading: (count) => `${count} araç kurulu değil`,
   },
 
   dashboard: {
@@ -237,5 +250,8 @@ export const tr: Catalogue = {
     settingsRegion: "Ayarlar",
     status: "Durum",
     panelActions: "Panel işlemleri",
+    footerActions: "İşlemler",
+    windows: (provider) => `${provider} limitleri`,
+    source: (source) => `Kaynak: ${source}`,
   },
 };

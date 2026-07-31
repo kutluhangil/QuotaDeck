@@ -29,6 +29,16 @@
 
   --track: #1f2937;
 
+  /*
+   * Identity hues for the provider dot. Deliberately confined to the violet-to-cyan arc:
+   * the level ramp owns green, amber and coral, and a tool whose dot happened to be green
+   * would read as a tool that is fine.
+   */
+  --id-0: #a78bfa;
+  --id-1: #f472b6;
+  --id-2: #22d3ee;
+  --id-3: #e879f9;
+
   /* How far the Horizon strip's oldest end fades. Lower means it recedes further. */
   --strip-fade: 0.22;
 
@@ -69,6 +79,12 @@
 
   --track: #e2e7ef;
 
+  /* The same four hues darkened, because a 6px pastel dot disappears on a white card. */
+  --id-0: #7c5cf0;
+  --id-1: #db2f81;
+  --id-2: #0d9dbb;
+  --id-3: #c026d3;
+
   /* A pale column on a white card vanishes long before it does on a dark one. */
   --strip-fade: 0.42;
 }
@@ -92,6 +108,12 @@
     --measured: #2f76d6;
 
     --track: #e2e7ef;
+
+    --id-0: #7c5cf0;
+    --id-1: #db2f81;
+    --id-2: #0d9dbb;
+    --id-3: #c026d3;
+
     --strip-fade: 0.42;
   }
 }

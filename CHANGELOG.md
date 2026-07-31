@@ -2,6 +2,19 @@
 
 ## 2026-07-31
 
+- Panel: every limit is now a row of its own — four aligned columns of source mark, bar, percentage and countdown. The worst window used to get a 28px display number and the rest a bare list, which made two windows of one limit look like two different kinds of fact. A weekly ceiling stops the work exactly as hard as a five-hour one.
+- Panel: the grid lives on the list rather than on each row, so the percentage column holds still down the whole card while the readings tick.
+- Panel: rows are ordered shortest window first. The backend's order is the order the provider wrote its log in, which is not an order.
+- Panel: the pace projection is a row like the others, drawn on a hollow track at 70% opacity. Everything above it was read off this disk; that one is a line drawn forward from those. The ramp still reaches its fill — a projected 90% earns the same red as a measured one.
+- Panel: added the status word (Good / Caution / Critical) beside each provider's name, taken from its fullest window. Green stays neutral: a "Good" lit on every card all day spends the ramp on good news, which is the same argument `PaceBadge` already made.
+- Panel: added a provider identity mark — a coloured square, where every mark that carries a reading is a circle. Its four hues sit in the violet-to-cyan arc, outside the ramp's bands, but shape is what actually keeps the two apart: a cyan identity and a green level are close enough on a white card that one would eventually be read as the other.
+- Panel: added filter chips, drawn from two reporting tools up. A narrowing to a tool that stops reporting falls back to "all" rather than emptying the panel with no visible reason.
+- Panel: installed-but-quiet tools are pills, always visible; tools that are not on this machine stay behind the collapsed disclosure. Sixteen providers and most people have two — fourteen pills would bury the cards above them. This is the spot a competitor fills with service-status badges fetched from a status page; this app makes no network request, so it reports what can be seen from this disk.
+- Panel: the footer is an action bar — reading on the left, Dashboard and Quit on the right. Quit was only ever in the tray menu, which is a right click on macOS and Windows and a left click on Linux: three gestures for the one action every user eventually wants, none of them written down.
+- Panel: added the `quit_app` command. With no dock icon and no window in the switcher, an app nobody can work out how to close is an app that gets force-quit.
+- `ProviderId` is now derived from a `PROVIDER_IDS` array rather than declared as a bare union. The order is load-bearing — identity colours are assigned by position, and a colour that moved when a provider was inserted above it would repaint tools the user had already learned.
+- Blueprint §7.2 records the one exception to "the ramp never touches a heading": the status word is a reading, not a label. §7.4 carries the new layout.
+
 - Phase 11: Linux is the third desktop. No path resolution changed — `core/src/paths.rs` already followed XDG, and the provider roots (`~/.claude`, `~/.codex`, `~/.copilot`) are the same directories there.
 - Phase 11: the tray item is a different object on Linux. StatusNotifierItem carries no click event — Tauri documents `TrayIconEvent` as never emitted — so the left button opens the menu and the menu's own entry opens the panel. An indicator with no menu is frequently not drawn at all, so the menu is load-bearing twice over.
 - Phase 11: no icon geometry either, so nothing can be positioned under the item. The panel goes to the top right, where the indicator area sits on GNOME, Cinnamon, Budgie and XFCE. KDE's default tray is bottom right and the panel does not follow it — stated in `docs/STORE.md` §7 rather than left to be discovered.

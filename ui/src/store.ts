@@ -34,7 +34,14 @@ interface DeckStore {
   /** What we may read. Null until the shell answers; a browser build needs no grant. */
   access: AccessState | null;
   view: "panel" | "settings";
+  /**
+   * Which tool the panel is narrowed to. Deliberately not persisted: it is a glance-level
+   * choice, and a panel that opened tomorrow still hiding two of three tools would read as a
+   * panel that had lost them.
+   */
+  filter: ProviderId | "all";
   setView: (view: "panel" | "settings") => void;
+  setFilter: (filter: ProviderId | "all") => void;
   setTrayMode: (mode: TrayMode) => void;
   setTheme: (theme: Settings["theme"]) => void;
   setLocale: (locale: Locale) => void;
@@ -51,6 +58,8 @@ interface DeckStore {
   openDashboard: () => Promise<void>;
   /** Dismiss the popover from the keyboard, the way clicking away already does. */
   hidePanel: () => Promise<void>;
+  /** End the process. With no dock icon the tray menu was the only way out. */
+  quit: () => Promise<void>;
   start: () => Promise<void>;
 }
 
@@ -73,8 +82,11 @@ export const useDeck = create<DeckStore>((set, get) => ({
   statuslineError: null,
   access: null,
   view: "panel",
+  filter: "all",
 
   setView: (view) => set({ view }),
+
+  setFilter: (filter) => set({ filter }),
 
   setTrayMode: (trayMode) => {
     set({ settings: { ...get().settings, trayMode } });
@@ -140,6 +152,10 @@ export const useDeck = create<DeckStore>((set, get) => ({
 
   hidePanel: async () => {
     await send("hide_panel", {});
+  },
+
+  quit: async () => {
+    await send("quit_app", {});
   },
 
   setDemo: (demo) => {
