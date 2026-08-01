@@ -2,6 +2,7 @@
 
 ## 2026-08-01
 
+- Windows/release: replaced the non-functional MSIX command with signed x64/arm64 NSIS Store packaging, added user-controlled launch-at-sign-in registration, native OS locale detection, explicit settings/tray/window errors, and deterministic app-icon verification.
 - Core: persisted versioned provider checkpoints for restart-safe incremental reads, bounded and hardened watcher state, corrected out-of-order/dedup retention, surfaced malformed provider records, and fixed Claude/Copilot quota estimation and token accounting.
 - App Store: removed macOS private-window APIs, moved Claude quota capture into the bundled executable, made sandbox setup explicitly manual and read-only, preserved and conflict-checked the complete prior Claude status-line setting, and made preference writes atomic and backend-authoritative.
 
@@ -80,7 +81,7 @@
 - Phase 9: added `scripts/appstore.sh`. It verifies that the sandbox entitlement actually reached the signature — Asset Validation error 90296 is what its absence looks like from Apple's side — and that no network capability crept in.
 - Phase 9: added `docs/STORE.md` — listing copy, the metadata rule that gets apps rejected for brand stuffing, and the "Data Not Collected" declaration with the architectural reason each answer is true.
 - Phase 10: the tray glyph is grey rather than black off macOS. Windows has no template images, and a black glyph is invisible against the dark taskbar almost everyone runs.
-- Phase 10: added `app/tauri.msstore.conf.json` (`webviewInstallMode: offlineInstaller`, a Store condition) and `scripts/msstore.ps1` for the MSIX route. MSIX because the Store signs it, so no code-signing certificate has to be bought, and `runFullTrust` means none of the macOS grant machinery applies.
+- Phase 10: added `app/tauri.msstore.conf.json` (`webviewInstallMode: offlineInstaller`, a Store condition) and the initial Windows packaging path; corrected on 2026-08-01 to the Store's signed NSIS/Win32 route.
 
 ## 2026-07-29
 

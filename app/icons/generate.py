@@ -15,9 +15,10 @@ Requires nothing beyond the standard library. macOS `iconutil` turns the .iconse
 
 from __future__ import annotations
 
+import argparse
 import pathlib
 import struct
-import subprocess
+import tempfile
 import zlib
 
 HERE = pathlib.Path(__file__).parent
@@ -69,6 +70,28 @@ def write_png(path: pathlib.Path, pixels: list[list[tuple[int, int, int, int]]])
     png += chunk(b"IDAT", zlib.compress(bytes(raw), 9))
     png += chunk(b"IEND", b"")
     path.write_bytes(png)
+
+
+def write_icns(path: pathlib.Path, iconset: pathlib.Path) -> None:
+    """Write the documented modern ICNS chunks directly from their PNG payloads."""
+    sources = [
+        (b"icp4", "icon_16x16.png"),
+        (b"icp5", "icon_32x32.png"),
+        (b"icp6", "icon_32x32@2x.png"),
+        (b"ic07", "icon_128x128.png"),
+        (b"ic08", "icon_256x256.png"),
+        (b"ic09", "icon_512x512.png"),
+        (b"ic10", "icon_512x512@2x.png"),
+        (b"ic11", "icon_16x16@2x.png"),
+        (b"ic12", "icon_32x32@2x.png"),
+        (b"ic13", "icon_128x128@2x.png"),
+        (b"ic14", "icon_256x256@2x.png"),
+    ]
+    chunks = bytearray()
+    for kind, name in sources:
+        payload = (iconset / name).read_bytes()
+        chunks += kind + struct.pack(">I", len(payload) + 8) + payload
+    path.write_bytes(b"icns" + struct.pack(">I", len(chunks) + 8) + chunks)
 
 
 def blend(under: tuple[int, int, int, int], colour: tuple[int, int, int], alpha: float):
@@ -163,22 +186,45 @@ def draw(size: int) -> list[list[tuple[int, int, int, int]]]:
     return pixels
 
 
-def main() -> None:
+def generate(output: pathlib.Path) -> None:
+    output.mkdir(parents=True, exist_ok=True)
     for size in (32, 128, 256, 512):
-        write_png(HERE / f"{size}x{size}.png", draw(size))
-    write_png(HERE / "icon.png", draw(512))
+        write_png(output / f"{size}x{size}.png", draw(size))
+    write_png(output / "icon.png", draw(512))
 
-    iconset = HERE / "icon.iconset"
+    iconset = output / "icon.iconset"
     iconset.mkdir(exist_ok=True)
     for size in (16, 32, 128, 256, 512):
         write_png(iconset / f"icon_{size}x{size}.png", draw(size))
         write_png(iconset / f"icon_{size}x{size}@2x.png", draw(size * 2))
 
-    subprocess.run(
-        ["iconutil", "-c", "icns", str(iconset), "-o", str(HERE / "icon.icns")],
-        check=True,
+    write_icns(output / "icon.icns", iconset)
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="regenerate in a temporary directory and fail if tracked icons differ",
     )
-    print(f"wrote icons to {HERE}")
+    args = parser.parse_args()
+
+    if not args.check:
+        generate(HERE)
+        print(f"wrote icons to {HERE}")
+        return
+
+    with tempfile.TemporaryDirectory(prefix="quotadeck-icons-") as temporary:
+        generated = pathlib.Path(temporary)
+        generate(generated)
+        names = ["32x32.png", "128x128.png", "256x256.png", "512x512.png", "icon.png", "icon.icns"]
+        changed = [name for name in names if (generated / name).read_bytes() != (HERE / name).read_bytes()]
+        if changed:
+            raise SystemExit(
+                "generated icons are stale: " + ", ".join(changed) + "; run app/icons/generate.py"
+            )
+    print("tracked icons match the generator")
 
 
 if __name__ == "__main__":

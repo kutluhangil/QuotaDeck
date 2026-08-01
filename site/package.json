@@ -7,11 +7,14 @@
     "dev": "ASTRO_TELEMETRY_DISABLED=1 astro dev",
     "build": "ASTRO_TELEMETRY_DISABLED=1 astro build && node scripts/check-csp.mjs",
     "preview": "ASTRO_TELEMETRY_DISABLED=1 astro preview",
-    "check": "ASTRO_TELEMETRY_DISABLED=1 astro check"
+    "check": "ASTRO_TELEMETRY_DISABLED=1 astro sync && tsc --noEmit && npm run build"
   },
   "dependencies": {
     "@fontsource-variable/inter": "^5.3.0",
     "@fontsource/martian-mono": "^5.3.0",
     "astro": "^7.1.6"
+  },
+  "devDependencies": {
+    "typescript": "6.0.3"
   }
 }

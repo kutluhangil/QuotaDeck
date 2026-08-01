@@ -31,7 +31,7 @@ export const tr: Copy = {
     lede: "Quota Deck, kodlama araçlarının zaten kendi diskine yazdığı oturum günlüklerini okur ve her kayan pencerenin ne kadarını harcadığını gösterir — araç cevap vermeyi kesmeden önce.",
     claim: "Hesap yok. Giriş yok. Ağ yok. Hiçbir zaman.",
     claimNote:
-      "Uygulama, dışarı bağlantıya izin verecek yetkilendirme olmadan derleniyor; yani bu satırı bu sayfadaki bir iddia değil, kodun imzası garanti ediyor.",
+      "Dağıtılan masaüstü bağımlılık ağaçlarında HTTP istemcisine izin verilmiyor; CI macOS, Windows ve Linux yapılarını ayrı ayrı denetliyor. Mac App Store imzasında ayrıca dışarı ağ yetkilendirmesi bulunmuyor.",
     download: "İndir",
     how: "Nasıl doğru olabiliyor",
     shot: {
@@ -158,7 +158,7 @@ export const tr: Copy = {
       },
       {
         name: "Windows",
-        body: "Görev çubuğu tepsi öğesi. Microsoft Store üzerinden MSIX; imzayı mağaza atıyor, güncellemeler de mağazadan geliyor.",
+        body: "Görev çubuğu tepsi öğesi. Microsoft Store'un Win32 akışında imzalı x64 ve arm64 kurucular; oturum açınca başlatma uygulamanın içinden yönetiliyor.",
       },
       {
         name: "Linux",
@@ -203,7 +203,7 @@ export const tr: Copy = {
 
   download: {
     title: "İndir",
-    lede: "Henüz hiçbir sürüm yayında değil. Üç derleme yolu da hazır ve CI'da çalışıyor; kalan kısım geliştirici hesabı ve her türden bir makine istiyor, ikisi de bir commit'in üretebileceği şeyler değil.",
+    lede: "Henüz hiçbir sürüm yayında değil. Uygulama üç platformda da CI içinde derleniyor; imzalı mağaza paketleri ve masaüstünde elle doğrulama için ilgili hesap, sertifika ve makine hâlâ gerekli.",
     statusPending: "Henüz yayında değil",
     copyCommand: "Kopyala",
     copiedCommand: "Kopyalandı",
@@ -219,8 +219,8 @@ export const tr: Copy = {
       },
       {
         name: "Windows",
-        detail: "Microsoft Store, x64 ve arm64 için MSIX paketi. İmzayı mağaza attığı için sertifika satın alınması gerekmiyor.",
-        blocked: "Bekleyen: Partner Center hesabı ve rezerve edilmiş bir ürün adı.",
+        detail: "Microsoft Store; x64 ve arm64 için CA imzalı, çevrimdışı NSIS kurucuları ve değişmez HTTPS adresleriyle.",
+        blocked: "Bekleyen: Windows imzalama sertifikası, Partner Center hesabı, barındırılan kurucu adresleri ve rezerve edilmiş ürün adı.",
         command: "scripts/msstore.ps1",
       },
       {
@@ -242,7 +242,7 @@ export const tr: Copy = {
     sections: [
       {
         title: "Cihazından ne çıkıyor",
-        body: "Hiçbir şey. Bağımlılık ağacında HTTP istemcisi ve dışarı bağlantıya izin verecek bir yetkilendirme yok; yani bu bir niyet sözü değil, ikili dosyanın bir özelliği — ve ikisinden biri değişirse CI derlemeyi düşürüyor.",
+        body: "Hiçbir şey. Dağıtılan masaüstü bağımlılık ağaçlarında HTTP istemcisi yok; CI macOS, Windows ve Linux yapılarını ayrı ayrı denetliyor. Mac App Store sürümünde ayrıca dışarı ağ yetkilendirmesi bulunmuyor.",
       },
       {
         title: "Ne okunuyor",

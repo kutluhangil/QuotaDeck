@@ -30,8 +30,9 @@ as vendor marks (§7.3) — legally clean, and the reason the design language is
 > Quota Deck reads the session logs that AI coding tools already write to your disk and shows how
 > much of each rolling quota window you have used.
 >
-> No account. No login. No network requests — the app ships without the entitlement that would
-> allow one, so the claim is enforced by its code signature rather than asserted in this text.
+> No account. No login. No network requests — the desktop dependency tree contains no HTTP
+> client and CI checks the macOS, Windows and Linux builds. The Mac App Store signature also
+> carries no outbound-network entitlement.
 >
 > • A menu bar item that stays quiet until a quota is genuinely at risk
 > • A timeline of where the quota went, per tool
@@ -51,7 +52,7 @@ Declare **Data Not Collected** on every question in App Store Connect's privacy 
 and the equivalent in Partner Center. This is true, and the architecture is what makes it
 checkable:
 
-- No HTTP client anywhere in the dependency tree. CI fails the build if one appears.
+- No HTTP client in any shipping desktop dependency tree. CI checks macOS, Windows and Linux.
 - No outbound-connection entitlement in `app/Entitlements.plist`. CI fails if one is added.
 - No listening socket — the OTLP telemetry route was tested and rejected in Phase 0
   (`docs/DISCOVERY.md` §4) partly for this reason.
@@ -97,40 +98,34 @@ The `.app` is never uploaded directly — the store takes a `.pkg`.
 
 ## 6. Microsoft Store
 
-MSIX rather than EXE/MSI (§8.2). The Store signs an MSIX itself, so no code-signing certificate
-has to be bought; `runFullTrust` is added automatically for a Tauri app, so there is no sandbox
-to work around and none of the macOS grant machinery applies; and updates go through the Store.
+Quota Deck uses Microsoft's unpackaged Win32 route: signed NSIS `.exe` installers for x64 and
+arm64. Tauri's built-in bundle targets do not include MSIX, so the previous `--bundles msix`
+command could never produce the package it promised. The Store accepts MSI or EXE installers
+through versioned HTTPS URLs, but it requires the installer and every portable executable it
+installs to carry a valid CA-backed code signature. The Store does not add that signature for
+this route.
 
-`scripts/msstore.ps1` builds x64 and arm64 and points at the `makeappx bundle` step. The
-EXE/MSI fallback is configured in `app/tauri.msstore.conf.json` — either route requires
-`webviewInstallMode: offlineInstaller`, which is a Store condition, and the NSIS installer's
-silent-install flag is `/S` (capital S), entered by hand in Partner Center.
+`scripts/msstore.ps1` uses the repository-pinned Tauri CLI, reads the installed signing identity
+from `WINDOWS_CERTIFICATE_THUMBPRINT`, timestamps the signature, builds both architectures with
+the offline WebView installer, locates exactly one NSIS artifact per target, and verifies both
+the installer and application executable. `-AllowUnsignedLocalBuild` is only for local testing.
+Partner Center's silent-install flag is `/S` (capital S).
 
 Left for Partner Center:
 
 - [ ] Reserve the product name. The publisher display name may not equal the product name.
-- [ ] Upload the `.msixbundle`
+- [ ] Configure Tauri Windows signing with a CA-issued code-signing certificate
+- [ ] Host both signed installers at immutable, versioned HTTPS URLs
+- [ ] Submit the x64 and arm64 URLs as EXE installers with silent switch `/S`
 - [ ] Listing from §2 and §3 above
 
-### Startup task
+### Launch at sign-in
 
-A menu bar app that has to be launched by hand every morning is one that gets uninstalled. On
-Windows this is a manifest extension rather than a registry write, added to the generated
-`AppxManifest.xml`:
-
-```xml
-<Extensions>
-  <desktop:Extension Category="windows.startupTask"
-                     Executable="quotadeck.exe"
-                     EntryPoint="Windows.FullTrustApplication">
-    <desktop:StartupTask TaskId="QuotaDeckStartup" Enabled="false" DisplayName="Quota Deck" />
-  </desktop:Extension>
-</Extensions>
-```
-
-`Enabled="false"` on purpose. The user turns it on in Settings → Startup apps, which is where
-they expect to control it, and an app that adds itself to login without asking is one people
-distrust. Not yet verified against a real MSIX build — that needs a Windows machine.
+The Windows settings screen includes an explicit Launch at sign-in choice. It writes only the
+current user's `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` value after the user turns
+it on, reads the exact executable path back for verification, and removes the value when turned
+off. Nothing is registered during installation or first launch. A real Windows runtime check is
+still required before submission.
 
 ## 7. Linux
 

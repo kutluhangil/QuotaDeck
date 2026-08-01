@@ -55,14 +55,72 @@ const FIRST_PASS_FILES: usize = 50;
 const STORE_FILE: &str = "usage.redb";
 const STOP_POLL: Duration = Duration::from_secs(1);
 
-pub fn run() {
-    let deck = Deck::new();
+/// Make a pre-runtime startup failure visible even when the release binary has no console.
+pub fn report_startup_error(error: &str) {
+    #[cfg(target_os = "macos")]
+    {
+        use objc2::MainThreadMarker;
+        use objc2_app_kit::{NSAlert, NSAlertStyle};
+        use objc2_foundation::NSString;
+
+        let Some(mtm) = MainThreadMarker::new() else {
+            eprintln!("quotadeck: startup error dialog was not called on the main thread");
+            return;
+        };
+        let alert = NSAlert::new(mtm);
+        alert.setAlertStyle(NSAlertStyle::Critical);
+        alert.setMessageText(&NSString::from_str("Quota Deck could not start"));
+        alert.setInformativeText(&NSString::from_str(error));
+        alert.runModal();
+    }
+    #[cfg(target_os = "windows")]
+    {
+        use std::ffi::c_void;
+
+        const MB_ICONERROR: u32 = 0x0000_0010;
+        const MB_OK: u32 = 0;
+        #[link(name = "user32")]
+        extern "system" {
+            fn MessageBoxW(
+                window: *mut c_void,
+                text: *const u16,
+                caption: *const u16,
+                kind: u32,
+            ) -> i32;
+        }
+
+        let title: Vec<u16> = "Quota Deck could not start"
+            .encode_utf16()
+            .chain(Some(0))
+            .collect();
+        let message: Vec<u16> = error.encode_utf16().chain(Some(0)).collect();
+        // SAFETY: both strings are live, NUL-terminated UTF-16 buffers and a null owner is
+        // explicitly supported for an application-modal message box.
+        unsafe {
+            MessageBoxW(
+                std::ptr::null_mut(),
+                message.as_ptr(),
+                title.as_ptr(),
+                MB_OK | MB_ICONERROR,
+            );
+        }
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        let _ = error;
+    }
+}
+
+pub fn run() -> Result<()> {
+    let deck = Deck::new()?;
     let read_loop = Arc::new(Mutex::new(None::<ReadLoopControl>));
     let setup_read_loop = read_loop.clone();
 
-    let app = tauri::Builder::default()
+    let builder = tauri::Builder::default()
         .plugin(tauri_plugin_positioner::init())
-        .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_notification::init());
+
+    let app = builder
         .manage(deck.clone())
         .invoke_handler(tauri::generate_handler![
             current_state,
@@ -83,6 +141,8 @@ pub fn run() {
             set_alert_thresholds,
             set_mute,
             set_panel_height,
+            startup_state,
+            set_startup,
             statusline_state,
             prepare_manual_statusline,
             install_statusline,
@@ -116,17 +176,26 @@ pub fn run() {
             if let tauri::WindowEvent::Focused(false) = event {
                 // A menu bar popover closes when you click away from it — unless what took
                 // the focus is a panel we opened on its behalf.
-                if let Some(deck) = window.app_handle().try_state::<Deck>() {
+                let deck = window.app_handle().try_state::<Deck>();
+                if let Some(deck) = &deck {
                     if deck.modal_open() {
                         return;
                     }
-                    deck.set_panel_open(false);
                 }
-                let _ = window.hide();
+                match window.hide() {
+                    Ok(()) => {
+                        if let Some(deck) = deck {
+                            deck.set_panel_open(false);
+                        }
+                    }
+                    Err(error) => {
+                        eprintln!("quotadeck: panel blur could not hide the window: {error}");
+                    }
+                }
             }
         })
         .build(tauri::generate_context!())
-        .expect("the Tauri runtime failed to start");
+        .map_err(|error| Error::Invalid(format!("the Tauri runtime failed to start: {error}")))?;
 
     app.run(move |_app, event| {
         if matches!(event, tauri::RunEvent::Exit) {
@@ -139,6 +208,7 @@ pub fn run() {
             }
         }
     });
+    Ok(())
 }
 
 #[tauri::command]
@@ -251,11 +321,15 @@ fn open_dashboard(app: AppHandle) -> std::result::Result<(), String> {
 /// it has to set the same flag or the read loop keeps ticking at the foreground rate against a
 /// window nobody is looking at.
 #[tauri::command]
-fn hide_panel(app: AppHandle, deck: tauri::State<'_, Deck>) {
+fn hide_panel(app: AppHandle, deck: tauri::State<'_, Deck>) -> std::result::Result<(), String> {
+    let window = app
+        .get_webview_window(PANEL_WINDOW)
+        .ok_or_else(|| format!("webview window {PANEL_WINDOW:?} does not exist"))?;
+    window
+        .hide()
+        .map_err(|error| format!("could not hide the panel: {error}"))?;
     deck.set_panel_open(false);
-    if let Some(window) = app.get_webview_window(PANEL_WINDOW) {
-        let _ = window.hide();
-    }
+    Ok(())
 }
 
 /// Leave.
@@ -306,7 +380,9 @@ async fn request_access(
                 Ok(held) => deck.set_access(held, None),
                 Err(e) => deck.set_access(None, Some(e.to_string())),
             }
-            let _ = send.send(());
+            if let Err(error) = send.send(()) {
+                eprintln!("quotadeck: folder picker result could not be delivered: {error}");
+            }
         })
     };
 
@@ -383,12 +459,14 @@ const PANEL_WIDTH: f64 = 380.0;
 /// The frontend measures; the backend decides. Clamping here means a wrong measurement can
 /// never produce a window taller than the screen.
 #[tauri::command]
-fn set_panel_height(app: AppHandle, height: f64) {
-    let Some(window) = app.get_webview_window("panel") else {
-        return;
-    };
+fn set_panel_height(app: AppHandle, height: f64) -> std::result::Result<(), String> {
+    let window = app
+        .get_webview_window(PANEL_WINDOW)
+        .ok_or_else(|| format!("webview window {PANEL_WINDOW:?} does not exist"))?;
     let clamped = height.clamp(MIN_PANEL_HEIGHT, MAX_PANEL_HEIGHT);
-    let _ = window.set_size(tauri::LogicalSize::new(PANEL_WIDTH, clamped));
+    window
+        .set_size(tauri::LogicalSize::new(PANEL_WIDTH, clamped))
+        .map_err(|error| format!("could not resize the panel to {clamped}px: {error}"))
 }
 
 #[tauri::command]
@@ -397,9 +475,30 @@ fn set_tray_mode(
     deck: tauri::State<'_, Deck>,
     mode: TrayMode,
 ) -> std::result::Result<Settings, String> {
-    let settings = deck.set_tray_mode(mode).map_err(|e| e.to_string())?;
-    tray::refresh(&app, &deck.state(), settings.clone());
-    Ok(settings)
+    let previous = deck.settings();
+    let mut proposed = previous.clone();
+    proposed.tray_mode = mode;
+    if let Err(error) = tray::refresh(&app, &deck.state(), proposed) {
+        let rollback = tray::refresh(&app, &deck.state(), previous.clone());
+        return Err(match rollback {
+            Ok(()) => error,
+            Err(rollback) => {
+                format!("{error}; tray rollback after the update failure also failed: {rollback}")
+            }
+        });
+    }
+    match deck.set_tray_mode(mode) {
+        Ok(settings) => Ok(settings),
+        Err(error) => {
+            let rollback = tray::refresh(&app, &deck.state(), previous);
+            Err(match rollback {
+                Ok(()) => error.to_string(),
+                Err(rollback) => {
+                    format!("{error}; tray rollback after the save failure also failed: {rollback}")
+                }
+            })
+        }
+    }
 }
 
 #[tauri::command]
@@ -414,9 +513,226 @@ fn set_locale(
     deck: tauri::State<'_, Deck>,
     locale: Locale,
 ) -> std::result::Result<Settings, String> {
-    let settings = deck.set_locale(locale).map_err(|e| e.to_string())?;
-    tray::relanguage(&app, locale.language());
-    Ok(settings)
+    let previous = deck.settings();
+    if let Err(error) = tray::relanguage(&app, locale.language()) {
+        let rollback = tray::relanguage(&app, previous.locale.language());
+        return Err(match rollback {
+            Ok(()) => error,
+            Err(rollback) => format!(
+                "{error}; tray-language rollback after the update failure also failed: {rollback}"
+            ),
+        });
+    }
+    match deck.set_locale(locale) {
+        Ok(settings) => Ok(settings),
+        Err(error) => {
+            let rollback = tray::relanguage(&app, previous.locale.language());
+            Err(match rollback {
+                Ok(()) => error.to_string(),
+                Err(rollback) => format!(
+                    "{error}; tray-language rollback after the save failure also failed: {rollback}"
+                ),
+            })
+        }
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct StartupState {
+    supported: bool,
+    enabled: bool,
+}
+
+/// Whether Windows will launch Quota Deck after sign-in. Other platforms omit the setting:
+/// the App Store build must not grow a second launch mechanism beside its sandboxed bundle.
+#[tauri::command]
+fn startup_state(app: AppHandle) -> std::result::Result<StartupState, String> {
+    #[cfg(target_os = "windows")]
+    {
+        let _ = app;
+        let enabled = windows_startup::is_enabled()?;
+        return Ok(StartupState {
+            supported: true,
+            enabled,
+        });
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = app;
+        Ok(StartupState {
+            supported: false,
+            enabled: false,
+        })
+    }
+}
+
+#[tauri::command]
+fn set_startup(app: AppHandle, enabled: bool) -> std::result::Result<StartupState, String> {
+    #[cfg(target_os = "windows")]
+    {
+        let _ = app;
+        if enabled {
+            windows_startup::enable()?;
+        } else {
+            windows_startup::disable()?;
+        }
+        let actual = windows_startup::is_enabled()?;
+        return Ok(StartupState {
+            supported: true,
+            enabled: actual,
+        });
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = (app, enabled);
+        Err("launch at sign-in is only supported by the Windows build".into())
+    }
+}
+
+#[cfg(target_os = "windows")]
+mod windows_startup {
+    use std::ffi::c_void;
+    use std::path::Path;
+
+    type Hkey = *mut c_void;
+
+    const HKEY_CURRENT_USER: Hkey = 0x80000001_usize as Hkey;
+    const RUN_KEY: &[u16] = &[
+        83, 111, 102, 116, 119, 97, 114, 101, 92, 77, 105, 99, 114, 111, 115, 111, 102, 116, 92,
+        87, 105, 110, 100, 111, 119, 115, 92, 67, 117, 114, 114, 101, 110, 116, 86, 101, 114, 115,
+        105, 111, 110, 92, 82, 117, 110, 0,
+    ];
+    const VALUE_NAME: &[u16] = &[81, 117, 111, 116, 97, 32, 68, 101, 99, 107, 0];
+    const ERROR_SUCCESS: i32 = 0;
+    const ERROR_FILE_NOT_FOUND: i32 = 2;
+    const REG_SZ: u32 = 1;
+    const RRF_RT_REG_SZ: u32 = 2;
+
+    #[link(name = "advapi32")]
+    extern "system" {
+        fn RegGetValueW(
+            key: Hkey,
+            subkey: *const u16,
+            value: *const u16,
+            flags: u32,
+            value_type: *mut u32,
+            data: *mut c_void,
+            data_size: *mut u32,
+        ) -> i32;
+        fn RegSetKeyValueW(
+            key: Hkey,
+            subkey: *const u16,
+            value: *const u16,
+            value_type: u32,
+            data: *const c_void,
+            data_size: u32,
+        ) -> i32;
+        fn RegDeleteKeyValueW(key: Hkey, subkey: *const u16, value: *const u16) -> i32;
+    }
+
+    pub fn is_enabled() -> Result<bool, String> {
+        let Some(stored) = read_registration()? else {
+            return Ok(false);
+        };
+        Ok(stored == registration_command()?)
+    }
+
+    pub fn enable() -> Result<(), String> {
+        let command = registration_command()?;
+        let encoded: Vec<u16> = command.encode_utf16().chain(Some(0)).collect();
+        // SAFETY: every pointer refers to a live NUL-terminated UTF-16 buffer, and the byte
+        // count describes `encoded` exactly.
+        let status = unsafe {
+            RegSetKeyValueW(
+                HKEY_CURRENT_USER,
+                RUN_KEY.as_ptr(),
+                VALUE_NAME.as_ptr(),
+                REG_SZ,
+                encoded.as_ptr().cast(),
+                (encoded.len() * std::mem::size_of::<u16>()) as u32,
+            )
+        };
+        status_result(status, "enable Windows startup")
+    }
+
+    pub fn disable() -> Result<(), String> {
+        // SAFETY: the key and value buffers are static NUL-terminated UTF-16 strings.
+        let status =
+            unsafe { RegDeleteKeyValueW(HKEY_CURRENT_USER, RUN_KEY.as_ptr(), VALUE_NAME.as_ptr()) };
+        if status == ERROR_FILE_NOT_FOUND {
+            return Ok(());
+        }
+        status_result(status, "disable Windows startup")
+    }
+
+    fn read_registration() -> Result<Option<String>, String> {
+        let mut bytes = 0_u32;
+        // SAFETY: this first call intentionally supplies no output buffer and asks Windows for
+        // the required size through `bytes`.
+        let status = unsafe {
+            RegGetValueW(
+                HKEY_CURRENT_USER,
+                RUN_KEY.as_ptr(),
+                VALUE_NAME.as_ptr(),
+                RRF_RT_REG_SZ,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                &mut bytes,
+            )
+        };
+        if status == ERROR_FILE_NOT_FOUND {
+            return Ok(None);
+        }
+        status_result(status, "inspect Windows startup")?;
+
+        let mut data = vec![0_u16; bytes as usize / std::mem::size_of::<u16>()];
+        // SAFETY: `data` owns at least `bytes` writable bytes and the other pointers are valid
+        // NUL-terminated UTF-16 constants.
+        let status = unsafe {
+            RegGetValueW(
+                HKEY_CURRENT_USER,
+                RUN_KEY.as_ptr(),
+                VALUE_NAME.as_ptr(),
+                RRF_RT_REG_SZ,
+                std::ptr::null_mut(),
+                data.as_mut_ptr().cast(),
+                &mut bytes,
+            )
+        };
+        status_result(status, "read Windows startup")?;
+        let length = data
+            .iter()
+            .position(|unit| *unit == 0)
+            .unwrap_or(data.len());
+        String::from_utf16(&data[..length])
+            .map(Some)
+            .map_err(|error| format!("Windows startup registration is not valid UTF-16: {error}"))
+    }
+
+    fn registration_command() -> Result<String, String> {
+        let executable = std::env::current_exe()
+            .map_err(|error| format!("could not resolve the Quota Deck executable: {error}"))?;
+        command_for(&executable)
+    }
+
+    fn command_for(executable: &Path) -> Result<String, String> {
+        let path = executable.to_str().ok_or_else(|| {
+            format!(
+                "executable path is not valid Unicode: {}",
+                executable.display()
+            )
+        })?;
+        Ok(format!("\"{path}\""))
+    }
+
+    fn status_result(status: i32, action: &str) -> Result<(), String> {
+        if status == ERROR_SUCCESS {
+            Ok(())
+        } else {
+            Err(format!("could not {action}: Windows error code {status}"))
+        }
+    }
 }
 
 /// Folds every installed provider's logs on a timer.
@@ -432,7 +748,9 @@ struct ReadLoopControl {
 impl ReadLoopControl {
     fn shutdown(self) {
         self.cancelled.store(true, Ordering::Release);
-        let _ = self.stop.send(());
+        if let Err(error) = self.stop.send(()) {
+            eprintln!("quotadeck: read loop stop signal could not be delivered: {error}");
+        }
         if self.thread.join().is_err() {
             eprintln!("quotadeck: read loop panicked during shutdown");
         }
@@ -724,14 +1042,24 @@ fn publish(
     };
     deck.set_history(history);
     deck.set_state(state.clone());
-    tray::refresh(app, &state, settings.clone());
-    let _ = app.emit(STATE_EVENT, &state);
+    let mut failures = Vec::new();
+    if let Err(error) = app.emit(STATE_EVENT, &state) {
+        failures.push(format!("could not emit {STATE_EVENT}: {error}"));
+    }
 
     for alert in alerts.evaluate(&state, &settings, now) {
         raise(app, &alert);
     }
     if store.should_flush() {
-        store.flush()?;
+        if let Err(error) = store.flush() {
+            failures.push(format!("could not flush usage persistence: {error}"));
+        }
+    }
+    if let Err(error) = tray::refresh(app, &state, settings) {
+        failures.push(format!("tray refresh failed: {error}"));
+    }
+    if !failures.is_empty() {
+        return Err(Error::Invalid(failures.join("; ")));
     }
     Ok(())
 }

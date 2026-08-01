@@ -81,11 +81,16 @@ export function App() {
   const hidePanel = useDeck((state) => state.hidePanel);
   const quit = useDeck((state) => state.quit);
   const start = useDeck((state) => state.start);
+  const shellError = useDeck((state) => state.shellError);
   const [now, setNow] = useState(() => Date.now());
   const bodyRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
-    void start();
+    void start().catch((error) => {
+      const message = `start app: ${String(error)}`;
+      console.error(message);
+      useDeck.setState({ shellError: message });
+    });
   }, [start]);
 
   // Countdowns move slowly. One tick a minute keeps them honest without waking the CPU.
@@ -175,6 +180,11 @@ export function App() {
         tabIndex={-1}
         aria-label={view === "settings" ? strings.a11y.settingsRegion : strings.a11y.tools}
       >
+        {shellError !== null && (
+          <p className="type-caption settings__error" role="alert">
+            {strings.shellFailed(shellError)}
+          </p>
+        )}
         {view === "settings" ? (
           <SettingsView now={now} />
         ) : needsAccess ? (

@@ -11,17 +11,17 @@ kabul kriterleri blueprint Ek A.
 
 ---
 
-## Kod tarafı — son doğrulama (2026-07-31, `ed9c996` + sürüm yükseltmesi)
+## Kod tarafı — son doğrulama (2026-08-01)
 
 Hepsi bu makinede koşuldu, hepsi yeşil. CI aynılarını her push'ta tekrar koşuyor.
 
 - [x] `cargo clippy --workspace --all-targets -- -D warnings` — temiz
-- [x] `cargo test --workspace` — 240 test geçti, 0 başarısız
+- [x] `cargo test --workspace` — 285 test geçti, 0 başarısız
 - [x] Perf bütçesi (`cargo test -p quotadeck-core --release --test perf -- --ignored`) — dördü de bütçe içinde:
       cold parse 69 ms / 160,3 MB (500 dosya), sıcak tik 3,4 ms ve **0 byte** okuma (500 imleç),
       bir saatlik izleme yalnızca eklenen 65 343 byte'ı okudu, tepe RSS 6,9 MB
 - [x] `ui` — `tsc --noEmit` temiz, 47 vitest geçti
-- [x] `site` — 6 sayfa derlendi (EN + TR), yerelde `127.0.0.1:4321` üzerinde altı rota da 200
+- [x] `site` — strict TypeScript kontrolü temiz, 6 sayfa derlendi (EN + TR), CSP kontrolü geçti
 - [x] Çalışma ağacı temiz, `main` üzerinde
 
 Blueprint Faz 0–12 kapalı. Bu dosyanın geri kalanındaki kutuların **hiçbiri bir commit'le
@@ -168,25 +168,29 @@ ağ yeteneğinin sızmadığını. İkisi de yirmi dakikalık bir yüklemeden so
 Bir Windows makinesinde:
 
 ```
+$env:WINDOWS_CERTIFICATE_THUMBPRINT = "CA sertifikasının thumbprint değeri"
 scripts/msstore.ps1
 ```
 
-x64 ve arm64 üretiyor, `makeappx bundle` adımına kadar götürüyor. MSIX seçilmesinin sebebi:
-imzayı mağaza atıyor, yani **kod imzalama sertifikası satın alman gerekmiyor**.
+x64 ve arm64 için NSIS `.exe` kurucuları üretir. Microsoft'un paketlenmemiş Win32 akışında
+kurucu doğrudan yüklenmez; imzalı dosya değişmez, sürümlü bir HTTPS adresinde barındırılır.
+Kurucunun ve kurduğu bütün PE dosyalarının CA destekli Authenticode imzası gerekir. Betik geçerli
+imza görmezse Store artefaktını reddeder; `-AllowUnsignedLocalBuild` yalnız yerel deneme içindir.
 
-- [ ] `.msixbundle` üretildi
-- [ ] Partner Center'a yüklendi
+- [ ] Windows kod imzalama sertifikası Tauri için yapılandırıldı
+- [ ] x64 ve arm64 `*-setup.exe` üretildi ve Authenticode durumu `Valid`
+- [ ] Kurucular değişmez, sürümlü HTTPS adreslerine yüklendi
+- [ ] Partner Center'da EXE türü, doğru mimari ve sessiz kurulum anahtarı `/S` girildi
 - [ ] Listeleme metni §1'deki kurallarla, açıklama §2'den, gizlilik §3'ten
 
-### 2.3 Doğrulanmamış tek şey
+### 2.3 Windows çalışma zamanı
 
-`docs/STORE.md` §6'daki startup task manifest uzantısı gerçek bir MSIX derlemesine karşı
-sınanmadı. `Enabled="false"` ile giriyor, yani kullanıcı Ayarlar → Başlangıç uygulamaları'ndan
-kendisi açıyor.
+- [ ] Ayarlar → Oturum açınca başlat seçeneğini aç; Görev Yöneticisi → Başlangıç uygulamaları
+      ve `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` içinde Quota Deck'i doğrula
+- [ ] Seçeneği kapat; kayıt değerinin kaldırıldığını ve yeniden girişte açılmadığını doğrula
+- [ ] Tepsi, panel odağı, tıklayınca gizleme ve `/S` sessiz kurulumu gerçek Windows'ta doğrula
 
-- [ ] İlk MSIX derlemesinde `AppxManifest.xml` içinde uzantının göründüğünü doğrula
-
-> Neden ben yapamıyorum: `makeappx` ve `signtool` Windows SDK araçları; bu makinede yoklar.
+> Neden ben yapamıyorum: NSIS, Authenticode ve tepsi akışı gerçek bir Windows oturumu istiyor.
 
 ---
 

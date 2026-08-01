@@ -31,10 +31,12 @@ objc2-foundation = { version = "0.3", features = [
   "NSArray",
   "NSData",
   "NSError",
+  "NSLocale",
   "NSString",
   "NSURL",
 ] }
 objc2-app-kit = { version = "0.3", features = [
+  "NSAlert",
   "NSApplication",
   "NSOpenPanel",
   "NSSavePanel",

@@ -78,6 +78,16 @@ jobs:
       - name: Test
         run: cargo test --workspace
 
+      # Run on every shipping desktop target. A target-specific HTTP client must fail on the
+      # platform where Cargo activates it, not merely on the macOS constraints host.
+      - name: No HTTP client dependency
+        shell: bash
+        run: |
+          if cargo tree --workspace | grep -iE 'reqwest|hyper|ureq|isahc|surf|curl'; then
+            echo "::error::an HTTP client entered the desktop dependency tree; see CLAUDE.md"
+            exit 1
+          fi
+
       # Ignored tests read the developer's own logs and cannot run here.
       - name: Benches compile
         run: cargo bench --workspace --no-run
@@ -103,13 +113,6 @@ jobs:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
 
-      - name: No HTTP client dependency
-        run: |
-          if cargo tree --workspace | grep -iE 'reqwest|hyper|ureq|isahc|surf|curl'; then
-            echo "::error::an HTTP client entered the dependency tree; see CLAUDE.md"
-            exit 1
-          fi
-
       - name: No network entitlement
         run: |
           if grep -rn 'security.network' app/ 2>/dev/null; then
@@ -119,6 +122,9 @@ jobs:
 
       - name: Mac App Store configuration uses no private API
         run: node scripts/check-appstore-config.mjs
+
+      - name: App icons match their deterministic source
+        run: python3 app/icons/generate.py --check
 
       - name: No credential or auth-file access
         run: |

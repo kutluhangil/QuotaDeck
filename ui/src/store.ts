@@ -2,6 +2,7 @@ import { create } from "zustand";
 
 import { demoDeck, demoHistory, demoPlans, demoStatusline } from "./demo";
 import { catalogueFor, languageFor, type Catalogue } from "./i18n";
+import { hostPlatform } from "./platform";
 import type {
   AccessState,
   DeckState,
@@ -10,6 +11,7 @@ import type {
   ProviderId,
   ProviderPlans,
   Settings,
+  StartupState,
   StatuslineState,
   TrayMode,
 } from "./types";
@@ -32,8 +34,13 @@ interface DeckStore {
   /** Set when an install or revert failed, so the panel can say what went wrong. */
   statuslineError: string | null;
   statuslineAction: "install" | "revert" | "refresh" | null;
+  startup: StartupState;
+  startupError: string | null;
+  startupBusy: boolean;
   settingsError: string | null;
   settingsAction: string | null;
+  /** A shell/window command failed outside a settings transaction. */
+  shellError: string | null;
   /** What we may read. Null until the shell answers; a browser build needs no grant. */
   access: AccessState | null;
   view: "panel" | "settings";
@@ -49,6 +56,7 @@ interface DeckStore {
   setTheme: (theme: Settings["theme"]) => void;
   setLocale: (locale: Locale) => void;
   setDemo: (demo: boolean) => void;
+  setStartup: (enabled: boolean) => void;
   /** Open the system folder panel. Resolves once the user has answered it. */
   requestAccess: () => Promise<void>;
   forgetAccess: () => Promise<void>;
@@ -86,8 +94,12 @@ export const useDeck = create<DeckStore>((set, get) => ({
   statusline: null,
   statuslineError: null,
   statuslineAction: null,
+  startup: { supported: false, enabled: false },
+  startupError: null,
+  startupBusy: false,
   settingsError: null,
   settingsAction: null,
+  shellError: null,
   access: null,
   view: "panel",
   filter: "all",
@@ -228,15 +240,30 @@ export const useDeck = create<DeckStore>((set, get) => ({
   },
 
   openDashboard: async () => {
-    await send("open_dashboard", {});
+    try {
+      await send("open_dashboard", {});
+      set({ shellError: null });
+    } catch (error) {
+      reportShellError("open dashboard", error);
+    }
   },
 
   hidePanel: async () => {
-    await send("hide_panel", {});
+    try {
+      await send("hide_panel", {});
+      set({ shellError: null });
+    } catch (error) {
+      reportShellError("hide panel", error);
+    }
   },
 
   quit: async () => {
-    await send("quit_app", {});
+    try {
+      await send("quit_app", {});
+      set({ shellError: null });
+    } catch (error) {
+      reportShellError("quit app", error);
+    }
   },
 
   setDemo: (demo) => {
@@ -252,6 +279,15 @@ export const useDeck = create<DeckStore>((set, get) => ({
     });
   },
 
+  setStartup: (enabled) => {
+    if (!inShell || !get().startup.supported || get().startupBusy) return;
+    set({ startupError: null, startupBusy: true });
+    void call<StartupState>("set_startup", { enabled }).then((next) => {
+      if (next.ok) set({ startup: next.value, startupBusy: false });
+      else set({ startupError: next.error, startupBusy: false });
+    });
+  },
+
   requestAccess: async () => {
     const next = await call<AccessState>("request_access", {});
     // The command answers with the state either way; a cancelled panel is a person who has
@@ -264,7 +300,8 @@ export const useDeck = create<DeckStore>((set, get) => ({
 
   forgetAccess: async () => {
     const next = await call<AccessState>("forget_access", {});
-    if (next.ok) set({ access: next.value });
+    if (next.ok) set({ access: next.value, shellError: null });
+    else reportShellError("forget folder access", next.error);
   },
 
   start: async () => {
@@ -293,15 +330,18 @@ export const useDeck = create<DeckStore>((set, get) => ({
     // announces one is also the moment the other is worth re-reading.
     await listen<DeckState>("deck://state", (event) => {
       set({ deck: event.payload });
-      void invoke<ProviderHistory[]>("usage_history").then((history) => set({ history }));
+      void invoke<ProviderHistory[]>("usage_history")
+        .then((history) => set({ history }))
+        .catch((error) => reportShellError("refresh usage history", error));
     });
 
-    const [deck, history, settings, plans, access] = await Promise.all([
+    const [deck, history, settings, plans, access, startup] = await Promise.all([
       invoke<DeckState>("current_state"),
       invoke<ProviderHistory[]>("usage_history"),
       invoke<Settings>("current_settings"),
       invoke<ProviderPlans[]>("provider_plans"),
       invoke<AccessState>("access_state"),
+      call<StartupState>("startup_state", {}),
     ]);
     const statusline = await call<StatuslineState>("statusline_state", {});
     set({
@@ -311,6 +351,11 @@ export const useDeck = create<DeckStore>((set, get) => ({
       plans,
       statusline: statusline.ok ? statusline.value : unavailableStatusline(),
       statuslineError: statusline.ok ? null : statusline.error,
+      startup:
+        startup.ok
+          ? startup.value
+          : { supported: hostPlatform() === "windows", enabled: false },
+      startupError: startup.ok ? null : startup.error,
       access,
     });
     applyTheme(settings.theme);
@@ -398,6 +443,12 @@ async function send(command: string, args: Record<string, unknown>): Promise<voi
   await invoke(command, args);
 }
 
+function reportShellError(action: string, error: unknown): void {
+  const message = `${action}: ${String(error)}`;
+  console.error(message);
+  useDeck.setState({ shellError: message });
+}
+
 type Outcome<T> = { ok: true; value: T } | { ok: false; error: string };
 
 /**
@@ -426,8 +477,15 @@ export async function reportPanelHeight(bodyHeight: number): Promise<void> {
   const height = Math.round(bodyHeight + PANEL_CHROME);
   // ResizeObserver fires on every sub-pixel change; only real movement is worth an IPC call.
   if (Math.abs(height - lastReportedHeight) < 2) return;
-  lastReportedHeight = height;
-  await send("set_panel_height", { height });
+  try {
+    await send("set_panel_height", { height });
+    lastReportedHeight = height;
+    if (useDeck.getState().shellError?.startsWith("resize panel:") === true) {
+      useDeck.setState({ shellError: null });
+    }
+  } catch (error) {
+    reportShellError("resize panel", error);
+  }
 }
 
 /**

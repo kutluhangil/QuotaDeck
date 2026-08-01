@@ -216,6 +216,45 @@ function DemoGroup() {
   );
 }
 
+/** The UI reflects the exact Run registration, not Windows' separate Startup Apps override. */
+function StartupGroup() {
+  const strings = useStrings();
+  const startup = useDeck((state) => state.startup);
+  const error = useDeck((state) => state.startupError);
+  const busy = useDeck((state) => state.startupBusy);
+  const setStartup = useDeck((state) => state.setStartup);
+
+  if (!startup.supported) return null;
+
+  return (
+    <fieldset className="settings__group" disabled={busy}>
+      <legend className="type-label settings__legend">{strings.settings.startupTitle}</legend>
+      <div className="settings__row">
+        {[
+          { enabled: false, label: strings.settings.startupOff },
+          { enabled: true, label: strings.settings.startupOn },
+        ].map(({ enabled, label }) => (
+          <label key={String(enabled)} className="settings__chip">
+            <input
+              type="radio"
+              name="startup"
+              checked={startup.enabled === enabled}
+              onChange={() => setStartup(enabled)}
+            />
+            <span className="type-body">{label}</span>
+          </label>
+        ))}
+      </div>
+      <p className="type-caption settings__hint">{strings.settings.startupHint}</p>
+      {error !== null && (
+        <p className="type-caption settings__error" role="alert">
+          {strings.settings.startupFailed(error)}
+        </p>
+      )}
+    </fieldset>
+  );
+}
+
 /** Minutes from now until local midnight, so "until tomorrow" means the viewer's tomorrow. */
 function minutesUntilTomorrow(now: number): number {
   const midnight = new Date(now);
@@ -305,6 +344,8 @@ export function SettingsView({ now }: { now: number }) {
           </label>
         ))}
       </fieldset>
+
+      <StartupGroup />
 
       <fieldset className="settings__group" disabled={settingsBusy}>
         <legend className="type-label settings__legend">{strings.settings.themeTitle}</legend>

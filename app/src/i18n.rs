@@ -11,7 +11,7 @@
 use quotadeck_core::types::{ProviderId, QuotaWindow, WindowKind};
 use serde::{Deserialize, Serialize};
 
-/// What the user picked. `System` reads the choice out of the environment.
+/// What the user picked. `System` reads the choice from the operating system.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "kebab-case")]
 pub enum Locale {
@@ -34,23 +34,28 @@ impl Locale {
         match self {
             Locale::En => Language::En,
             Locale::Tr => Language::Tr,
-            Locale::System => Language::from_env(),
+            Locale::System => Language::from_system(),
         }
     }
 }
 
 impl Language {
-    /// Read the system's language out of the POSIX locale variables.
-    ///
-    /// `LC_ALL` wins over `LC_MESSAGES`, which wins over `LANG` — the order POSIX specifies.
-    /// Anything we have no catalogue for falls to English rather than to a half-empty one.
-    fn from_env() -> Language {
-        for key in ["LC_ALL", "LC_MESSAGES", "LANG"] {
-            let Ok(value) = std::env::var(key) else {
-                continue;
-            };
-            if let Some(language) = Language::from_tag(&value) {
+    /// Ask macOS and Windows for their UI locale. Other Unix sessions use POSIX variables.
+    fn from_system() -> Language {
+        for locale in native_locales() {
+            if let Some(language) = Language::from_tag(&locale) {
                 return language;
+            }
+        }
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+        {
+            for key in ["LC_ALL", "LC_MESSAGES", "LANG"] {
+                let Ok(value) = std::env::var(key) else {
+                    continue;
+                };
+                if let Some(language) = Language::from_tag(&value) {
+                    return language;
+                }
             }
         }
         Language::En
@@ -141,6 +146,40 @@ impl Language {
             Language::Tr => format!("{window} limiti %{percent:.0} doldu."),
         }
     }
+}
+
+#[cfg(target_os = "macos")]
+fn native_locales() -> Vec<String> {
+    use objc2_foundation::NSLocale;
+
+    NSLocale::preferredLanguages()
+        .iter()
+        .map(|language| language.to_string())
+        .collect()
+}
+
+#[cfg(target_os = "windows")]
+fn native_locales() -> Vec<String> {
+    const LOCALE_NAME_MAX_LENGTH: usize = 85;
+
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn GetUserDefaultLocaleName(locale_name: *mut u16, locale_name_count: i32) -> i32;
+    }
+
+    let mut locale = [0_u16; LOCALE_NAME_MAX_LENGTH];
+    // SAFETY: `locale` is writable for the exact capacity passed to the Windows API.
+    let length =
+        unsafe { GetUserDefaultLocaleName(locale.as_mut_ptr(), LOCALE_NAME_MAX_LENGTH as i32) };
+    if length <= 1 {
+        return Vec::new();
+    }
+    vec![String::from_utf16_lossy(&locale[..length as usize - 1])]
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+fn native_locales() -> Vec<String> {
+    Vec::new()
 }
 
 /// The provider's own untranslated name. Falls back to the stable key, which is never pretty

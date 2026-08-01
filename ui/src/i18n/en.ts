@@ -41,6 +41,7 @@ const planHints: Partial<Record<ProviderId, string>> = {
 
 export const en = {
   appName: "Quota Deck",
+  shellFailed: (reason: string) => `The app could not complete an action: ${reason}`,
 
   header: {
     settings: "Settings",
@@ -258,6 +259,12 @@ export const en = {
     languageTurkish: "Türkçe",
     /** Times and dates are a regional setting, not a language one, and stay with the system. */
     languageHint: "Dates and clock times keep following your system's regional settings.",
+
+    startupTitle: "Register at sign-in",
+    startupOn: "Add registration",
+    startupOff: "Remove registration",
+    startupHint: "This manages the Windows startup registration. Windows Settings or Task Manager can disable that registration separately.",
+    startupFailed: (reason: string) => `Windows startup could not be changed: ${reason}`,
 
     planTitle: (provider: string) => `${provider} plan`,
     /**

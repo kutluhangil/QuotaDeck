@@ -39,7 +39,7 @@ export const en = {
     lede: "Quota Deck reads the session logs your coding tools already write to your own disk, and shows how much of each rolling window you have used — before the tool stops answering.",
     claim: "No account. No login. No network. Ever.",
     claimNote:
-      "The app ships without the entitlement that would allow an outbound connection, so that line is enforced by its code signature rather than asserted on this page.",
+      "No HTTP client is permitted in a shipping desktop dependency tree; CI checks macOS, Windows and Linux separately. The Mac App Store signature also carries no outbound-network entitlement.",
     download: "Download",
     how: "How it can be true",
     shot: {
@@ -171,7 +171,7 @@ export const en = {
       },
       {
         name: "Windows",
-        body: "A taskbar tray item. MSIX through the Microsoft Store, so the Store signs it and updates come through the Store.",
+        body: "A taskbar tray item. Signed x64 and arm64 installers through the Microsoft Store's Win32 route, with launch at sign-in controlled in the app.",
       },
       {
         name: "Linux",
@@ -216,7 +216,7 @@ export const en = {
 
   download: {
     title: "Download",
-    lede: "Nothing is released yet. The three build routes are done and run in CI; what is left needs a developer account and a machine of each kind, and neither is something a commit can produce.",
+    lede: "Nothing is released yet. The app compiles on all three platforms in CI; signed store packaging and hands-on desktop verification still need the matching account, certificate and machine.",
     statusPending: "Not released yet",
     copyCommand: "Copy",
     copiedCommand: "Copied",
@@ -232,8 +232,8 @@ export const en = {
       },
       {
         name: "Windows",
-        detail: "Microsoft Store, as an MSIX bundle for x64 and arm64. The Store signs it, so no certificate has to be bought.",
-        blocked: "Waiting on: a Partner Center account and a reserved product name.",
+        detail: "Microsoft Store, as CA-signed offline NSIS installers for x64 and arm64, submitted from immutable HTTPS URLs.",
+        blocked: "Waiting on: a Windows signing certificate, Partner Center account, hosted installer URLs and a reserved product name.",
         command: "scripts/msstore.ps1",
       },
       {
@@ -255,7 +255,7 @@ export const en = {
     sections: [
       {
         title: "What leaves your device",
-        body: "Nothing. There is no HTTP client in the dependency tree and no entitlement that would permit an outbound connection, so this is not a promise about intent — it is a property of the binary, and CI fails the build if either changes.",
+        body: "Nothing. There is no HTTP client in any shipping desktop dependency tree, and CI checks the macOS, Windows and Linux builds separately. The Mac App Store build additionally carries no outbound-network entitlement.",
       },
       {
         title: "What is read",

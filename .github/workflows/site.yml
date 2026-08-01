@@ -24,10 +24,10 @@ jobs:
       - name: Install
         run: npm ci --prefix site
 
-      # The Turkish copy is typed as the English one, so a key added on one side and not the
-      # other fails here rather than shipping a page with an English sentence in it.
-      - name: Typecheck and build
-        run: npm run build --prefix site
+      # TypeScript holds the Turkish copy to the English shape before the production compiler
+      # validates every Astro route; CSP is then checked against the emitted pages.
+      - name: Build and validate
+        run: npm run check --prefix site
 
       # The page states that the app makes no network request. A page that itself pulled a font
       # or a script off someone else's server while saying so would undo the claim it makes.

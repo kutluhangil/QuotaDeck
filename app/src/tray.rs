@@ -26,6 +26,7 @@ use crate::icon;
 
 const TRAY_ID: &str = "deck";
 const PANEL: &str = "panel";
+type TrayResult<T = ()> = std::result::Result<T, String>;
 
 /// Whether the platform tells us the icon was clicked. Only the two that have their own tray
 /// API do; everything else goes through StatusNotifierItem, which carries neither clicks nor
@@ -45,7 +46,11 @@ pub fn install<R: Runtime>(app: &AppHandle<R>, deck: Deck) -> tauri::Result<()> 
         // where the left button reports nothing, and the menu has to answer both.
         .show_menu_on_left_click(!CLICK_TOGGLES_PANEL)
         .on_menu_event(|app, event| match event.id().as_ref() {
-            "open" => show_panel(app),
+            "open" => {
+                if let Err(error) = show_panel(app) {
+                    eprintln!("quotadeck: tray menu could not show the panel: {error}");
+                }
+            }
             "quit" => app.exit(0),
             _ => {}
         })
@@ -59,7 +64,9 @@ pub fn install<R: Runtime>(app: &AppHandle<R>, deck: Deck) -> tauri::Result<()> 
                 ..
             } = event
             {
-                toggle_panel(tray.app_handle(), &handler_deck);
+                if let Err(error) = toggle_panel(tray.app_handle(), &handler_deck) {
+                    eprintln!("quotadeck: tray click could not toggle the panel: {error}");
+                }
             }
         })
         .build(app)?;
@@ -78,22 +85,24 @@ fn build_menu<R: Runtime>(app: &AppHandle<R>, language: Language) -> tauri::Resu
 /// With the accessory activation policy there is no dock icon and no app menu, so this menu is
 /// the only way to quit. Leaving it in a language the user has just said they cannot read
 /// would strand them in the app.
-pub fn relanguage<R: Runtime>(app: &AppHandle<R>, language: Language) {
+pub fn relanguage<R: Runtime>(app: &AppHandle<R>, language: Language) -> TrayResult {
     let Some(tray) = app.tray_by_id(TRAY_ID) else {
-        return;
+        return Err(format!("tray item {TRAY_ID:?} is not installed"));
     };
-    match build_menu(app, language) {
-        Ok(menu) => {
-            let _ = tray.set_menu(Some(menu));
-        }
-        Err(e) => eprintln!("quotadeck: could not rebuild the tray menu: {e}"),
-    }
+    let menu = build_menu(app, language)
+        .map_err(|error| format!("could not rebuild the tray menu: {error}"))?;
+    tray.set_menu(Some(menu))
+        .map_err(|error| format!("could not replace the tray menu: {error}"))
 }
 
 /// Redraw the item for the current reading and tray mode.
-pub fn refresh<R: Runtime>(app: &AppHandle<R>, state: &DeckState, settings: Settings) {
+pub fn refresh<R: Runtime>(
+    app: &AppHandle<R>,
+    state: &DeckState,
+    settings: Settings,
+) -> TrayResult {
     let Some(tray) = app.tray_by_id(TRAY_ID) else {
-        return;
+        return Err(format!("tray item {TRAY_ID:?} is not installed"));
     };
     let peak = state.peak_percent();
 
@@ -111,16 +120,20 @@ pub fn refresh<R: Runtime>(app: &AppHandle<R>, state: &DeckState, settings: Sett
 /// an icon is there to anchor it, and Windows does not draw one at all. Keeping the glyph on
 /// both means compact reads as glyph-plus-number on Linux and as plain glyph on Windows —
 /// where dropping the icon would have left an item with nothing in it.
-fn set_compact<R: Runtime>(tray: &tauri::tray::TrayIcon<R>, peak: Option<f32>) {
+fn set_compact<R: Runtime>(tray: &tauri::tray::TrayIcon<R>, peak: Option<f32>) -> TrayResult {
     let title = peak.map(|percent| format!("{}%", percent.round()));
     if cfg!(target_os = "macos") {
-        let _ = tray.set_icon(None);
+        tray.set_icon(None)
+            .map_err(|error| format!("could not clear the compact tray icon: {error}"))?;
     } else {
         let glyph = icon::bar(peak);
-        let _ = tray.set_icon_as_template(glyph.template);
-        let _ = tray.set_icon(Some(glyph_image(&glyph)));
+        tray.set_icon_as_template(glyph.template)
+            .map_err(|error| format!("could not set the compact tray template flag: {error}"))?;
+        tray.set_icon(Some(glyph_image(&glyph)))
+            .map_err(|error| format!("could not set the compact tray icon: {error}"))?;
     }
-    let _ = tray.set_title(title.as_deref());
+    tray.set_title(title.as_deref())
+        .map_err(|error| format!("could not set the compact tray title: {error}"))
 }
 
 /// Fold the headline provider's series into the tray's column count.
@@ -143,50 +156,81 @@ fn strip_for(state: &DeckState) -> icon::Glyph {
     icon::strip(&heights, window.used_percent)
 }
 
-fn set_icon<R: Runtime>(tray: &tauri::tray::TrayIcon<R>, glyph: &icon::Glyph) {
-    let _ = tray.set_title(None::<&str>);
-    let _ = tray.set_icon_as_template(glyph.template);
-    let _ = tray.set_icon(Some(glyph_image(glyph)));
+fn set_icon<R: Runtime>(tray: &tauri::tray::TrayIcon<R>, glyph: &icon::Glyph) -> TrayResult {
+    tray.set_title(None::<&str>)
+        .map_err(|error| format!("could not clear the tray title: {error}"))?;
+    tray.set_icon_as_template(glyph.template)
+        .map_err(|error| format!("could not set the tray template flag: {error}"))?;
+    tray.set_icon(Some(glyph_image(glyph)))
+        .map_err(|error| format!("could not set the tray icon: {error}"))
 }
 
 fn glyph_image(glyph: &icon::Glyph) -> Image<'static> {
     Image::new_owned(glyph.rgba.clone(), glyph.width, glyph.height)
 }
 
-fn toggle_panel<R: Runtime>(app: &AppHandle<R>, deck: &Deck) {
+fn toggle_panel<R: Runtime>(app: &AppHandle<R>, deck: &Deck) -> TrayResult {
     let Some(window) = app.get_webview_window(PANEL) else {
-        return;
+        return Err(format!("webview window {PANEL:?} does not exist"));
     };
-    if window.is_visible().unwrap_or(false) {
+    let visible = window
+        .is_visible()
+        .map_err(|error| format!("could not inspect panel visibility: {error}"))?;
+    if visible {
+        window
+            .hide()
+            .map_err(|error| format!("could not hide the panel: {error}"))?;
         deck.set_panel_open(false);
-        let _ = window.hide();
-        return;
+        return Ok(());
     }
     deck.set_panel_open(true);
-    place_and_show(app);
+    if let Err(error) = place_and_show(app) {
+        deck.set_panel_open(false);
+        return Err(error);
+    }
+    Ok(())
 }
 
-fn show_panel<R: Runtime>(app: &AppHandle<R>) {
-    if let Some(deck) = app.try_state::<Deck>() {
+fn show_panel<R: Runtime>(app: &AppHandle<R>) -> TrayResult {
+    let deck = app.try_state::<Deck>();
+    if let Some(deck) = &deck {
         deck.set_panel_open(true);
     }
-    place_and_show(app);
+    if let Err(error) = place_and_show(app) {
+        if let Some(deck) = deck {
+            deck.set_panel_open(false);
+        }
+        return Err(error);
+    }
+    Ok(())
 }
 
-fn place_and_show<R: Runtime>(app: &AppHandle<R>) {
+fn place_and_show<R: Runtime>(app: &AppHandle<R>) -> TrayResult {
     let Some(window) = app.get_webview_window(PANEL) else {
-        return;
+        return Err(format!("webview window {PANEL:?} does not exist"));
     };
     // Under the tray item, not wherever the window happened to be last. Linux reports no
     // geometry for the item, so there is nothing to be under and the panel goes to the corner
     // the indicator area occupies on the desktops that ship one.
-    let _ = window.move_window(if CLICK_TOGGLES_PANEL {
-        Position::TrayBottomCenter
-    } else {
-        Position::TopRight
-    });
-    let _ = window.show();
+    window
+        .move_window(if CLICK_TOGGLES_PANEL {
+            Position::TrayBottomCenter
+        } else {
+            Position::TopRight
+        })
+        .map_err(|error| format!("could not position the panel: {error}"))?;
+    window
+        .show()
+        .map_err(|error| format!("could not show the panel: {error}"))?;
     // Focus is what makes the click-away dismissal work: without it the window never
     // receives the blur that hides it.
-    let _ = window.set_focus();
+    if let Err(error) = window.set_focus() {
+        return match window.hide() {
+            Ok(()) => Err(format!("could not focus the panel: {error}")),
+            Err(hide_error) => Err(format!(
+                "could not focus the panel: {error}; hiding the unfocused panel also failed: {hide_error}"
+            )),
+        };
+    }
+    Ok(())
 }

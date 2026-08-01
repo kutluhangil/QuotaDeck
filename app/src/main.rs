@@ -5,5 +5,9 @@ fn main() {
     if let Some(code) = quotadeck_app::statusline_helper::dispatch() {
         std::process::exit(code);
     }
-    quotadeck_app::run();
+    if let Err(error) = quotadeck_app::run() {
+        eprintln!("quotadeck: failed to start: {error}");
+        quotadeck_app::report_startup_error(&error.to_string());
+        std::process::exit(1);
+    }
 }

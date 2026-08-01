@@ -31,6 +31,7 @@ const planHints: Partial<Record<ProviderId, string>> = {
 
 export const tr: Catalogue = {
   appName: "Quota Deck",
+  shellFailed: (reason) => `Uygulama bir işlemi tamamlayamadı: ${reason}`,
 
   header: {
     settings: "Ayarlar",
@@ -195,6 +196,12 @@ export const tr: Catalogue = {
     languageEnglish: "English",
     languageTurkish: "Türkçe",
     languageHint: "Tarih ve saat biçimleri sistemin bölge ayarlarını izlemeye devam eder.",
+
+    startupTitle: "Oturum açılışına kaydet",
+    startupOn: "Kaydı ekle",
+    startupOff: "Kaydı kaldır",
+    startupHint: "Bu ayar Windows başlangıç kaydını yönetir. Windows Ayarları veya Görev Yöneticisi bu kaydı ayrıca devre dışı bırakabilir.",
+    startupFailed: (reason) => `Windows başlangıç ayarı değiştirilemedi: ${reason}`,
 
     planTitle: (provider) => `${provider} planı`,
     planHint: (provider) => planHints[provider] ?? planHintDefault,

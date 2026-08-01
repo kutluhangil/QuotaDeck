@@ -763,15 +763,14 @@ Tauri'nin şu an ürettiği format EXE ve MSI. İki yol var:
 { "bundle": { "windows": { "webviewInstallMode": { "type": "offlineInstaller" } } } }
 ```
 
-**Yol B — MSIX (daha temiz, önerilen):**
-- `@choochmeque/tauri-windows-bundle` ile MSIX/MSIXBUNDLE üret
-- Veya Microsoft'un resmî `winapp` CLI'ı (Tauri rehberi mevcut)
-- x64 + arm64 için ayrı paket, sonra `.msixbundle`
-- `runFullTrust` otomatik ekleniyor (Tauri için zorunlu) → **dosya erişimi kısıtlanmıyor**, macOS sandbox derdi Windows'ta yok
-- **Store MSIX'i senin yerine imzalıyor** — kod imzalama sertifikası satın almana gerek yok
-- Startup task, toast bildirim, tray gibi özellikler manifest'ten geliyor
+**Yol B — MSIX (bu depoda uygulanmadı):**
+- Ayrı bir MSIX Packaging Tool veya Visual Studio paketleme adımı gerekir
+- Tauri'nin yerleşik `bundle` hedefleri arasında MSIX yoktur; `--bundles msix` geçerli değildir
+- Manifest, kimlik ve mağaza ilişkilendirmesi ayrı bir Windows paketleme hattı gerektirir
 
-**Karar: Yol B (MSIX).** Sertifika maliyeti yok, kurulum deneyimi daha iyi, güncellemeler Store üzerinden.
+**Karar: Yol A (imzalı NSIS/EXE).** Depodaki Tauri CLI bunu doğrudan ve tekrarlanabilir
+üretir. Partner Center sürümlü HTTPS adreslerini alır; kurucu ile kurduğu PE dosyalarının geçerli
+CA destekli kod imzası taşıması gerekir.
 
 ### 8.3 Marka ve isimlendirme — reddedilmemek için
 
@@ -928,9 +927,10 @@ o yüzden bunlar gerçek fixture edinilene kadar açık kalıyor (§10).
       mürekkebi Windows'ta gri, çünkü template görüntü yok ve siyah glif koyu görev çubuğunda
       görünmez. **Windows makinede el ile doğrulanmadı.**
 - [x] `webviewInstallMode: offlineInstaller` — `app/tauri.msstore.conf.json`
-- [x] MSIX paketleme (x64 + arm64 → `.msixbundle`) — `scripts/msstore.ps1`, **Windows'ta
-      çalıştırılmadı**
-- [x] Startup task manifest — `docs/STORE.md` §6, `Enabled="false"` ile
+- [x] NSIS paketleme (x64 + arm64 `*-setup.exe`) — `scripts/msstore.ps1`; çevrimdışı WebView,
+      sabitlenmiş Tauri CLI ve zorunlu Authenticode doğrulaması, **Windows'ta çalıştırılmadı**
+- [x] Kullanıcı kontrollü oturum açınca başlatma — uygulama ayarından HKCU Run kaydı;
+      kurulumda otomatik açılmaz, **Windows'ta elle doğrulanmadı**
 - [ ] Partner Center kaydı ve gönderim — **Microsoft hesabı gerekiyor**
 
 ### Faz 11 — Linux
@@ -1081,7 +1081,7 @@ Faz 0 ve her yeni sağlayıcı eklerken başvurulacak kanonik kaynaklar:
 - **Tauri App Store** — `v2.tauri.app/distribute/app-store/`
 - **Tauri Microsoft Store** — `v2.tauri.app/distribute/microsoft-store/`
 - **Tauri Windows Installer** — `v2.tauri.app/distribute/windows-installer/`
-- **winapp CLI + Tauri (MSIX)** — `learn.microsoft.com/en-us/windows/apps/dev-tools/winapp-cli/guides/tauri`
+- **Microsoft Store Win32 installer requirements** — `learn.microsoft.com/windows/apps/publish/publish-your-app/msi/app-package-requirements`
 - **App Store Review Guidelines** — `developer.apple.com/app-store/review/guidelines/` (özellikle 4.1, 5.2.1, 5.2.5)
 - **Apple Security-Scoped Bookmarks** — App Sandbox dokümantasyonu
 - **Claude Code legal & compliance** — `code.claude.com/docs/en/legal-and-compliance`

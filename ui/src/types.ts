@@ -184,6 +184,12 @@ export interface StatuslineState {
   lastReadingAt: string | null;
 }
 
+/** Native launch-at-sign-in registration. Exposed only by the Windows shell. */
+export interface StartupState {
+  supported: boolean;
+  enabled: boolean;
+}
+
 /** What the backend pushes on every refresh. */
 export interface DeckState {
   providers: ProviderSnapshot[];

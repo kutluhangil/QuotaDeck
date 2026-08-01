@@ -87,7 +87,7 @@ pub enum TrayMode {
     Glyph,
     /// The highest reported usage, as a percentage.
     Compact,
-    /// A miniature of the panel's timeline. Lands with the Horizon strip in Phase 4.
+    /// A miniature of the panel's timeline.
     Strip,
 }
 
@@ -172,31 +172,26 @@ impl Settings {
         paths::data_dir().map(|dir| dir.join("settings.json"))
     }
 
-    /// Load the stored settings, falling back to defaults.
-    ///
-    /// A settings file that cannot be parsed is reported and then ignored rather than
-    /// stopping the app: the worst case is a user re-picking their tray mode, and refusing to
-    /// start over a malformed preference file would be worse.
-    pub fn load() -> Self {
-        let Some(path) = Self::path() else {
-            return Settings::default();
-        };
-        match std::fs::read_to_string(&path) {
-            Ok(text) => match serde_json::from_str(&text) {
-                Ok(settings) => settings,
-                Err(e) => {
-                    eprintln!(
-                        "quotadeck: {} is not valid settings, starting from defaults: {e}",
-                        path.display()
-                    );
-                    Settings::default()
-                }
-            },
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Settings::default(),
-            Err(e) => {
-                eprintln!("quotadeck: could not read {}: {e}", path.display());
-                Settings::default()
-            }
+    /// Load the stored settings. A first launch has no file and starts from defaults; a file
+    /// that exists but cannot be read or parsed is an actionable startup error rather than a
+    /// silent preference reset.
+    pub fn load() -> Result<Self> {
+        let path = Self::path()
+            .ok_or_else(|| Error::Invalid("cannot resolve the app data directory".into()))?;
+        Self::load_from(path)
+    }
+
+    pub fn load_from(path: impl AsRef<std::path::Path>) -> Result<Self> {
+        let path = path.as_ref();
+        match std::fs::read_to_string(path) {
+            Ok(text) => serde_json::from_str(&text).map_err(|error| {
+                Error::Invalid(format!(
+                    "invalid settings JSON in {}: {error}",
+                    path.display()
+                ))
+            }),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(Settings::default()),
+            Err(error) => Err(Error::io(path, error)),
         }
     }
 
@@ -245,15 +240,15 @@ pub struct Deck {
 }
 
 impl Deck {
-    pub fn new() -> Self {
-        Deck {
+    pub fn new() -> Result<Self> {
+        Ok(Deck {
             state: Arc::new(Mutex::new(DeckState::empty())),
             history: Arc::new(Mutex::new(Vec::new())),
-            settings: Arc::new(Mutex::new(Settings::load())),
+            settings: Arc::new(Mutex::new(Settings::load()?)),
             access: Arc::new(Mutex::new(Access::default())),
             panel_open: Arc::new(AtomicBool::new(false)),
             modal_open: Arc::new(AtomicBool::new(false)),
-        }
+        })
     }
 
     /// Take up the grant made on an earlier launch. Called once, before the first read pass.
@@ -420,12 +415,6 @@ impl Deck {
     }
 }
 
-impl Default for Deck {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -589,7 +578,7 @@ mod tests {
 
     #[test]
     fn a_failed_settings_save_does_not_change_the_in_memory_snapshot() {
-        let deck = Deck::new();
+        let deck = Deck::new().expect("create deck");
         let before = deck.settings();
         let next_theme = match before.theme {
             Theme::Dark => Theme::Light,
@@ -620,6 +609,27 @@ mod tests {
             serde_json::from_slice(&std::fs::read(&path).expect("read persisted settings"))
                 .expect("parse persisted settings");
         assert_eq!(stored.theme, Theme::Dark);
+        std::fs::remove_dir_all(dir).expect("remove scratch directory");
+    }
+
+    #[test]
+    fn a_missing_settings_file_is_the_only_defaulting_case() {
+        let dir = scratch("missing-settings");
+        let settings = Settings::load_from(dir.join("settings.json")).expect("first launch");
+        assert_eq!(settings, Settings::default());
+    }
+
+    #[test]
+    fn malformed_settings_are_reported_with_the_path() {
+        let dir = scratch("malformed-settings");
+        std::fs::create_dir_all(&dir).expect("create scratch directory");
+        let path = dir.join("settings.json");
+        std::fs::write(&path, "{broken").expect("write malformed settings");
+
+        let error = Settings::load_from(&path).expect_err("malformed settings must fail");
+        let message = error.to_string();
+        assert!(message.contains("invalid settings JSON"));
+        assert!(message.contains(path.to_string_lossy().as_ref()));
         std::fs::remove_dir_all(dir).expect("remove scratch directory");
     }
 }
