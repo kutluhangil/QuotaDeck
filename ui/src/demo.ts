@@ -293,13 +293,21 @@ export function demoPlans(): ProviderPlans[] {
 /** The pre-install state, which is the one worth designing against. */
 export function demoStatusline(): StatuslineState {
   return {
-    supported: true,
+    setupMode: "automatic",
     installed: false,
     settingsPath: "/Users/you/.claude/settings.json",
+    currentStatusLine: { type: "command", command: "npx -y ccstatusline@latest" },
     currentCommand: "npx -y ccstatusline@latest",
+    proposedStatusLine: {
+      type: "command",
+      command:
+        "'/Applications/Quota Deck.app/Contents/MacOS/quotadeck' --statusline-helper --log '/Users/you/Library/Application Support/QuotaDeck/claude-code/statusline' --chain 'npx -y ccstatusline@latest'",
+    },
     proposedCommand:
-      "'/Applications/Quota Deck.app/Contents/MacOS/quotadeck-statusline' --log '/Users/you/Library/Application Support/QuotaDeck/claude-code/statusline' --chain 'npx -y ccstatusline@latest'",
+      "'/Applications/Quota Deck.app/Contents/MacOS/quotadeck' --statusline-helper --log '/Users/you/Library/Application Support/QuotaDeck/claude-code/statusline' --chain 'npx -y ccstatusline@latest'",
     previousCommand: "npx -y ccstatusline@latest",
+    previousStatusLine: null,
+    manualRevertMode: null,
     readings: 0,
     lastReadingAt: null,
   };

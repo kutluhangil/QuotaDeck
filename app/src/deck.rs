@@ -6,6 +6,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use chrono::{DateTime, Utc};
+use quotadeck_core::atomic_write::atomic_write;
 use quotadeck_core::error::{Error, Result};
 use quotadeck_core::history::HistoryPoint;
 use quotadeck_core::paths;
@@ -202,12 +203,21 @@ impl Settings {
     pub fn save(&self) -> Result<()> {
         let path = Self::path()
             .ok_or_else(|| Error::Invalid("cannot resolve the app data directory".into()))?;
+        self.save_to(path)
+    }
+
+    /// Persist settings at an explicit path.
+    ///
+    /// The explicit path is also the test seam: tests never mutate process-wide home-directory
+    /// variables, so they remain safe when the workspace test runner executes in parallel.
+    pub fn save_to(&self, path: impl AsRef<std::path::Path>) -> Result<()> {
+        let path = path.as_ref();
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).map_err(|e| Error::io(parent, e))?;
         }
         let mut text = serde_json::to_string_pretty(self)?;
         text.push('\n');
-        std::fs::write(&path, text).map_err(|e| Error::io(&path, e))
+        atomic_write(path, text.as_bytes())
     }
 }
 
@@ -326,20 +336,24 @@ impl Deck {
         }
     }
 
-    pub fn set_tray_mode(&self, mode: TrayMode) {
-        self.update_settings(|settings| settings.tray_mode = mode);
+    pub fn set_tray_mode(&self, mode: TrayMode) -> Result<Settings> {
+        self.update_settings(|settings| settings.tray_mode = mode)
     }
 
-    pub fn set_locale(&self, locale: Locale) {
-        self.update_settings(|settings| settings.locale = locale);
+    pub fn set_theme(&self, theme: Theme) -> Result<Settings> {
+        self.update_settings(|settings| settings.theme = theme)
     }
 
-    pub fn set_demo(&self, demo: bool) {
-        self.update_settings(|settings| settings.demo = demo);
+    pub fn set_locale(&self, locale: Locale) -> Result<Settings> {
+        self.update_settings(|settings| settings.locale = locale)
+    }
+
+    pub fn set_demo(&self, demo: bool) -> Result<Settings> {
+        self.update_settings(|settings| settings.demo = demo)
     }
 
     /// Record the tier the user picked for one provider, or clear it.
-    pub fn set_plan(&self, provider: ProviderId, plan_id: Option<String>) {
+    pub fn set_plan(&self, provider: ProviderId, plan_id: Option<String>) -> Result<Settings> {
         self.update_settings(|settings| match plan_id {
             Some(id) => {
                 settings.plans.insert(provider.key().to_string(), id);
@@ -347,42 +361,46 @@ impl Deck {
             None => {
                 settings.plans.remove(provider.key());
             }
-        });
+        })
     }
 
     /// Record which percentages one provider warns at. An empty list turns it off.
-    pub fn set_alert_thresholds(&self, provider: ProviderId, thresholds: Vec<u8>) {
+    pub fn set_alert_thresholds(
+        &self,
+        provider: ProviderId,
+        thresholds: Vec<u8>,
+    ) -> Result<Settings> {
         self.update_settings(|settings| {
             settings
                 .alerts
                 .insert(provider.key().to_string(), thresholds);
-        });
+        })
     }
 
     /// Silence every notification until `until`, or lift the silence with `None`.
-    pub fn set_muted_until(&self, until: Option<DateTime<Utc>>) {
-        self.update_settings(|settings| settings.muted_until = until);
+    pub fn set_muted_until(&self, until: Option<DateTime<Utc>>) -> Result<Settings> {
+        self.update_settings(|settings| settings.muted_until = until)
     }
 
-    /// Mutate the settings and persist them.
-    ///
-    /// A failed write is reported and the in-memory change stands: losing a preference on the
-    /// next launch is a smaller harm than refusing the change the user just made.
-    fn update_settings(&self, apply: impl FnOnce(&mut Settings)) {
-        let snapshot = match self.settings.lock() {
-            Ok(mut guard) => {
-                apply(&mut guard);
-                guard.clone()
-            }
-            Err(poisoned) => {
-                let mut guard = poisoned.into_inner();
-                apply(&mut guard);
-                guard.clone()
-            }
+    /// Persist a complete new snapshot before making it authoritative in memory.
+    fn update_settings(&self, apply: impl FnOnce(&mut Settings)) -> Result<Settings> {
+        self.update_settings_with(apply, Settings::save)
+    }
+
+    fn update_settings_with(
+        &self,
+        apply: impl FnOnce(&mut Settings),
+        save: impl FnOnce(&Settings) -> Result<()>,
+    ) -> Result<Settings> {
+        let mut guard = match self.settings.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
         };
-        if let Err(e) = snapshot.save() {
-            eprintln!("quotadeck: settings were changed but not saved: {e}");
-        }
+        let mut next = guard.clone();
+        apply(&mut next);
+        save(&next)?;
+        *guard = next.clone();
+        Ok(next)
     }
 
     pub fn panel_open(&self) -> bool {
@@ -412,6 +430,17 @@ impl Default for Deck {
 mod tests {
     use super::*;
     use quotadeck_core::types::{Confidence, ProviderId, QuotaWindow, TokenRollup, WindowKind};
+
+    fn scratch(name: &str) -> PathBuf {
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("system time after the Unix epoch")
+            .as_nanos();
+        std::env::temp_dir().join(format!(
+            "quotadeck-deck-{}-{unique}-{name}",
+            std::process::id()
+        ))
+    }
 
     fn snapshot(percents: &[f32]) -> ProviderSnapshot {
         ProviderSnapshot {
@@ -555,5 +584,41 @@ mod tests {
         );
         // One provider's tier must never leak into another's estimate.
         assert!(settings.config_for(ProviderId::Codex).plan_id.is_none());
+    }
+
+    #[test]
+    fn a_failed_settings_save_does_not_change_the_in_memory_snapshot() {
+        let deck = Deck::new();
+        let before = deck.settings();
+        let next_theme = match before.theme {
+            Theme::Dark => Theme::Light,
+            Theme::System | Theme::Light => Theme::Dark,
+        };
+
+        let result = deck.update_settings_with(
+            |settings| settings.theme = next_theme,
+            |_| Err(Error::Invalid("simulated settings write failure".into())),
+        );
+
+        assert!(result.is_err());
+        assert_eq!(deck.settings(), before);
+    }
+
+    #[test]
+    fn theme_is_persisted_in_the_settings_file() {
+        let dir = scratch("theme");
+        let path = dir.join("settings.json");
+        let settings = Settings {
+            theme: Theme::Dark,
+            ..Settings::default()
+        };
+
+        settings.save_to(&path).expect("persist theme");
+
+        let stored: Settings =
+            serde_json::from_slice(&std::fs::read(&path).expect("read persisted settings"))
+                .expect("parse persisted settings");
+        assert_eq!(stored.theme, Theme::Dark);
+        std::fs::remove_dir_all(dir).expect("remove scratch directory");
     }
 }

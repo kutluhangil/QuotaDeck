@@ -224,8 +224,14 @@ fn statusline_apply(
 /// The install path edits somebody else's config file, so being able to read the exact
 /// before and after from a terminal is worth a command of its own.
 fn statusline_preview() -> ExitCode {
-    let state = quotadeck_app::statusline::state();
-    if !state.supported {
+    let state = match quotadeck_app::statusline::state() {
+        Ok(state) => state,
+        Err(error) => {
+            eprintln!("statusline inspection failed: {error}");
+            return ExitCode::FAILURE;
+        }
+    };
+    if state.setup_mode == quotadeck_app::statusline::StatuslineSetupMode::Unavailable {
         println!("the Claude Code settings file could not be resolved on this machine");
         return ExitCode::FAILURE;
     }
@@ -235,6 +241,7 @@ fn statusline_preview() -> ExitCode {
         state.settings_path.as_deref().unwrap_or("unknown")
     );
     println!("connected  {}", if state.installed { "yes" } else { "no" });
+    println!("setup      {:?}", state.setup_mode);
     println!(
         "now        {}",
         state.current_command.as_deref().unwrap_or("(none)")

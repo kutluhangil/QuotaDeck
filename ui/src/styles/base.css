@@ -18,8 +18,8 @@ body,
 }
 
 body {
-  /* The window itself is transparent; the panel paints the only visible surface. */
-  background: transparent;
+  /* Store-safe opaque windows use the same surface the panel paints. */
+  background: var(--surface-abyss);
   color: var(--ink-primary);
   font-family: var(--face-ui);
   -webkit-font-smoothing: antialiased;

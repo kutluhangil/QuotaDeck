@@ -29,12 +29,15 @@ set -euo pipefail
 
 IDENTIFIER="com.kutluhangil.quotadeck"
 BIN="target/debug/quotadeck-debug"
+HELPER_BIN="target/debug/quotadeck"
 STAGE="target/sandbox-check"
 APP="${STAGE}/QuotaDeckCheck.app"
 EXEC="${APP}/Contents/MacOS/QuotaDeckCheck"
+HELPER_APP="${STAGE}/QuotaDeckHelper.app"
+HELPER_EXEC="${HELPER_APP}/Contents/MacOS/QuotaDeckHelper"
 
 echo "==> building"
-cargo build -p quotadeck-app --bin quotadeck-debug
+cargo build -p quotadeck-app --bin quotadeck-debug --bin quotadeck
 
 echo "==> unsandboxed baseline"
 UNSANDBOXED="$("${BIN}" paths)"
@@ -114,5 +117,45 @@ else
   done <<< "${roots}"
 fi
 
+# 5. The shipped executable is also the statusline helper. Prove that the signed, sandboxed
+# binary can write inside its own container, strips unrelated payload fields, and preserves a
+# chained statusline's output.
+echo "==> sandboxed statusline helper"
+mkdir -p "${HELPER_APP}/Contents/MacOS"
+cp "${HELPER_BIN}" "${HELPER_EXEC}"
+sed \
+  -e 's/QuotaDeckCheck/QuotaDeckHelper/g' \
+  "${APP}/Contents/Info.plist" > "${HELPER_APP}/Contents/Info.plist"
+codesign --sign - --entitlements app/Entitlements.plist --force "${HELPER_APP}"
+
+STATUSLINE_DIR="${env_home}/Library/Application Support/QuotaDeck/sandbox-statusline-check-$$"
+CHAINED="$(printf '%s\n' '{"version":"check","cwd":"must-not-persist","session_id":"must-not-persist","rate_limits":{"five_hour":{"used_percentage":12}}}' \
+  | "${HELPER_EXEC}" --statusline-helper --log "${STATUSLINE_DIR}" --chain 'printf sandbox-chain-ok')"
+check "the sandboxed helper preserves chained output" "${CHAINED}" "sandbox-chain-ok"
+
+CAPTURE="$(find "${STATUSLINE_DIR}" -type f -name '*.jsonl' -print -quit)"
+if [[ -z "${CAPTURE}" ]]; then
+  echo "FAIL the sandboxed helper wrote no capture" >&2
+  fail=1
+elif grep -q 'must-not-persist\|"cwd"\|"session_id"' "${CAPTURE}"; then
+  echo "FAIL the sandboxed helper persisted a non-quota payload field" >&2
+  fail=1
+elif grep -q '"rate_limits"' "${CAPTURE}"; then
+  echo "OK   the sandboxed helper records only the quota payload"
+else
+  echo "FAIL the sandboxed helper capture contains no rate_limits" >&2
+  fail=1
+fi
+
+INSTALL_ERROR="$("${EXEC}" statusline install 2>&1 || true)"
+if [[ "${INSTALL_ERROR}" == *"read-only access"* ]]; then
+  echo "OK   automatic settings writes are refused inside the sandbox"
+else
+  echo "FAIL sandboxed automatic statusline install was not refused explicitly" >&2
+  echo "${INSTALL_ERROR}" >&2
+  fail=1
+fi
+
+rm -rf "${STATUSLINE_DIR}"
 rm -rf "${STAGE}"
 exit "${fail}"

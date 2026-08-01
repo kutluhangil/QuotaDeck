@@ -19,6 +19,7 @@
 
 use std::path::{Path, PathBuf};
 
+use quotadeck_core::atomic_write::atomic_write;
 use quotadeck_core::error::{Error, Result};
 use quotadeck_core::paths;
 use serde::Serialize;
@@ -95,7 +96,13 @@ mod macos {
             if !unsafe { url.startAccessingSecurityScopedResource() } {
                 return None;
             }
-            let path = url_path(&url)?;
+            let Some(path) = url_path(&url) else {
+                // The scope was already entered. If the URL cannot be represented as a file
+                // path, return it before reporting failure or the process eventually exhausts
+                // its security-scope table.
+                unsafe { url.stopAccessingSecurityScopedResource() };
+                return None;
+            };
             Some(ScopedAccess { url, path })
         }
     }
@@ -150,10 +157,29 @@ mod macos {
             return Ok(None);
         };
 
-        // Written before the scope is taken: a bookmark that cannot be stored is a grant the
-        // user would have to make again on every launch, and they should hear about it now.
-        store_bookmark(&url)?;
-        Ok(ScopedAccess::start(url))
+        let selected = url_path(&url).ok_or_else(|| {
+            Error::Invalid("the selected folder is not a local file-system path".into())
+        })?;
+        let expected = paths::real_home()
+            .ok_or_else(|| Error::Invalid("cannot resolve the user's home directory".into()))?;
+        if !same_directory(&selected, &expected) {
+            return Err(Error::Invalid(format!(
+                "selected folder {} is not the home directory {}",
+                selected.display(),
+                expected.display()
+            )));
+        }
+
+        let access = ScopedAccess::start(url).ok_or_else(|| {
+            Error::Invalid(
+                "the selected home directory grant was refused by the system; choose the home directory again"
+                    .into(),
+            )
+        })?;
+        // Only persist a grant after the kernel has accepted it. If storing fails, returning
+        // the error drops `access` and balances the live security scope automatically.
+        store_bookmark(&access.url)?;
+        Ok(Some(access))
     }
 
     fn store_bookmark(url: &NSURL) -> Result<()> {
@@ -169,7 +195,7 @@ mod macos {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).map_err(|e| Error::io(parent, e))?;
         }
-        std::fs::write(&path, data.to_vec()).map_err(|e| Error::io(&path, e))
+        atomic_write(&path, &data.to_vec())
     }
 
     /// Take up the grant made on an earlier launch.
@@ -201,10 +227,20 @@ mod macos {
         let access = ScopedAccess::start(url)
             .ok_or_else(|| Error::Invalid("the folder grant was refused by the system".into()))?;
 
+        let expected = paths::real_home()
+            .ok_or_else(|| Error::Invalid("cannot resolve the user's home directory".into()))?;
+        if !same_directory(access.path(), &expected) {
+            return Err(Error::Invalid(format!(
+                "the stored folder grant points to {}, expected the home directory {}; forget the grant and choose the home directory again",
+                access.path().display(),
+                expected.display()
+            )));
+        }
+
         // A stale bookmark still resolves; it is the file system telling us the target moved.
         // Rewriting it now costs one call and saves the grant from expiring for good.
         if stale.as_bool() {
-            let _ = store_bookmark(&access.url);
+            store_bookmark(&access.url)?;
         }
         Ok(Some(access))
     }
@@ -258,8 +294,31 @@ mod elsewhere {
 }
 
 /// Whether this build has to ask for the home directory at all.
-pub const fn sandboxed() -> bool {
-    cfg!(target_os = "macos")
+pub fn sandboxed() -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        if std::env::var_os("APP_SANDBOX_CONTAINER_ID").is_some() {
+            return true;
+        }
+        let environment_home = std::env::var_os("HOME").map(PathBuf::from);
+        homes_differ(environment_home.as_deref(), paths::real_home().as_deref())
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        false
+    }
+}
+
+fn same_directory(left: &Path, right: &Path) -> bool {
+    let canonical = |path: &Path| path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+    canonical(left) == canonical(right)
+}
+
+fn homes_differ(environment_home: Option<&Path>, real_home: Option<&Path>) -> bool {
+    match (environment_home, real_home) {
+        (Some(environment_home), Some(real_home)) => !same_directory(environment_home, real_home),
+        _ => false,
+    }
 }
 
 /// What the panel should show for the grant we currently hold.
@@ -295,6 +354,31 @@ mod tests {
         let state = state(None, None);
         assert_eq!(state.required, sandboxed());
         assert_eq!(state.granted, !sandboxed());
+    }
+
+    #[test]
+    fn only_a_rewritten_home_implies_a_runtime_sandbox() {
+        assert!(!homes_differ(
+            Some(Path::new("/Users/me")),
+            Some(Path::new("/Users/me"))
+        ));
+        assert!(homes_differ(
+            Some(Path::new("/Users/me/Library/Containers/app/Data")),
+            Some(Path::new("/Users/me"))
+        ));
+        assert!(!homes_differ(None, Some(Path::new("/Users/me"))));
+    }
+
+    #[test]
+    fn a_folder_picker_selection_must_be_the_home_itself() {
+        assert!(same_directory(
+            Path::new("/Users/me"),
+            Path::new("/Users/me")
+        ));
+        assert!(!same_directory(
+            Path::new("/Users/me/Documents"),
+            Path::new("/Users/me")
+        ));
     }
 
     #[test]

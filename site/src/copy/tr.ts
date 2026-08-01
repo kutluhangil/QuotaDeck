@@ -113,7 +113,7 @@ export const tr: Copy = {
       },
       {
         title: "Okumalar salt okunur",
-        body: "Yalnızca oturum ve telemetri günlükleri; hiçbirine yazılmıyor. Kendi klasörümüzün dışındaki tek yazma, isteğe bağlı Claude Code durum satırı eklentisi: öncesini ve sonrasını olduğu gibi gösteriyor, mevcut komutunu değiştirmek yerine zincirliyor ve tek tıkla geri alınıyor.",
+        body: "Yalnızca oturum ve telemetri günlükleri; hiçbirine yazılmıyor. App Store sürümü ev klasörü erişimini salt okunur tutuyor; isteğe bağlı Claude Code durum satırı için elle uygulayacağın tam zincirli komutu gösterip kopyalıyor.",
       },
     ],
     why: {
@@ -246,7 +246,7 @@ export const tr: Copy = {
       },
       {
         title: "Ne okunuyor",
-        body: "Desteklenen araçların ev klasörüne yazdığı oturum ve telemetri günlükleri; salt okunur ve baştan değil bir bayt konumundan itibaren. Ev klasöründeki başka hiçbir şey açılmıyor.",
+        body: "Desteklenen araçların ev klasörüne yazdığı oturum ve telemetri günlükleri salt okunur ve baştan değil bir bayt konumundan itibaren okunuyor. İsteğe bağlı Claude Code durum satırı bağlantısını incelemek için ~/.claude/settings.json da açılıyor ve statusLine.command kullanılıyor. Her iki kurulum akışında da nesne değişmeden veya senden değiştirmen istenmeden önce, tam geri alma için önceki statusLine değeri Quota Deck'in yerel veri klasöründe saklanıyor.",
       },
       {
         title: "Ne asla okunmuyor",
@@ -254,7 +254,7 @@ export const tr: Copy = {
       },
       {
         title: "Ne yazılıyor",
-        body: "Saatlik kullanım toplamları ve ayarların; uygulamanın kendi veri klasörünün içine. Tek istisna, öncesini ve sonrasını gördükten sonra kendin açtığın Claude Code durum satırı eklentisi: mevcut komutunu değiştirmek yerine zincirliyor ve tek tık onu geri koyuyor.",
+        body: "Saatlik kullanım toplamları, ayarların ve — isteğe bağlı bağlantıyı kurmayı seçtikten sonra — önceki statusLine değerinin tamamı uygulamanın kendi veri klasörüne yazılıyor. App Store sürümü başka hiçbir yere yazmıyor; tam zincirli JSON'u ve geri alma nesnesini veriyor, Claude ayarını sen değiştiriyorsun.",
       },
       {
         title: "Analitik, çökme raporu, telemetri",

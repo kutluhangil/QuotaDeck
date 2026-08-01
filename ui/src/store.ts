@@ -31,6 +31,9 @@ interface DeckStore {
   statusline: StatuslineState | null;
   /** Set when an install or revert failed, so the panel can say what went wrong. */
   statuslineError: string | null;
+  statuslineAction: "install" | "revert" | "refresh" | null;
+  settingsError: string | null;
+  settingsAction: string | null;
   /** What we may read. Null until the shell answers; a browser build needs no grant. */
   access: AccessState | null;
   view: "panel" | "settings";
@@ -55,6 +58,8 @@ interface DeckStore {
   setMute: (minutes: number | null) => void;
   installStatusline: () => Promise<void>;
   revertStatusline: () => Promise<void>;
+  refreshStatusline: () => Promise<void>;
+  prepareManualStatusline: () => Promise<boolean>;
   openDashboard: () => Promise<void>;
   /** Dismiss the popover from the keyboard, the way clicking away already does. */
   hidePanel: () => Promise<void>;
@@ -80,6 +85,9 @@ export const useDeck = create<DeckStore>((set, get) => ({
   plans: [],
   statusline: null,
   statuslineError: null,
+  statuslineAction: null,
+  settingsError: null,
+  settingsAction: null,
   access: null,
   view: "panel",
   filter: "all",
@@ -89,29 +97,66 @@ export const useDeck = create<DeckStore>((set, get) => ({
   setFilter: (filter) => set({ filter }),
 
   setTrayMode: (trayMode) => {
-    set({ settings: { ...get().settings, trayMode } });
-    void send("set_tray_mode", { mode: trayMode });
+    if (!inShell) {
+      set({ settings: { ...get().settings, trayMode } });
+      return;
+    }
+    if (get().settingsAction !== null) return;
+    set({ settingsError: null, settingsAction: "tray-mode" });
+    void call<Settings>("set_tray_mode", { mode: trayMode }).then((next) => {
+      if (next.ok) set({ settings: next.value, settingsAction: null });
+      else set({ settingsError: next.error, settingsAction: null });
+    });
   },
 
   setTheme: (theme) => {
-    set({ settings: { ...get().settings, theme } });
-    applyTheme(theme);
+    if (!inShell) {
+      set({ settings: { ...get().settings, theme } });
+      applyTheme(theme);
+      return;
+    }
+    if (get().settingsAction !== null) return;
+    set({ settingsError: null, settingsAction: "theme" });
+    void call<Settings>("set_theme", { theme }).then((next) => {
+      if (next.ok) {
+        set({ settings: next.value, settingsAction: null });
+        applyTheme(next.value.theme);
+      } else set({ settingsError: next.error, settingsAction: null });
+    });
   },
 
   setLocale: (locale) => {
-    set({ settings: { ...get().settings, locale } });
-    applyLocale(locale);
+    if (!inShell) {
+      set({ settings: { ...get().settings, locale } });
+      applyLocale(locale);
+      return;
+    }
+    if (get().settingsAction !== null) return;
+    set({ settingsError: null, settingsAction: "locale" });
     // The backend keeps its own copy: notifications are raised from the read loop, which runs
     // whether or not this panel has ever been opened.
-    void send("set_locale", { locale });
+    void call<Settings>("set_locale", { locale }).then((next) => {
+      if (next.ok) {
+        set({ settings: next.value, settingsAction: null });
+        applyLocale(next.value.locale);
+      } else set({ settingsError: next.error, settingsAction: null });
+    });
   },
 
   setPlan: (provider, planId) => {
     const plans = { ...get().settings.plans };
     if (planId === null) delete plans[provider];
     else plans[provider] = planId;
-    set({ settings: { ...get().settings, plans } });
-    void send("set_plan", { provider, planId });
+    if (!inShell) {
+      set({ settings: { ...get().settings, plans } });
+      return;
+    }
+    if (get().settingsAction !== null) return;
+    set({ settingsError: null, settingsAction: "plan" });
+    void call<Settings>("set_plan", { provider, planId }).then((next) => {
+      if (next.ok) set({ settings: next.value, settingsAction: null });
+      else set({ settingsError: next.error, settingsAction: null });
+    });
   },
 
   toggleThreshold: (provider, threshold) => {
@@ -119,31 +164,67 @@ export const useDeck = create<DeckStore>((set, get) => ({
     const next = current.includes(threshold)
       ? current.filter((value) => value !== threshold)
       : [...current, threshold].sort((a, b) => a - b);
-    set({ settings: { ...get().settings, alerts: { ...get().settings.alerts, [provider]: next } } });
-    void send("set_alert_thresholds", { provider, thresholds: next });
+    if (!inShell) {
+      set({
+        settings: { ...get().settings, alerts: { ...get().settings.alerts, [provider]: next } },
+      });
+      return;
+    }
+    if (get().settingsAction !== null) return;
+    set({ settingsError: null, settingsAction: "threshold" });
+    void call<Settings>("set_alert_thresholds", { provider, thresholds: next }).then((outcome) => {
+      if (outcome.ok) set({ settings: outcome.value, settingsAction: null });
+      else set({ settingsError: outcome.error, settingsAction: null });
+    });
   },
 
   setMute: (minutes) => {
     // The instant is computed in the backend from this duration. "Until the end of today" is
     // a question about the viewer's zone, and only this side knows it.
-    const mutedUntil =
-      minutes === null ? null : new Date(Date.now() + minutes * 60_000).toISOString();
-    set({ settings: { ...get().settings, mutedUntil } });
-    void send("set_mute", { minutes });
+    if (!inShell) {
+      const mutedUntil =
+        minutes === null ? null : new Date(Date.now() + minutes * 60_000).toISOString();
+      set({ settings: { ...get().settings, mutedUntil } });
+      return;
+    }
+    if (get().settingsAction !== null) return;
+    set({ settingsError: null, settingsAction: "mute" });
+    void call<Settings>("set_mute", { minutes }).then((next) => {
+      if (next.ok) set({ settings: next.value, settingsAction: null });
+      else set({ settingsError: next.error, settingsAction: null });
+    });
   },
 
   installStatusline: async () => {
-    set({ statuslineError: null });
+    set({ statuslineError: null, statuslineAction: "install" });
     const next = await call<StatuslineState>("install_statusline", {});
-    if (next.ok) set({ statusline: next.value });
-    else set({ statuslineError: next.error });
+    if (next.ok) set({ statusline: next.value, statuslineAction: null });
+    else set({ statuslineError: next.error, statuslineAction: null });
   },
 
   revertStatusline: async () => {
-    set({ statuslineError: null });
+    set({ statuslineError: null, statuslineAction: "revert" });
     const next = await call<StatuslineState>("revert_statusline", {});
-    if (next.ok) set({ statusline: next.value });
-    else set({ statuslineError: next.error });
+    if (next.ok) set({ statusline: next.value, statuslineAction: null });
+    else set({ statuslineError: next.error, statuslineAction: null });
+  },
+
+  refreshStatusline: async () => {
+    set({ statuslineError: null, statuslineAction: "refresh" });
+    const next = await call<StatuslineState>("statusline_state", {});
+    if (next.ok) set({ statusline: next.value, statuslineAction: null });
+    else set({ statuslineError: next.error, statuslineAction: null });
+  },
+
+  prepareManualStatusline: async () => {
+    set({ statuslineError: null, statuslineAction: "install" });
+    const next = await call<StatuslineState>("prepare_manual_statusline", {});
+    if (next.ok) {
+      set({ statusline: next.value, statuslineAction: null });
+      return true;
+    }
+    set({ statuslineError: next.error, statuslineAction: null });
+    return false;
   },
 
   openDashboard: async () => {
@@ -159,16 +240,26 @@ export const useDeck = create<DeckStore>((set, get) => ({
   },
 
   setDemo: (demo) => {
-    set({ settings: { ...get().settings, demo } });
-    void send("set_demo", { demo });
+    if (!inShell) {
+      set({ settings: { ...get().settings, demo } });
+      return;
+    }
+    if (get().settingsAction !== null) return;
+    set({ settingsError: null, settingsAction: "demo" });
+    void call<Settings>("set_demo", { demo }).then((next) => {
+      if (next.ok) set({ settings: next.value, settingsAction: null });
+      else set({ settingsError: next.error, settingsAction: null });
+    });
   },
 
   requestAccess: async () => {
     const next = await call<AccessState>("request_access", {});
     // The command answers with the state either way; a cancelled panel is a person who has
     // not decided, not a failure, and it comes back as the unchanged state.
-    if (next.ok) set({ access: next.value });
-    else set({ access: { ...blankAccess(), error: next.error } });
+    if (next.ok) {
+      set({ access: next.value });
+      if (next.value.granted) await get().refreshStatusline();
+    } else set({ access: { ...blankAccess(), error: next.error } });
   },
 
   forgetAccess: async () => {
@@ -205,15 +296,23 @@ export const useDeck = create<DeckStore>((set, get) => ({
       void invoke<ProviderHistory[]>("usage_history").then((history) => set({ history }));
     });
 
-    const [deck, history, settings, plans, statusline, access] = await Promise.all([
+    const [deck, history, settings, plans, access] = await Promise.all([
       invoke<DeckState>("current_state"),
       invoke<ProviderHistory[]>("usage_history"),
       invoke<Settings>("current_settings"),
       invoke<ProviderPlans[]>("provider_plans"),
-      invoke<StatuslineState>("statusline_state"),
       invoke<AccessState>("access_state"),
     ]);
-    set({ deck, history, settings, plans, statusline, access });
+    const statusline = await call<StatuslineState>("statusline_state", {});
+    set({
+      deck,
+      history,
+      settings,
+      plans,
+      statusline: statusline.ok ? statusline.value : unavailableStatusline(),
+      statuslineError: statusline.ok ? null : statusline.error,
+      access,
+    });
     applyTheme(settings.theme);
     applyLocale(settings.locale);
   },
@@ -233,6 +332,23 @@ if (import.meta.env.DEV && typeof window !== "undefined") {
 /** Nothing granted and nothing known. The shape the panel renders its onboarding from. */
 function blankAccess(): AccessState {
   return { required: true, granted: false, path: null, error: null };
+}
+
+function unavailableStatusline(): StatuslineState {
+  return {
+    setupMode: "unavailable",
+    installed: false,
+    settingsPath: null,
+    currentStatusLine: null,
+    currentCommand: null,
+    proposedStatusLine: null,
+    proposedCommand: null,
+    previousCommand: null,
+    previousStatusLine: null,
+    manualRevertMode: null,
+    readings: 0,
+    lastReadingAt: null,
+  };
 }
 
 /**

@@ -57,9 +57,14 @@ checkable:
   (`docs/DISCOVERY.md` §4) partly for this reason.
 - Keychain and Credential Manager are never read. Provider auth files are never opened, listed,
   or probed for existence. CI greps for this.
-- Reads are read-only and limited to session and telemetry logs.
-- The single write outside our own container is the opt-in Claude Code status line shim, which
-  shows the exact before and after, chains the user's existing command, and reverts in one click.
+- Reads are limited to session and telemetry logs plus `statusLine.command` in Claude Code's
+  settings for the optional integration; provider credential files remain excluded.
+- The App Store build never writes outside its own container. Its Claude Code status line setup
+  shows and copies the exact chained command, but the user applies it manually; the home-folder
+  entitlement remains read-only. After the user asks to copy the manual setup JSON, the complete
+  prior `statusLine` object is stored inside the app container so the exact manual restore JSON
+  remains available. Unsandboxed builds can apply and revert the same change only after explicit
+  consent, keeping the same local snapshot for exact one-click restoration.
 
 ## 4. Pricing
 

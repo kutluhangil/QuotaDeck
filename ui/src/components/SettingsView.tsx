@@ -56,9 +56,10 @@ function PlanGroup({ entry }: { entry: ProviderPlans }) {
   const chosen = useDeck((state) => state.settings.plans[entry.provider]);
   const setPlan = useDeck((state) => state.setPlan);
   const name = strings.provider[entry.provider];
+  const busy = useDeck((state) => state.settingsAction !== null);
 
   return (
-    <fieldset className="settings__group">
+    <fieldset className="settings__group" disabled={busy}>
       <legend className="type-label settings__legend">{strings.settings.planTitle(name)}</legend>
       <div className="settings__row">
         <label className="settings__chip">
@@ -105,9 +106,10 @@ function AlertGroup({ provider }: { provider: ProviderId }) {
   const chosen = useDeck((state) => thresholdsFor(state.settings, provider));
   const toggleThreshold = useDeck((state) => state.toggleThreshold);
   const name = strings.provider[provider];
+  const busy = useDeck((state) => state.settingsAction !== null);
 
   return (
-    <fieldset className="settings__group">
+    <fieldset className="settings__group" disabled={busy}>
       <legend className="type-label settings__legend">
         {`${name} · ${strings.settings.alertsTitle}`}
       </legend>
@@ -188,9 +190,10 @@ function DemoGroup() {
   const strings = useStrings();
   const demo = useDeck((state) => state.settings.demo);
   const setDemo = useDeck((state) => state.setDemo);
+  const busy = useDeck((state) => state.settingsAction !== null);
 
   return (
-    <fieldset className="settings__group">
+    <fieldset className="settings__group" disabled={busy}>
       <legend className="type-label settings__legend">{strings.settings.demoTitle}</legend>
       <div className="settings__row">
         {[
@@ -227,9 +230,10 @@ function MuteGroup({ now }: { now: number }) {
   const setMute = useDeck((state) => state.setMute);
   const until = mutedUntil === null ? null : Date.parse(mutedUntil);
   const muted = until !== null && !Number.isNaN(until) && until > now;
+  const busy = useDeck((state) => state.settingsAction !== null);
 
   return (
-    <fieldset className="settings__group">
+    <fieldset className="settings__group" disabled={busy}>
       <legend className="type-label settings__legend">{strings.settings.muteTitle}</legend>
       <div className="settings__row">
         {muted ? (
@@ -263,6 +267,8 @@ function MuteGroup({ now }: { now: number }) {
 export function SettingsView({ now }: { now: number }) {
   const strings = useStrings();
   const settings = useDeck((state) => state.settings);
+  const settingsError = useDeck((state) => state.settingsError);
+  const settingsBusy = useDeck((state) => state.settingsAction !== null);
   const setTrayMode = useDeck((state) => state.setTrayMode);
   const setTheme = useDeck((state) => state.setTheme);
   const setLocale = useDeck((state) => state.setLocale);
@@ -273,8 +279,13 @@ export function SettingsView({ now }: { now: number }) {
   const alerting = providers.filter((snapshot) => snapshot.windows.length > 0);
 
   return (
-    <div className="settings">
-      <fieldset className="settings__group">
+    <div className="settings" aria-busy={settingsBusy}>
+      {settingsError !== null && (
+        <p className="type-caption settings__error" role="alert">
+          {strings.settings.settingsFailed(settingsError)}
+        </p>
+      )}
+      <fieldset className="settings__group" disabled={settingsBusy}>
         <legend className="type-label settings__legend">
           {strings.settings.trayTitle(hostPlatform())}
         </legend>
@@ -295,7 +306,7 @@ export function SettingsView({ now }: { now: number }) {
         ))}
       </fieldset>
 
-      <fieldset className="settings__group">
+      <fieldset className="settings__group" disabled={settingsBusy}>
         <legend className="type-label settings__legend">{strings.settings.themeTitle}</legend>
         <div className="settings__row">
           {themes(strings).map(({ theme, label }) => (
@@ -313,7 +324,7 @@ export function SettingsView({ now }: { now: number }) {
         </div>
       </fieldset>
 
-      <fieldset className="settings__group">
+      <fieldset className="settings__group" disabled={settingsBusy}>
         <legend className="type-label settings__legend">{strings.settings.languageTitle}</legend>
         <div className="settings__row">
           {locales(strings).map(({ locale, label }) => (

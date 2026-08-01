@@ -48,7 +48,8 @@ sed "s/\$TEAM_ID/${TEAM_ID}/g" app/Entitlements.appstore.plist > "${ENTITLEMENTS
 echo "==> bundling"
 npm --prefix ui ci
 npm --prefix ui run build
-cargo tauri build \
+node scripts/check-appstore-config.mjs
+npm --prefix ui exec tauri -- build \
   --bundles app \
   --target "${TARGET}" \
   --config app/tauri.appstore.conf.json
@@ -62,6 +63,8 @@ codesign --sign "Apple Distribution" \
   --deep --force --timestamp \
   "${APP}"
 
+codesign --verify --deep --strict --verbose=2 "${APP}"
+
 echo "==> verifying the sandbox actually made it into the signature"
 # The failure this catches is Asset Validation error 90296, "App sandbox not enabled", which is
 # what a bundle whose entitlements were not embedded looks like from Apple's side. Cheaper to
@@ -73,6 +76,11 @@ fi
 # The privacy claim, checked rather than trusted: no outbound-connection capability may appear.
 if codesign -d --entitlements :- "${APP}" 2>/dev/null | grep -q "\.network\."; then
   echo "error: the signed bundle claims a network capability; the listing says it makes none" >&2
+  exit 1
+fi
+
+if otool -L "${APP}/Contents/MacOS/quotadeck" | grep -qi 'WebKit.*Private\|PrivateFrameworks'; then
+  echo "error: the executable links a private framework" >&2
   exit 1
 fi
 

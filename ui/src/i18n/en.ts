@@ -245,6 +245,7 @@ export const en = {
     themeDark: "Dark",
     themeLight: "Light",
     back: "Done",
+    settingsFailed: (reason: string) => `Could not save settings: ${reason}`,
 
     languageTitle: "Language",
     languageSystem: "Match system",
@@ -285,10 +286,12 @@ export const en = {
 
     statuslineTitle: "Measured limits",
     statuslineBody:
-      "Claude Code hands its status line the real percentage for your 5-hour and weekly limits. Connecting it replaces the estimate with the measurement. Nothing leaves this device and no credentials are read.",
-    statuslineUnsupported: "Claude Code settings were not found on this machine.",
+      "Claude Code hands its status line the real percentage for your 5-hour and weekly limits. Quota Deck reads statusLine.command to inspect the connection. Before either setup flow changes, or asks you to change, that object, it stores the complete prior statusLine value in its own local data directory for exact restoration. Nothing leaves this device.",
+    statuslineUnsupported: "Claude Code status line setup cannot be inspected yet.",
     statuslineConnect: "Connect status line",
+    statuslineConnecting: "Connecting…",
     statuslineRevert: "Disconnect",
+    statuslineReverting: "Disconnecting…",
     statuslineInstalled: "Connected",
     statuslineFile: (path: string) => `Edits ${path}`,
     statuslineBefore: "Now",
@@ -296,6 +299,25 @@ export const en = {
     statuslineNoPrevious: "You have no status line set. Disconnecting removes the setting again.",
     /** The commitment that makes this safe to accept. */
     statuslineChains: "Your existing status line keeps running — ours passes its output through.",
+    statuslineManualNotice:
+      "The App Store version can only read Claude Code settings. Quota Deck does not change this file.",
+    statuslineManualInstruction:
+      "Replace the top-level statusLine value with the complete JSON object below. It includes the required type and preserves your other statusLine fields.",
+    statuslineManualRestore:
+      "To disconnect, restore statusLine.command to the previous command below.",
+    statuslineManualRestoreObject:
+      "To disconnect, replace the top-level statusLine value with the exact prior JSON object below.",
+    statuslineManualRemove:
+      "To disconnect, remove the statusLine field from the settings file.",
+    statuslineManualRemoveCommand:
+      "To disconnect, remove only statusLine.command and preserve the other statusLine fields.",
+    statuslineCopyCommand: "Copy statusLine JSON",
+    statuslineCopyPrevious: "Copy previous command",
+    statuslineCopyPreviousObject: "Copy previous statusLine JSON",
+    statuslineCopied: "Command copied",
+    statuslineCopyFailed: (reason: string) => `Could not copy the command: ${reason}`,
+    statuslineRefresh: "Check again",
+    statuslineRefreshing: "Checking…",
     statuslineWaiting:
       "No reading yet. Claude Code sends this only in an interactive session, after its first reply.",
     statuslineReadings: (count: number, when: string) =>
@@ -311,7 +333,7 @@ export const en = {
     accessFailed: (reason: string) => `The stored grant could not be used: ${reason}`,
     /** Says what the grant is not, which is the part that makes it safe to give. */
     accessHint:
-      "Read-only, and only the session logs. Provider credentials are never opened. Revoking takes effect at once.",
+      "Read-only session logs, plus statusLine.command from Claude settings for the optional integration. Provider credential files are never opened. Revoking takes effect at once.",
 
     demoTitle: "Sample deck",
     demoOn: "Show a sample",

@@ -126,7 +126,7 @@ export const en = {
       },
       {
         title: "Reads are read-only",
-        body: "Session and telemetry logs, never written to. The one write outside our own folder is the opt-in Claude Code status line shim, which shows the exact before and after, chains whatever command you already had, and reverts in one click.",
+        body: "Session and telemetry logs, never written to. The App Store build keeps home-folder access read-only; its optional Claude Code status line setup shows and copies the exact chained command for you to apply manually.",
       },
     ],
     why: {
@@ -259,7 +259,7 @@ export const en = {
       },
       {
         title: "What is read",
-        body: "The session and telemetry log files that supported tools write to your home folder, read-only, from a byte offset rather than from the beginning. Nothing else in your home folder is opened.",
+        body: "The session and telemetry log files that supported tools write to your home folder are read-only, from a byte offset rather than from the beginning. To inspect the optional Claude Code status-line integration, ~/.claude/settings.json is also opened and statusLine.command is used. Before either setup flow changes, or asks you to change, that object, the complete prior statusLine value is stored in Quota Deck's local data directory for exact restoration.",
       },
       {
         title: "What is never read",
@@ -267,7 +267,7 @@ export const en = {
       },
       {
         title: "What is written",
-        body: "Hourly usage totals and your settings, inside the app's own data directory. The single exception is the Claude Code status line shim, which you turn on yourself after seeing the exact before and after; it chains whatever command you already had rather than replacing it, and one click puts it back.",
+        body: "Hourly usage totals, your settings and — after you choose to connect the optional integration — the complete prior statusLine value are written inside the app's own data directory. The App Store build writes nowhere else; it gives you the exact chained JSON and restore object, but you edit Claude's setting yourself.",
       },
       {
         title: "Analytics, crash reports, telemetry",

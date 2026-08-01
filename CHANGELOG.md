@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-08-01
+
+- App Store: removed macOS private-window APIs, moved Claude quota capture into the bundled executable, made sandbox setup explicitly manual and read-only, preserved and conflict-checked the complete prior Claude status-line setting, and made preference writes atomic and backend-authoritative.
+
 ## 2026-07-31
 
 - Site: added a theme switch — follow the system, light, dark. The choice is stored and applied by a small inline script before the first paint, because a stored light theme applied one frame late is a dark page flashed at the reader, which is the exact thing the choice was made to avoid. The control is hidden until that script runs: with no JavaScript the page still has both themes, it just follows the system, and a control that cannot act is worse than no control.

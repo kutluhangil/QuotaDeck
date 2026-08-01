@@ -18,7 +18,7 @@ Blueprint §10 forbade commits. Kutluhan overrode this on 2026-07-25: **commit a
 - Provider auth files (`auth.json`, `credentials.json`, `.credentials`) are never opened, listed, or even probed for existence.
 - Only session and telemetry log files are read. Read-only. Never written to.
 - `tauri-plugin-fs` is never exposed to the frontend. All file access lives in Rust behind a capability whitelist.
-- The one exception to "never write outside our own data dir" is the opt-in Claude Code statusline shim, which edits `settings.json` only with explicit user consent, chains the user's previous command instead of replacing it, and is revertible in one click.
+- The App Store build never writes outside its own container. It shows a copyable Claude Code statusline command for manual setup because the selected home grant stays read-only. Unsandboxed builds may edit `settings.json` only with explicit consent, chain the previous command, and offer one-click revert.
 
 ## Performance rules
 

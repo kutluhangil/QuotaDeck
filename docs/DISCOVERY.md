@@ -162,7 +162,7 @@ A shim script was installed as `statusLine.command`, an interactive session was 
 - `rate_limits` is absent before the first API response of a session and absent for non-subscribers.
 - Installing the shim requires editing the user's `settings.json` `statusLine` key — a destructive-if-careless operation, because it **replaces** whatever the user already had (this machine had `npx -y ccstatusline@latest`).
 
-**Design consequence:** the shim must chain, not replace. It writes the payload to our data directory, then execs the user's previous command with the same stdin and passes its stdout through. Onboarding must show the exact before/after of `settings.json` and offer a one-click revert. This is an opt-in upgrade path, never automatic.
+**Design consequence:** the shim must chain, not replace. It writes the payload to our data directory, then execs the user's previous command with the same stdin and passes its stdout through. Onboarding shows the exact before/after of `settings.json`. Unsandboxed builds can apply and revert it after explicit consent; the App Store build keeps its home grant read-only and therefore offers a copyable manual command and manual restore instructions. This is an opt-in upgrade path, never automatic.
 
 ---
 

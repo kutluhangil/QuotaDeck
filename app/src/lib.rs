@@ -10,6 +10,7 @@ pub mod i18n;
 pub mod icon;
 pub mod sandbox;
 pub mod statusline;
+pub mod statusline_helper;
 pub mod tray;
 
 use std::thread;
@@ -23,7 +24,7 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager};
 
 use crate::alerts::{Alert, Alerts};
-use crate::deck::{Deck, DeckState, ProviderHistory, Settings, TrayMode};
+use crate::deck::{Deck, DeckState, ProviderHistory, Settings, Theme, TrayMode};
 use crate::i18n::Locale;
 use crate::sandbox::AccessState;
 use crate::statusline::StatuslineState;
@@ -64,6 +65,7 @@ pub fn run() {
             request_access,
             forget_access,
             set_tray_mode,
+            set_theme,
             set_locale,
             set_demo,
             set_plan,
@@ -71,6 +73,7 @@ pub fn run() {
             set_mute,
             set_panel_height,
             statusline_state,
+            prepare_manual_statusline,
             install_statusline,
             revert_statusline,
         ])
@@ -145,13 +148,22 @@ fn provider_plans() -> Vec<ProviderPlans> {
 }
 
 #[tauri::command]
-fn set_plan(deck: tauri::State<'_, Deck>, provider: ProviderId, plan_id: Option<String>) {
-    deck.set_plan(provider, plan_id);
+fn set_plan(
+    deck: tauri::State<'_, Deck>,
+    provider: ProviderId,
+    plan_id: Option<String>,
+) -> std::result::Result<Settings, String> {
+    deck.set_plan(provider, plan_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn set_alert_thresholds(deck: tauri::State<'_, Deck>, provider: ProviderId, thresholds: Vec<u8>) {
-    deck.set_alert_thresholds(provider, thresholds);
+fn set_alert_thresholds(
+    deck: tauri::State<'_, Deck>,
+    provider: ProviderId,
+    thresholds: Vec<u8>,
+) -> std::result::Result<Settings, String> {
+    deck.set_alert_thresholds(provider, thresholds)
+        .map_err(|e| e.to_string())
 }
 
 /// Silence notifications for `minutes`, or lift the silence with `None`.
@@ -159,9 +171,12 @@ fn set_alert_thresholds(deck: tauri::State<'_, Deck>, provider: ProviderId, thre
 /// A duration rather than an instant, and computed by the panel: "until the end of today" is a
 /// question about the user's own zone, and this process only ever thinks in UTC.
 #[tauri::command]
-fn set_mute(deck: tauri::State<'_, Deck>, minutes: Option<u32>) {
+fn set_mute(
+    deck: tauri::State<'_, Deck>,
+    minutes: Option<u32>,
+) -> std::result::Result<Settings, String> {
     let until = minutes.map(|minutes| Utc::now() + chrono::Duration::minutes(i64::from(minutes)));
-    deck.set_muted_until(until);
+    deck.set_muted_until(until).map_err(|e| e.to_string())
 }
 
 /// Retained usage folded to the hour, for the dashboard.
@@ -268,9 +283,18 @@ async fn request_access(
         })
     };
 
-    if dispatched.is_ok() {
-        // The panel is modal, so this waits for the person rather than for a timeout.
-        let _ = receive.recv();
+    if let Err(error) = dispatched {
+        deck.set_modal_open(false);
+        return Err(format!(
+            "could not dispatch the folder picker to the main thread: {error}"
+        ));
+    }
+    // The panel is modal, so this waits for the person rather than for a timeout.
+    if let Err(error) = receive.recv() {
+        deck.set_modal_open(false);
+        return Err(format!(
+            "the folder picker closed without returning a result: {error}"
+        ));
     }
     deck.set_modal_open(false);
     Ok(deck.access_state())
@@ -291,8 +315,8 @@ fn forget_access(deck: tauri::State<'_, Deck>) -> AccessState {
 /// keeps reporting the real reading. A fabricated percentage in the menu bar would be a claim
 /// made outside the window that admits it is a sample.
 #[tauri::command]
-fn set_demo(deck: tauri::State<'_, Deck>, demo: bool) {
-    deck.set_demo(demo);
+fn set_demo(deck: tauri::State<'_, Deck>, demo: bool) -> std::result::Result<Settings, String> {
+    deck.set_demo(demo).map_err(|e| e.to_string())
 }
 
 /// The blueprint's dashboard size (§2).
@@ -300,8 +324,13 @@ const DASHBOARD_WIDTH: f64 = 960.0;
 const DASHBOARD_HEIGHT: f64 = 640.0;
 
 #[tauri::command]
-fn statusline_state() -> StatuslineState {
-    statusline::state()
+fn statusline_state() -> std::result::Result<StatuslineState, String> {
+    statusline::state().map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn prepare_manual_statusline() -> std::result::Result<StatuslineState, String> {
+    statusline::prepare_manual_install().map_err(|error| error.to_string())
 }
 
 /// Write the statusline shim. Called only after the panel has shown the exact before and
@@ -336,16 +365,31 @@ fn set_panel_height(app: AppHandle, height: f64) {
 }
 
 #[tauri::command]
-fn set_tray_mode(app: AppHandle, deck: tauri::State<'_, Deck>, mode: TrayMode) {
-    deck.set_tray_mode(mode);
-    tray::refresh(&app, &deck.state(), deck.settings());
+fn set_tray_mode(
+    app: AppHandle,
+    deck: tauri::State<'_, Deck>,
+    mode: TrayMode,
+) -> std::result::Result<Settings, String> {
+    let settings = deck.set_tray_mode(mode).map_err(|e| e.to_string())?;
+    tray::refresh(&app, &deck.state(), settings.clone());
+    Ok(settings)
+}
+
+#[tauri::command]
+fn set_theme(deck: tauri::State<'_, Deck>, theme: Theme) -> std::result::Result<Settings, String> {
+    deck.set_theme(theme).map_err(|e| e.to_string())
 }
 
 /// Record the language and re-label the one surface the panel cannot reach.
 #[tauri::command]
-fn set_locale(app: AppHandle, deck: tauri::State<'_, Deck>, locale: Locale) {
-    deck.set_locale(locale);
+fn set_locale(
+    app: AppHandle,
+    deck: tauri::State<'_, Deck>,
+    locale: Locale,
+) -> std::result::Result<Settings, String> {
+    let settings = deck.set_locale(locale).map_err(|e| e.to_string())?;
     tray::relanguage(&app, locale.language());
+    Ok(settings)
 }
 
 /// Folds every installed provider's logs on a timer.

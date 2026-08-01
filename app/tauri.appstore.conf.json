@@ -1,5 +1,25 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
+  "app": {
+    "macOSPrivateApi": false,
+    "windows": [
+      {
+        "label": "panel",
+        "title": "Quota Deck",
+        "width": 380,
+        "height": 520,
+        "resizable": false,
+        "decorations": false,
+        "transparent": false,
+        "shadow": true,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "visible": false,
+        "focus": false,
+        "acceptFirstMouse": true
+      }
+    ]
+  },
   "bundle": {
     "macOS": {
       "entitlements": "./Entitlements.appstore.plist",

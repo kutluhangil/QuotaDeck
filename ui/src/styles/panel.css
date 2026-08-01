@@ -812,6 +812,16 @@
   background: var(--surface-raised);
 }
 
+.settings__button:disabled {
+  opacity: 0.55;
+}
+
+.settings__button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--step-2);
+}
+
 /*
  * The before/after of someone else's config file. Shown in full — a truncated command is a
  * change the user cannot actually inspect before agreeing to it.
@@ -836,6 +846,7 @@
   /* Long paths wrap rather than scroll: the panel is 380px and this has to be readable. */
   overflow-wrap: anywhere;
   line-height: 1.5;
+  user-select: text;
 }
 
 /*

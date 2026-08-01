@@ -187,6 +187,7 @@ export const tr: Catalogue = {
     themeDark: "Koyu",
     themeLight: "Açık",
     back: "Bitti",
+    settingsFailed: (reason) => `Ayarlar kaydedilemedi: ${reason}`,
 
     languageTitle: "Dil",
     languageSystem: "Sistemle aynı",
@@ -212,10 +213,12 @@ export const tr: Catalogue = {
 
     statuslineTitle: "Ölçülmüş limitler",
     statuslineBody:
-      "Claude Code, 5 saatlik ve haftalık limitlerinin gerçek yüzdesini kendi durum satırına veriyor. Bağlarsan tahminin yerini ölçüm alır. Bu cihazdan hiçbir şey çıkmaz ve hiçbir kimlik bilgisi okunmaz.",
-    statuslineUnsupported: "Bu makinede Claude Code ayarları bulunamadı.",
+      "Claude Code, 5 saatlik ve haftalık limitlerinin gerçek yüzdesini kendi durum satırına veriyor. Quota Deck bağlantıyı incelemek için statusLine.command alanını okur. Her iki kurulum akışında da nesne değişmeden veya senden değiştirmen istenmeden önce, tam geri alma için önceki statusLine değerini kendi yerel veri klasöründe saklar. Bu cihazdan hiçbir şey çıkmaz.",
+    statuslineUnsupported: "Claude Code durum satırı ayarı henüz incelenemiyor.",
     statuslineConnect: "Durum satırını bağla",
+    statuslineConnecting: "Bağlanıyor…",
     statuslineRevert: "Bağlantıyı kes",
+    statuslineReverting: "Bağlantı kesiliyor…",
     statuslineInstalled: "Bağlı",
     statuslineFile: (path) => `${path} dosyasını düzenler`,
     statuslineBefore: "Şimdi",
@@ -224,6 +227,25 @@ export const tr: Catalogue = {
       "Ayarlanmış bir durum satırın yok. Bağlantıyı kesmek ayarı tekrar kaldırır.",
     statuslineChains:
       "Mevcut durum satırın çalışmaya devam eder — bizimki onun çıktısını olduğu gibi geçirir.",
+    statuslineManualNotice:
+      "App Store sürümü Claude Code ayarlarını yalnızca okuyabilir. Quota Deck bu dosyayı değiştirmez.",
+    statuslineManualInstruction:
+      "Üst düzey statusLine değerini aşağıdaki tam JSON nesnesiyle değiştir. Zorunlu type alanını içerir ve diğer statusLine alanlarını korur.",
+    statuslineManualRestore:
+      "Bağlantıyı kaldırmak için statusLine.command değerini aşağıdaki eski komuta geri getir.",
+    statuslineManualRestoreObject:
+      "Bağlantıyı kaldırmak için üst düzey statusLine değerini aşağıdaki özgün JSON nesnesiyle değiştir.",
+    statuslineManualRemove:
+      "Bağlantıyı kaldırmak için statusLine alanını ayar dosyasından kaldır.",
+    statuslineManualRemoveCommand:
+      "Bağlantıyı kaldırmak için yalnız statusLine.command alanını kaldır ve diğer statusLine alanlarını koru.",
+    statuslineCopyCommand: "statusLine JSON'unu kopyala",
+    statuslineCopyPrevious: "Eski komutu kopyala",
+    statuslineCopyPreviousObject: "Önceki statusLine JSON'unu kopyala",
+    statuslineCopied: "Komut kopyalandı",
+    statuslineCopyFailed: (reason) => `Komut kopyalanamadı: ${reason}`,
+    statuslineRefresh: "Durumu yeniden kontrol et",
+    statuslineRefreshing: "Kontrol ediliyor…",
     statuslineWaiting:
       "Henüz okuma yok. Claude Code bunu yalnızca etkileşimli bir oturumda, ilk yanıtından sonra gönderir.",
     statuslineReadings: (count, when) => `${count} okuma, sonuncusu ${when}`,
@@ -236,7 +258,7 @@ export const tr: Catalogue = {
     accessRevoke: "Erişimi geri al",
     accessFailed: (reason) => `Kayıtlı izin kullanılamadı: ${reason}`,
     accessHint:
-      "Yalnızca okuma ve yalnızca oturum günlükleri. Sağlayıcı kimlik dosyaları hiç açılmaz. Geri alma anında geçerli olur.",
+      "Salt okunur oturum günlükleri ve isteğe bağlı bağlantı için Claude ayarlarındaki statusLine.command alanı. Sağlayıcı kimlik dosyaları hiç açılmaz. Geri alma anında geçerli olur.",
 
     demoTitle: "Örnek veri",
     demoOn: "Örnek göster",

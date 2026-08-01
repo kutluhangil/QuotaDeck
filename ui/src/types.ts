@@ -155,15 +155,28 @@ export interface ProviderPlans {
  * own data directory, and only with consent.
  */
 export interface StatuslineState {
-  supported: boolean;
+  setupMode: "automatic" | "manual" | "unavailable";
   installed: boolean;
   settingsPath: string | null;
+  /** Complete current object for the read-only manual before/after view. */
+  currentStatusLine: Record<string, unknown> | null;
   /** What `statusLine.command` holds right now. */
   currentCommand: string | null;
+  /** Complete object required by Claude Code, including `type: command`. */
+  proposedStatusLine: Record<string, unknown> | null;
   /** What installing would write. Shown beside `currentCommand` as the before/after. */
   proposedCommand: string | null;
   /** What reverting restores. Null means there was no statusline before us. */
   previousCommand: string | null;
+  /** Complete exact manual restore object captured in the app's own data directory. */
+  previousStatusLine: Record<string, unknown> | null;
+  /** Exact manual cleanup for the read-only App Store flow. */
+  manualRevertMode:
+    | "remove-field"
+    | "remove-command"
+    | "restore-command"
+    | "restore-object"
+    | null;
   readings: number;
   lastReadingAt: string | null;
 }
