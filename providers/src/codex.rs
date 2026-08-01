@@ -24,7 +24,7 @@
 use std::path::PathBuf;
 
 use chrono::{DateTime, Utc};
-use quotadeck_core::error::Result;
+use quotadeck_core::error::{Error, Result};
 use quotadeck_core::events::{
     Accounting, DedupKey, EventIndex, LimitEvent, ParsedEvent, UsageEvent,
 };
@@ -154,10 +154,14 @@ impl Provider for Codex {
             return Ok(());
         }
 
-        // A line written while we read it can be incomplete; that is expected, not an error.
-        let Ok(record) = serde_json::from_str::<Record>(line) else {
-            return Ok(());
-        };
+        // LineReader calls providers only after a newline, so a parse failure here is a
+        // completed corrupt record rather than an in-flight trailing fragment.
+        let record = serde_json::from_str::<Record>(line).map_err(|error| {
+            Error::Invalid(format!(
+                "invalid Codex JSON in {}: {error}",
+                source.path.display()
+            ))
+        })?;
         let Some(payload) = record.payload else {
             return Ok(());
         };
@@ -255,7 +259,7 @@ mod tests {
         let mut out = Vec::new();
         Codex
             .parse_line(&LineSource::new(&path), line, &mut out)
-            .expect("parse_line must never fail on a log line");
+            .expect("fixture line must be valid");
         out
     }
 
@@ -325,6 +329,24 @@ mod tests {
             DateTime::from_timestamp(1_785_594_976, 0),
             "resets_at is an absolute epoch, not a countdown"
         );
+    }
+
+    #[test]
+    fn malformed_completed_token_count_is_an_actionable_error() {
+        let path = PathBuf::from("/x/rollout-broken.jsonl");
+        let mut out = Vec::new();
+        let error = Codex
+            .parse_line(
+                &LineSource::new(&path),
+                r#"{"type":"event_msg","payload":{"type":"token_count""#,
+                &mut out,
+            )
+            .expect_err("a completed token_count row must not disappear silently");
+
+        let message = error.to_string();
+        assert!(message.contains("invalid Codex JSON"));
+        assert!(message.contains("/x/rollout-broken.jsonl"));
+        assert!(out.is_empty());
     }
 
     #[test]
@@ -454,9 +476,7 @@ mod tests {
     }
 
     #[test]
-    fn a_truncated_line_is_skipped_rather_than_failing_the_file() {
-        let line = r#"{"timestamp":"2026-07-25T18:13:12.233Z","payload":{"type":"token_count","in"#;
-        assert!(parse(line).is_empty());
+    fn unrelated_or_blank_lines_are_ignored_without_parsing() {
         assert!(parse("").is_empty());
         assert!(parse("not json at all").is_empty());
     }

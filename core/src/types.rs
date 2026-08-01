@@ -97,6 +97,8 @@ pub enum UnavailableReason {
     NotInstalled,
     NoLogsFound,
     PermissionDenied,
+    /// A relevant completed log record or the log file itself could not be read safely.
+    ReadError,
     /// The tool is installed and logging, but has never emitted a limit record.
     NeverReported,
 }
@@ -447,6 +449,10 @@ pub struct ProviderSnapshot {
     pub last_activity: Option<DateTime<Utc>>,
     /// Set when the provider is installed but produced nothing usable.
     pub unavailable: Option<UnavailableReason>,
+    /// Actionable detail for a completed malformed record. Usage around it remains visible;
+    /// the warning persists until that source file is replaced or removed.
+    #[serde(default)]
+    pub read_error: Option<String>,
 }
 
 impl ProviderSnapshot {
@@ -461,6 +467,7 @@ impl ProviderSnapshot {
             pace: Vec::new(),
             last_activity: None,
             unavailable: Some(reason),
+            read_error: None,
         }
     }
 }

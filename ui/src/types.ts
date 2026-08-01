@@ -35,6 +35,7 @@ export type UnavailableReason =
   | "not-installed"
   | "no-logs-found"
   | "permission-denied"
+  | "read-error"
   | "never-reported";
 
 export type DerivationBasis = "token-window" | "request-count";
@@ -110,6 +111,8 @@ export interface ProviderSnapshot {
   pace: PaceForecast[];
   lastActivity: string | null;
   unavailable: UnavailableReason | null;
+  /** Persisted detail for a malformed completed provider record. */
+  readError?: string | null;
 }
 
 /** One hour of counted usage, as the dashboard pulls it. */

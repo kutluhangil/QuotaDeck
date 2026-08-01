@@ -43,7 +43,7 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use chrono::{DateTime, Datelike, Duration, NaiveDate, TimeZone, Utc};
-use quotadeck_core::error::Result;
+use quotadeck_core::error::{Error, Result};
 use quotadeck_core::events::{
     Accounting, DedupKey, EventIndex, LimitEvent, ParsedEvent, UsageEvent,
 };
@@ -87,9 +87,10 @@ const USD_PER_NANO_AIU: f64 = 0.01 / 1e9;
 /// denominator — see [`CopilotCli::build_snapshot`].
 ///
 /// Individual tiers are quoted as base credits plus a flex allotment; the totals are used.
-/// Business and Enterprise carry a promotional allowance of 3 000 and 7 000 credits between
-/// 2026-06-01 and 2026-09-01, which is deliberately not encoded: it expires, and a ceiling
-/// that silently lapses would start over-reporting on the day it did.
+/// Business and Enterprise are deliberately absent: GitHub pools their per-seat credit
+/// contributions at the billing-entity level, so a single user's local CLI spend has no
+/// personal 1 900/3 900-credit denominator. Existing customers also receive a temporary
+/// 3 000/7 000-credit contribution through 2026-09-01. Neither is an individual allowance.
 const fn monthly(credits: f64) -> [PlanCeiling; 1] {
     [PlanCeiling {
         window_minutes: MONTHLY_MINUTES,
@@ -100,8 +101,6 @@ const fn monthly(credits: f64) -> [PlanCeiling; 1] {
 const PRO_CEILINGS: &[PlanCeiling] = &monthly(1_500.0);
 const PRO_PLUS_CEILINGS: &[PlanCeiling] = &monthly(7_000.0);
 const MAX_CEILINGS: &[PlanCeiling] = &monthly(20_000.0);
-const BUSINESS_CEILINGS: &[PlanCeiling] = &monthly(1_900.0);
-const ENTERPRISE_CEILINGS: &[PlanCeiling] = &monthly(3_900.0);
 
 const PLANS: &[PlanOption] = &[
     PlanOption {
@@ -118,16 +117,6 @@ const PLANS: &[PlanOption] = &[
         id: "max",
         label: "Max",
         ceilings: MAX_CEILINGS,
-    },
-    PlanOption {
-        id: "business",
-        label: "Business",
-        ceilings: BUSINESS_CEILINGS,
-    },
-    PlanOption {
-        id: "enterprise",
-        label: "Enterprise",
-        ceilings: ENTERPRISE_CEILINGS,
     },
 ];
 
@@ -188,6 +177,7 @@ struct Usage {
     /// A subset of `input_tokens`, verified across all 171 real records.
     #[serde(default)]
     cache_read_tokens: u64,
+    /// A subset of `input_tokens`, confirmed by the matching `tokenDetails` breakdown.
     #[serde(default)]
     cache_write_tokens: u64,
     /// A subset of `output_tokens`.
@@ -199,7 +189,10 @@ impl Usage {
     /// Split the reported counts into the rollup's non-overlapping buckets.
     fn rollup(&self) -> TokenRollup {
         TokenRollup {
-            input: self.input_tokens.saturating_sub(self.cache_read_tokens),
+            input: self
+                .input_tokens
+                .saturating_sub(self.cache_read_tokens)
+                .saturating_sub(self.cache_write_tokens),
             output: self.output_tokens,
             cache_read: self.cache_read_tokens,
             cache_creation: self.cache_write_tokens,
@@ -238,11 +231,14 @@ impl Provider for CopilotCli {
             return Ok(());
         }
 
-        // The file is appended to while we read it, so a trailing partial line is expected
-        // rather than an error.
-        let Ok(record) = serde_json::from_str::<Record>(line) else {
-            return Ok(());
-        };
+        // LineReader calls providers only after a newline, so a parse failure here is a
+        // completed corrupt record rather than an in-flight trailing fragment.
+        let record = serde_json::from_str::<Record>(line).map_err(|error| {
+            Error::Invalid(format!(
+                "invalid Copilot CLI JSON in {}: {error}",
+                source.path.display()
+            ))
+        })?;
         let Some(data) = &record.data else {
             return Ok(());
         };
@@ -409,6 +405,9 @@ fn derived_window(
     let start = month_start(now)?;
     let elapsed = now.signed_duration_since(start);
     let spent = index.rolling_cost(now, elapsed.max(Duration::zero()));
+    if !spent.is_complete() {
+        return None;
+    }
     let percent = plan::percent_of(ceiling.cost_usd, spent.usd)?;
 
     Some(QuotaWindow {
@@ -544,8 +543,11 @@ mod tests {
         // against a real 6128, because the field excludes the cache write entirely.
         let usage = only_usage(&parse_fixture("shutdown_haiku_cache_write.jsonl"));
         assert_eq!(usage.tokens.cache_creation, 6_119);
-        assert_eq!(usage.tokens.input, 6_128);
-        assert_ne!(usage.tokens.input, 9);
+        assert_eq!(
+            usage.tokens.input, 9,
+            "cache writes are already included in inputTokens and must be split out"
+        );
+        assert_eq!(usage.tokens.input + usage.tokens.cache_creation, 6_128);
     }
 
     #[test]
@@ -556,6 +558,22 @@ mod tests {
             Cost::Usd(usd) => assert!((usd - 0.009_137_475).abs() < 1e-12, "{usd}"),
             Cost::Unpriced => panic!("Copilot meters its own credits; nothing here is unpriced"),
         }
+    }
+
+    #[test]
+    fn missing_metered_credits_do_not_produce_a_zero_percent_estimate() {
+        let events = parse(
+            r#"{"type":"session.shutdown","data":{"modelMetrics":{"gpt-5.4-mini":{"usage":{"inputTokens":100,"outputTokens":10}}}},"id":"missing-cost","timestamp":"2026-07-08T12:56:53Z"}"#,
+        );
+        let mut index = EventIndex::new(Duration::days(32));
+        for event in events {
+            index.ingest(event);
+        }
+
+        let snapshot =
+            CopilotCli.build_snapshot(&index, at("2026-07-08T13:00:00Z"), &config("pro"));
+        assert!(snapshot.windows.is_empty(), "{:#?}", snapshot.windows);
+        assert_eq!(snapshot.today_cost.unpriced_tokens, 110);
     }
 
     #[test]
@@ -610,8 +628,25 @@ mod tests {
     }
 
     #[test]
-    fn a_truncated_line_is_skipped_rather_than_failing_the_file() {
-        assert!(parse(r#"{"type":"session.shutdown","data":{"totalNano"#).is_empty());
+    fn an_interesting_malformed_complete_line_fails_loudly() {
+        let path = PathBuf::from(
+            "/x/.copilot/session-state/013dbf3b-05fc-4e50-b279-c8e08d2624c4/events.jsonl",
+        );
+        let mut out = Vec::new();
+        let error = CopilotCli
+            .parse_line(
+                &LineSource::new(&path),
+                r#"{"type":"session.shutdown","data":{"totalNano"#,
+                &mut out,
+            )
+            .expect_err("a completed lifecycle row must not disappear silently");
+        let message = error.to_string();
+        assert!(message.contains("invalid Copilot CLI JSON"), "{message}");
+        assert!(message.contains("events.jsonl"), "{message}");
+    }
+
+    #[test]
+    fn unrelated_or_blank_lines_are_ignored_without_parsing() {
         assert!(parse("").is_empty());
         assert!(parse("not json at all").is_empty());
     }
@@ -783,8 +818,25 @@ mod tests {
         assert!((by_id("pro") - 15.0).abs() < 1e-9);
         assert!((by_id("pro-plus") - 70.0).abs() < 1e-9);
         assert!((by_id("max") - 200.0).abs() < 1e-9);
-        assert!((by_id("business") - 19.0).abs() < 1e-9);
-        assert!((by_id("enterprise") - 39.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn organization_pool_contributions_are_not_offered_as_individual_allowances() {
+        for id in [
+            "business",
+            "enterprise",
+            "business-promo-2026",
+            "enterprise-promo-2026",
+        ] {
+            assert!(CopilotCli.plans().iter().all(|plan| plan.id != id));
+        }
+
+        let index = index_of(&["shutdown_premium_whole_request.jsonl"]);
+        for id in ["business", "enterprise"] {
+            let snapshot =
+                CopilotCli.build_snapshot(&index, at("2026-07-12T12:00:00Z"), &config(id));
+            assert!(snapshot.windows.is_empty(), "{id}: {:#?}", snapshot.windows);
+        }
     }
 
     #[test]

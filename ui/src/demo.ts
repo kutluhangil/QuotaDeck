@@ -272,19 +272,13 @@ export function demoPlans(): ProviderPlans[] {
       ],
     },
     {
-      // Five tiers against Claude Code's three, and a hint that reads differently. Both are
-      // here so the settings view is designed against the wider of the two shapes.
+      // Individual plans only. Business and Enterprise contribute credits to an
+      // organisation-level pool, so a local user's logs cannot yield an honest denominator.
       provider: "copilot-cli",
       plans: [
         { id: "pro", label: "Pro", ceilings: [{ windowMinutes: 43_200, costUsd: 15 }] },
         { id: "pro-plus", label: "Pro+", ceilings: [{ windowMinutes: 43_200, costUsd: 70 }] },
         { id: "max", label: "Max", ceilings: [{ windowMinutes: 43_200, costUsd: 200 }] },
-        { id: "business", label: "Business", ceilings: [{ windowMinutes: 43_200, costUsd: 19 }] },
-        {
-          id: "enterprise",
-          label: "Enterprise",
-          ceilings: [{ windowMinutes: 43_200, costUsd: 39 }],
-        },
       ],
     },
   ];

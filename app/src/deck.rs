@@ -466,6 +466,7 @@ mod tests {
             pace: Vec::new(),
             last_activity: None,
             unavailable: None,
+            read_error: None,
         }
     }
 

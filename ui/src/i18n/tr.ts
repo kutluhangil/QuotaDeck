@@ -151,6 +151,7 @@ export const tr: Catalogue = {
     "not-installed": "Kurulu değil",
     "no-logs-found": "Henüz oturum günlüğü yok",
     "permission-denied": "Bu klasöre erişim yok",
+    "read-error": "Bir oturum günlüğü okunamadı",
     "never-reported": "Bu araç bir limit bildirmedi",
   },
 

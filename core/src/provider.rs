@@ -83,9 +83,10 @@ pub trait Provider: Send + Sync {
     /// line can carry several events: a Codex `token_count` record holds a usage total and
     /// up to two limit windows at once.
     ///
-    /// A line that is not of interest appends nothing. A malformed line also appends
-    /// nothing and still returns `Ok` — returning `Err` would let one corrupt line stop a
-    /// whole file, and these files are written by other programs while we read them.
+    /// A line that is not of interest appends nothing. A completed, relevant malformed line
+    /// returns an actionable error. [`crate::reader::LineReader`] withholds an in-flight
+    /// trailing fragment until its newline arrives, so providers never mistake a partial write
+    /// for corruption.
     fn parse_line(
         &self,
         source: &LineSource<'_>,
@@ -164,6 +165,7 @@ pub fn snapshot_with_windows(
         pace,
         last_activity: index.last_activity(),
         unavailable: None,
+        read_error: None,
     }
 }
 

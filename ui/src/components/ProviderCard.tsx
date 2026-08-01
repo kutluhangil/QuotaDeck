@@ -134,6 +134,12 @@ export function ProviderCard({
         </span>
       </header>
 
+      {snapshot.readError && (
+        <p className="type-caption settings__error" role="alert">
+          {snapshot.readError}
+        </p>
+      )}
+
       {percent !== null ? (
         <>
           <ul className="card__rows" role="list" aria-label={strings.a11y.windows(name)}>

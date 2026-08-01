@@ -31,7 +31,7 @@
 use std::path::PathBuf;
 
 use chrono::{DateTime, Duration, Utc};
-use quotadeck_core::error::Result;
+use quotadeck_core::error::{Error, Result};
 use quotadeck_core::events::{
     Accounting, DedupKey, EventIndex, LimitEvent, ParsedEvent, UsageEvent,
 };
@@ -291,10 +291,14 @@ impl Provider for ClaudeCode {
             return Ok(());
         }
 
-        // Files are appended to while we read them, so a trailing partial line is expected.
-        let Ok(record) = serde_json::from_str::<Record>(line) else {
-            return Ok(());
-        };
+        // LineReader calls providers only after a newline, so a parse failure here is a
+        // completed corrupt record rather than an in-flight trailing fragment.
+        let record = serde_json::from_str::<Record>(line).map_err(|error| {
+            Error::Invalid(format!(
+                "invalid Claude Code JSON in {}: {error}",
+                source.path.display()
+            ))
+        })?;
 
         if statusline && record.kind.as_deref() == Some(STATUSLINE_TYPE) {
             push_limits(&record, out);
@@ -439,6 +443,7 @@ fn calibration_factor(index: &EventIndex, now: DateTime<Utc>, plan: &PlanOption)
     index
         .windows(now)
         .iter()
+        .filter(|window| window.confidence.is_measured())
         .filter_map(|window| {
             let percent = window.used_percent?;
             let seed = plan.ceiling_for(window.window_minutes)?;
@@ -460,6 +465,9 @@ fn derived_window(
 ) -> Option<QuotaWindow> {
     let window = Duration::minutes(i64::from(ceiling.window_minutes));
     let spent = index.rolling_cost(now, window);
+    if !spent.is_complete() {
+        return None;
+    }
     let corrected = ceiling.cost_usd * factor.unwrap_or(1.0);
     let percent = plan::percent_of(corrected, spent.usd)?;
 
@@ -652,6 +660,22 @@ mod tests {
     }
 
     #[test]
+    fn an_incomplete_cost_window_does_not_produce_a_percentage() {
+        let index = index_of(&["synthetic_unpriced_model.jsonl"]);
+        let now = "2026-07-28T15:25:00Z"
+            .parse::<DateTime<Utc>>()
+            .expect("now");
+
+        let snapshot = ClaudeCode.build_snapshot(&index, now, &config("pro"));
+        assert!(
+            snapshot.windows.is_empty(),
+            "a dollar percentage must not omit unpriced tokens: {:#?}",
+            snapshot.windows
+        );
+        assert_eq!(snapshot.unavailable, Some(UnavailableReason::NeverReported));
+    }
+
+    #[test]
     fn rows_that_are_not_assistant_messages_are_ignored() {
         for line in fixture("synthetic_noise.jsonl").lines() {
             assert!(parse(line).is_empty(), "unexpected event from: {line}");
@@ -659,8 +683,23 @@ mod tests {
     }
 
     #[test]
-    fn a_truncated_line_is_skipped_rather_than_failing_the_file() {
-        assert!(parse(r#"{"type":"assistant","message":{"usage":{"input_"#).is_empty());
+    fn an_interesting_malformed_complete_line_fails_loudly() {
+        let path = PathBuf::from("/x/projects/-work-project/session-a.jsonl");
+        let mut out = Vec::new();
+        let error = ClaudeCode
+            .parse_line(
+                &LineSource::new(&path),
+                r#"{"type":"assistant","message":{"usage":{"input_"#,
+                &mut out,
+            )
+            .expect_err("a completed usage row must not disappear silently");
+        let message = error.to_string();
+        assert!(message.contains("invalid Claude Code JSON"), "{message}");
+        assert!(message.contains("session-a.jsonl"), "{message}");
+    }
+
+    #[test]
+    fn unrelated_or_blank_lines_are_ignored_without_parsing() {
         assert!(parse("").is_empty());
         assert!(parse("not json at all").is_empty());
     }
@@ -905,6 +944,40 @@ mod tests {
 
         let plan = PLANS.iter().find(|plan| plan.id == "pro").expect("pro");
         assert!(calibration_factor(&index, now, plan).is_none());
+    }
+
+    #[test]
+    fn a_stale_measurement_does_not_calibrate_a_current_estimate() {
+        let mut index = EventIndex::new(Duration::days(32));
+        let now = "2026-07-25T22:20:00Z"
+            .parse::<DateTime<Utc>>()
+            .expect("now");
+        index.ingest(ParsedEvent::Limit(LimitEvent {
+            limit_id: LIMIT_ID.into(),
+            observed_at: now - Duration::minutes(31),
+            window_minutes: SEVEN_DAY_MINUTES,
+            used_percent: 50.0,
+            resets_at: None,
+        }));
+        index.ingest(ParsedEvent::Usage(UsageEvent {
+            at: now - Duration::hours(1),
+            session: "s".into(),
+            dedup: None,
+            model: Some("claude-opus-5".into()),
+            tokens: TokenRollup {
+                output: 100_000,
+                ..Default::default()
+            },
+            requests: 0.0,
+            cost: Cost::Usd(2.5),
+            accounting: Accounting::Incremental,
+        }));
+
+        let plan = PLANS.iter().find(|plan| plan.id == "pro").expect("pro");
+        assert!(
+            calibration_factor(&index, now, plan).is_none(),
+            "a reading older than the freshness threshold must not affect a current estimate"
+        );
     }
 
     #[test]

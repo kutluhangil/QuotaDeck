@@ -2,6 +2,7 @@
 
 ## 2026-08-01
 
+- Core: persisted versioned provider checkpoints for restart-safe incremental reads, bounded and hardened watcher state, corrected out-of-order/dedup retention, surfaced malformed provider records, and fixed Claude/Copilot quota estimation and token accounting.
 - App Store: removed macOS private-window APIs, moved Claude quota capture into the bundled executable, made sandbox setup explicitly manual and read-only, preserved and conflict-checked the complete prior Claude status-line setting, and made preference writes atomic and backend-authoritative.
 
 ## 2026-07-31

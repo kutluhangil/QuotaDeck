@@ -13,13 +13,20 @@ pub mod statusline;
 pub mod statusline_helper;
 pub mod tray;
 
-use std::thread;
-use std::time::Duration;
+use std::collections::HashSet;
+use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{mpsc, Arc, Mutex};
+use std::thread::{self, JoinHandle};
+use std::time::{Duration, Instant};
 
 use chrono::Utc;
 use quotadeck_core::discovery::RootAccess;
 use quotadeck_core::engine::{ProviderEngine, DEFAULT_RETENTION_DAYS};
+use quotadeck_core::error::{Error, Result};
+use quotadeck_core::store::BatchedStore;
 use quotadeck_core::types::{PlanOption, ProviderId, ProviderSnapshot, UnavailableReason};
+use quotadeck_core::watcher::{DebouncedWatcher, DEFAULT_DEBOUNCE};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager};
 
@@ -45,11 +52,15 @@ const BACKGROUND_TICK: Duration = Duration::from_secs(60);
 /// Files read in the first pass before the panel is told anything. The newest files hold
 /// current data, so the panel has something true to show while the rest is still loading.
 const FIRST_PASS_FILES: usize = 50;
+const STORE_FILE: &str = "usage.redb";
+const STOP_POLL: Duration = Duration::from_secs(1);
 
 pub fn run() {
     let deck = Deck::new();
+    let read_loop = Arc::new(Mutex::new(None::<ReadLoopControl>));
+    let setup_read_loop = read_loop.clone();
 
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
         .plugin(tauri_plugin_positioner::init())
         .plugin(tauri_plugin_notification::init())
         .manage(deck.clone())
@@ -89,7 +100,11 @@ pub fn run() {
             deck.restore_access();
 
             tray::install(app.handle(), deck.clone())?;
-            spawn_read_loop(app.handle().clone(), deck.clone());
+            let control = spawn_read_loop(app.handle().clone(), deck.clone())?;
+            match setup_read_loop.lock() {
+                Ok(mut slot) => *slot = Some(control),
+                Err(poisoned) => *poisoned.into_inner() = Some(control),
+            }
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -110,8 +125,20 @@ pub fn run() {
                 let _ = window.hide();
             }
         })
-        .run(tauri::generate_context!())
+        .build(tauri::generate_context!())
         .expect("the Tauri runtime failed to start");
+
+    app.run(move |_app, event| {
+        if matches!(event, tauri::RunEvent::Exit) {
+            let control = match read_loop.lock() {
+                Ok(mut slot) => slot.take(),
+                Err(poisoned) => poisoned.into_inner().take(),
+            };
+            if let Some(control) = control {
+                control.shutdown();
+            }
+        }
+    });
 }
 
 #[tauri::command]
@@ -396,36 +423,211 @@ fn set_locale(
 ///
 /// Runs on its own thread rather than an async task: the work is blocking file reads, and a
 /// dedicated thread keeps it off whatever the UI is doing.
-fn spawn_read_loop(app: AppHandle, deck: Deck) {
-    thread::Builder::new()
+struct ReadLoopControl {
+    stop: mpsc::Sender<()>,
+    cancelled: Arc<AtomicBool>,
+    thread: JoinHandle<()>,
+}
+
+impl ReadLoopControl {
+    fn shutdown(self) {
+        self.cancelled.store(true, Ordering::Release);
+        let _ = self.stop.send(());
+        if self.thread.join().is_err() {
+            eprintln!("quotadeck: read loop panicked during shutdown");
+        }
+    }
+}
+
+fn spawn_read_loop(app: AppHandle, deck: Deck) -> Result<ReadLoopControl> {
+    let data_dir = quotadeck_core::paths::data_dir()
+        .ok_or_else(|| Error::Invalid("cannot resolve the app data directory".into()))?;
+    std::fs::create_dir_all(&data_dir).map_err(|error| Error::io(&data_dir, error))?;
+    let mut store = BatchedStore::open(data_dir.join(STORE_FILE))?;
+    let mut engines = restore_engines(&store)?;
+    let mut watched = HashSet::new();
+    let mut watcher = match DebouncedWatcher::new(DEFAULT_DEBOUNCE) {
+        Ok(mut watcher) => match sync_watches(&mut watcher, &mut watched, &engines) {
+            Ok(()) => Some(watcher),
+            Err(error) => {
+                eprintln!(
+                    "quotadeck: initial filesystem watches failed; timer polling will be used: {error}"
+                );
+                watched.clear();
+                None
+            }
+        },
+        Err(error) => {
+            eprintln!(
+                "quotadeck: filesystem watcher could not start; timer polling will be used: {error}"
+            );
+            None
+        }
+    };
+
+    let (stop, stopped) = mpsc::channel();
+    let cancelled = Arc::new(AtomicBool::new(false));
+    let read_cancelled = cancelled.clone();
+    let thread = thread::Builder::new()
         .name("quotadeck-read".into())
         .spawn(move || {
-            let mut engines: Vec<ProviderEngine> = quotadeck_providers::all()
-                .into_iter()
-                .map(ProviderEngine::new)
-                .collect();
             let mut alerts = Alerts::new();
 
             // First pass: newest files only, so the panel fills quickly.
-            publish(
+            if let Err(error) = publish(
                 &app,
                 &deck,
                 &mut engines,
                 &mut alerts,
-                Some(FIRST_PASS_FILES),
-                true,
-            );
+                &mut store,
+                ReadPass {
+                    max_files: Some(FIRST_PASS_FILES),
+                    scanning: true,
+                    cancelled: &read_cancelled,
+                },
+            ) {
+                eprintln!("quotadeck: initial read pass failed: {error}");
+            }
+            if let Some(active) = watcher.as_mut() {
+                if let Err(error) = sync_watches(active, &mut watched, &engines) {
+                    eprintln!("quotadeck: filesystem watcher setup failed: {error}");
+                    watcher = None;
+                    watched.clear();
+                }
+            }
+
+            let mut next_refresh = Instant::now() + refresh_interval(&deck);
 
             loop {
-                publish(&app, &deck, &mut engines, &mut alerts, None, false);
-                thread::sleep(if deck.panel_open() {
-                    FOREGROUND_TICK
-                } else {
-                    BACKGROUND_TICK
-                });
+                match stopped.try_recv() {
+                    Ok(()) | Err(mpsc::TryRecvError::Disconnected) => break,
+                    Err(mpsc::TryRecvError::Empty) => {}
+                }
+
+                let timeout = next_refresh
+                    .saturating_duration_since(Instant::now())
+                    .min(STOP_POLL);
+                let changed = match watcher.as_ref() {
+                    Some(active) => match active.next_batch(timeout) {
+                        Ok(batch) => batch.is_some(),
+                        Err(error) => {
+                            eprintln!(
+                                "quotadeck: filesystem watcher failed; timer polling continues: {error}"
+                            );
+                            watcher = None;
+                            watched.clear();
+                            false
+                        }
+                    },
+                    None => {
+                        thread::sleep(timeout);
+                        false
+                    }
+                };
+                if !changed && Instant::now() < next_refresh {
+                    continue;
+                }
+
+                if let Err(error) = publish(
+                    &app,
+                    &deck,
+                    &mut engines,
+                    &mut alerts,
+                    &mut store,
+                    ReadPass {
+                        max_files: None,
+                        scanning: false,
+                        cancelled: &read_cancelled,
+                    },
+                ) {
+                    eprintln!("quotadeck: read pass failed; retrying on the next tick: {error}");
+                }
+                if watcher.is_none() {
+                    match DebouncedWatcher::new(DEFAULT_DEBOUNCE) {
+                        Ok(mut replacement) => {
+                            match sync_watches(&mut replacement, &mut watched, &engines) {
+                                Ok(()) => watcher = Some(replacement),
+                                Err(error) => {
+                                    eprintln!(
+                                        "quotadeck: filesystem watcher restart failed; timer polling continues: {error}"
+                                    );
+                                    watched.clear();
+                                }
+                            }
+                        }
+                        Err(error) => eprintln!(
+                            "quotadeck: filesystem watcher could not be recreated; timer polling continues: {error}"
+                        ),
+                    }
+                } else if let Some(active) = watcher.as_mut() {
+                    if let Err(error) = sync_watches(active, &mut watched, &engines) {
+                        eprintln!(
+                            "quotadeck: filesystem watcher update failed; timer polling continues: {error}"
+                        );
+                        watcher = None;
+                        watched.clear();
+                    }
+                }
+                next_refresh = Instant::now() + refresh_interval(&deck);
+            }
+
+            if let Err(error) = store.flush() {
+                eprintln!("quotadeck: persistence flush during shutdown failed: {error}");
             }
         })
-        .expect("failed to start the read loop thread");
+        .map_err(|error| Error::io("quotadeck-read", error))?;
+    Ok(ReadLoopControl {
+        stop,
+        cancelled,
+        thread,
+    })
+}
+
+fn restore_engines(store: &BatchedStore) -> Result<Vec<ProviderEngine>> {
+    quotadeck_providers::all()
+        .into_iter()
+        .map(|provider| {
+            let provider_id = provider.id();
+            match store.load_provider_checkpoint(provider_id)? {
+                Some(checkpoint) => ProviderEngine::restore(provider, &checkpoint),
+                None => Ok(ProviderEngine::new(provider)),
+            }
+        })
+        .collect()
+}
+
+fn refresh_interval(deck: &Deck) -> Duration {
+    if deck.panel_open() {
+        FOREGROUND_TICK
+    } else {
+        BACKGROUND_TICK
+    }
+}
+
+fn sync_watches(
+    watcher: &mut DebouncedWatcher,
+    watched: &mut HashSet<PathBuf>,
+    engines: &[ProviderEngine],
+) -> Result<()> {
+    let desired: HashSet<PathBuf> = engines
+        .iter()
+        .flat_map(ProviderEngine::watch_directories)
+        .collect();
+
+    for directory in desired.difference(watched) {
+        watcher.watch_dir(directory)?;
+    }
+    for directory in watched.difference(&desired) {
+        watcher.unwatch_dir(directory)?;
+    }
+    *watched = desired;
+    Ok(())
+}
+
+struct ReadPass<'a> {
+    max_files: Option<usize>,
+    scanning: bool,
+    cancelled: &'a AtomicBool,
 }
 
 fn publish(
@@ -433,9 +635,9 @@ fn publish(
     deck: &Deck,
     engines: &mut [ProviderEngine],
     alerts: &mut Alerts,
-    max_files: Option<usize>,
-    scanning: bool,
-) {
+    store: &mut BatchedStore,
+    pass: ReadPass<'_>,
+) -> Result<()> {
     let now = Utc::now();
     let settings = deck.settings();
     let mut providers = Vec::with_capacity(engines.len());
@@ -467,10 +669,18 @@ fn publish(
             }
         }
 
-        match engine.refresh(max_files) {
-            Ok(_) => {
+        match engine.refresh_with_cancel(pass.max_files, || pass.cancelled.load(Ordering::Acquire))
+        {
+            Ok(report) => {
                 engine.prune(now);
-                providers.push(engine.snapshot(now));
+                if engine.checkpoint_dirty() {
+                    let checkpoint = engine.checkpoint()?;
+                    store.push_provider_checkpoint(engine.provider().id(), checkpoint)?;
+                    engine.mark_checkpoint_queued();
+                }
+                if report.cancelled {
+                    return Ok(());
+                }
                 history.push(ProviderHistory {
                     id: engine.provider().id(),
                     hours: quotadeck_core::history::hours(
@@ -479,6 +689,18 @@ fn publish(
                         now,
                     ),
                 });
+                if report.parse_errors > 0 {
+                    eprintln!(
+                        "quotadeck: {} skipped {} malformed completed record(s): {}",
+                        engine.provider().id().key(),
+                        report.parse_errors,
+                        report
+                            .first_parse_error
+                            .as_deref()
+                            .unwrap_or("provider parser returned no error detail")
+                    );
+                }
+                providers.push(engine.snapshot(now));
             }
             Err(e) => {
                 // A provider that cannot be read says so; it does not silently vanish from
@@ -489,7 +711,7 @@ fn publish(
                 );
                 providers.push(ProviderSnapshot::unavailable(
                     engine.provider().id(),
-                    UnavailableReason::PermissionDenied,
+                    UnavailableReason::ReadError,
                 ));
             }
         }
@@ -498,7 +720,7 @@ fn publish(
     let state = DeckState {
         providers,
         updated_at: now,
-        scanning,
+        scanning: pass.scanning,
     };
     deck.set_history(history);
     deck.set_state(state.clone());
@@ -508,6 +730,10 @@ fn publish(
     for alert in alerts.evaluate(&state, &settings, now) {
         raise(app, &alert);
     }
+    if store.should_flush() {
+        store.flush()?;
+    }
+    Ok(())
 }
 
 /// Show one notification.

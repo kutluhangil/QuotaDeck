@@ -203,6 +203,7 @@ export const en = {
     "not-installed": "Not installed",
     "no-logs-found": "No session logs yet",
     "permission-denied": "No access to this folder",
+    "read-error": "A session log could not be read",
     "never-reported": "This tool has not reported a limit",
   } satisfies Record<UnavailableReason, string>,
 

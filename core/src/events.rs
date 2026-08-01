@@ -1,12 +1,19 @@
 //! What a provider yields per parsed line, and the index that accumulates it.
 
-use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use chrono::{DateTime, Duration as ChronoDuration, Utc};
+use serde::{Deserialize, Serialize};
 
+use crate::error::{Error, Result};
 use crate::types::{
     Bucket, BucketSeries, Confidence, Cost, CostRange, QuotaWindow, TokenRollup, WindowKind,
 };
+
+/// Cumulative baselines live independently of bucket retention. A generous hard bound keeps
+/// dormant sessions correct when they resume while preventing unbounded growth from malformed
+/// or adversarial session identifiers.
+const MAX_SESSION_TOTALS: usize = 100_000;
 
 /// Identifies a usage record so the same record seen twice is counted once.
 ///
@@ -77,7 +84,7 @@ pub struct UsageEvent {
 }
 
 /// One limit as the provider reported it, before it becomes a [`QuotaWindow`].
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct LimitEvent {
     /// Groups windows belonging to the same limit. Codex emits `"codex"` and `"premium"`.
     pub limit_id: String,
@@ -96,12 +103,12 @@ pub enum ParsedEvent {
 /// Accumulates parsed events into everything a snapshot needs.
 ///
 /// Deliberately holds no raw log text: lines are folded in and dropped.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct EventIndex {
     seen: HashSet<u64>,
-    /// Fingerprints in arrival order so old ones can be evicted with the series.
-    seen_order: VecDeque<(i64, u64)>,
-    session_totals: HashMap<String, TokenRollup>,
+    /// Fingerprints grouped by event time, independent of file/arrival order.
+    seen_by_time: BTreeMap<i64, Vec<u64>>,
+    session_totals: HashMap<String, SessionTotal>,
     series: BucketSeries,
     /// Newest observation per (limit_id, window_minutes).
     limits: BTreeMap<(String, u32), LimitEvent>,
@@ -110,12 +117,31 @@ pub struct EventIndex {
     duplicates_skipped: u64,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+struct SessionTotal {
+    at: DateTime<Utc>,
+    tokens: TokenRollup,
+}
+
+/// Serializable state nested inside the provider-level versioned checkpoint.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EventIndexCheckpoint {
+    retention_seconds: i64,
+    seen_by_time: Vec<(i64, Vec<u64>)>,
+    session_totals: Vec<(String, SessionTotal)>,
+    series: BucketSeries,
+    limits: Vec<LimitEvent>,
+    last_activity: Option<DateTime<Utc>>,
+    duplicates_skipped: u64,
+}
+
 impl EventIndex {
     /// `retention` bounds both the bucket series and the dedup set.
     pub fn new(retention: ChronoDuration) -> Self {
         EventIndex {
             seen: HashSet::new(),
-            seen_order: VecDeque::new(),
+            seen_by_time: BTreeMap::new(),
             session_totals: HashMap::new(),
             series: BucketSeries::new(),
             limits: BTreeMap::new(),
@@ -152,20 +178,37 @@ impl EventIndex {
                 self.duplicates_skipped += 1;
                 return false;
             }
-            self.seen_order
-                .push_back((usage.at.timestamp(), fingerprint));
+            self.seen_by_time
+                .entry(usage.at.timestamp())
+                .or_default()
+                .push(fingerprint);
         }
 
         let delta = match usage.accounting {
             Accounting::Incremental => usage.tokens,
             Accounting::Cumulative => {
-                let previous = self
-                    .session_totals
-                    .get(&usage.session)
-                    .copied()
-                    .unwrap_or_default();
-                self.session_totals
-                    .insert(usage.session.clone(), usage.tokens);
+                let previous = match self.session_totals.get(&usage.session) {
+                    // A cumulative total cannot be safely differenced backwards. Newest-first
+                    // discovery can expose an older file after the current one.
+                    Some(total)
+                        if usage.at < total.at
+                            || (usage.at == total.at
+                                && (usage.tokens == total.tokens
+                                    || !usage.tokens.componentwise_at_least(&total.tokens))) =>
+                    {
+                        return false;
+                    }
+                    Some(total) => total.tokens,
+                    None => TokenRollup::default(),
+                };
+                self.session_totals.insert(
+                    usage.session.clone(),
+                    SessionTotal {
+                        at: usage.at,
+                        tokens: usage.tokens,
+                    },
+                );
+                self.bound_session_totals(&usage.session);
                 // A total that went backwards means the session counter restarted; the
                 // reported value is then itself the delta.
                 if usage.tokens.total() >= previous.total() {
@@ -189,17 +232,19 @@ impl EventIndex {
     }
 
     /// Drop buckets and dedup fingerprints older than the retention horizon.
-    pub fn prune(&mut self, now: DateTime<Utc>) {
+    pub fn prune(&mut self, now: DateTime<Utc>) -> bool {
+        let buckets_before = self.series.len();
+        let seen_before = self.seen.len();
         let cutoff = now - self.retention;
         self.series.trim_before(cutoff);
-        let cutoff_secs = cutoff.timestamp();
-        while let Some((at, fingerprint)) = self.seen_order.front().copied() {
-            if at >= cutoff_secs {
-                break;
+        let retained = self.seen_by_time.split_off(&cutoff.timestamp());
+        let expired = std::mem::replace(&mut self.seen_by_time, retained);
+        for fingerprints in expired.into_values() {
+            for fingerprint in fingerprints {
+                self.seen.remove(&fingerprint);
             }
-            self.seen_order.pop_front();
-            self.seen.remove(&fingerprint);
         }
+        self.series.len() != buckets_before || self.seen.len() != seen_before
     }
 
     /// Measured windows, newest observation per limit, with staleness applied.
@@ -251,9 +296,118 @@ impl EventIndex {
     pub fn duplicates_skipped(&self) -> u64 {
         self.duplicates_skipped
     }
+
+    fn bound_session_totals(&mut self, current: &str) {
+        if self.session_totals.len() <= MAX_SESSION_TOTALS {
+            return;
+        }
+        let oldest = self
+            .session_totals
+            .iter()
+            .filter(|(session, _)| session.as_str() != current)
+            .min_by_key(|(_, total)| total.at)
+            .map(|(session, _)| session.clone());
+        if let Some(session) = oldest {
+            self.session_totals.remove(&session);
+        }
+    }
+
+    pub fn checkpoint(&self) -> EventIndexCheckpoint {
+        let mut session_totals: Vec<_> = self
+            .session_totals
+            .iter()
+            .map(|(session, total)| (session.clone(), total.clone()))
+            .collect();
+        session_totals.sort_by(|a, b| a.0.cmp(&b.0));
+        EventIndexCheckpoint {
+            retention_seconds: self.retention.num_seconds(),
+            seen_by_time: self
+                .seen_by_time
+                .iter()
+                .map(|(at, fingerprints)| (*at, fingerprints.clone()))
+                .collect(),
+            session_totals,
+            series: self.series.clone(),
+            limits: self.limits.values().cloned().collect(),
+            last_activity: self.last_activity,
+            duplicates_skipped: self.duplicates_skipped,
+        }
+    }
+
+    pub fn restore(checkpoint: EventIndexCheckpoint) -> Result<Self> {
+        if checkpoint.retention_seconds <= 0 {
+            return Err(Error::Invalid(format!(
+                "event index checkpoint has invalid retention_seconds {}",
+                checkpoint.retention_seconds
+            )));
+        }
+
+        let mut seen = HashSet::new();
+        let mut seen_by_time = BTreeMap::new();
+        for (at, fingerprints) in checkpoint.seen_by_time {
+            if seen_by_time.contains_key(&at) {
+                return Err(Error::Invalid(format!(
+                    "event index checkpoint contains duplicate seen timestamp {at}"
+                )));
+            }
+            for fingerprint in &fingerprints {
+                if !seen.insert(*fingerprint) {
+                    return Err(Error::Invalid(format!(
+                        "event index checkpoint contains duplicate fingerprint {fingerprint}"
+                    )));
+                }
+            }
+            seen_by_time.insert(at, fingerprints);
+        }
+
+        let mut limits: BTreeMap<(String, u32), LimitEvent> = BTreeMap::new();
+        for limit in checkpoint.limits {
+            let key = (limit.limit_id.clone(), limit.window_minutes);
+            if limits.insert(key.clone(), limit).is_some() {
+                return Err(Error::Invalid(format!(
+                    "event index checkpoint contains duplicate limit {} / {} minutes",
+                    key.0, key.1
+                )));
+            }
+        }
+
+        if checkpoint.session_totals.len() > MAX_SESSION_TOTALS {
+            return Err(Error::Invalid(format!(
+                "event index checkpoint contains {} cumulative sessions; maximum is {MAX_SESSION_TOTALS}",
+                checkpoint.session_totals.len()
+            )));
+        }
+        let mut session_totals = HashMap::new();
+        for (session, total) in checkpoint.session_totals {
+            if session_totals.insert(session.clone(), total).is_some() {
+                return Err(Error::Invalid(format!(
+                    "event index checkpoint contains duplicate cumulative session {session}"
+                )));
+            }
+        }
+
+        Ok(EventIndex {
+            seen,
+            seen_by_time,
+            session_totals,
+            series: checkpoint.series,
+            limits,
+            last_activity: checkpoint.last_activity,
+            retention: ChronoDuration::seconds(checkpoint.retention_seconds),
+            duplicates_skipped: checkpoint.duplicates_skipped,
+        })
+    }
 }
 
 impl TokenRollup {
+    fn componentwise_at_least(&self, other: &TokenRollup) -> bool {
+        self.input >= other.input
+            && self.output >= other.output
+            && self.cache_read >= other.cache_read
+            && self.cache_creation >= other.cache_creation
+            && self.reasoning >= other.reasoning
+    }
+
     fn saturating_sub(&self, other: &TokenRollup) -> TokenRollup {
         TokenRollup {
             input: self.input.saturating_sub(other.input),
@@ -420,6 +574,46 @@ mod tests {
     }
 
     #[test]
+    fn an_older_cumulative_record_does_not_replace_a_newer_baseline() {
+        let mut index = index();
+        for (at, total) in [(1_785_000_100, 300), (1_785_000_000, 100)] {
+            index.ingest(ParsedEvent::Usage(UsageEvent {
+                at: ts(at),
+                session: "codex-1".into(),
+                dedup: None,
+                model: None,
+                tokens: TokenRollup {
+                    input: total,
+                    ..Default::default()
+                },
+                requests: 0.0,
+                cost: Cost::Unpriced,
+                accounting: Accounting::Cumulative,
+            }));
+        }
+
+        index.ingest(ParsedEvent::Usage(UsageEvent {
+            at: ts(1_785_000_200),
+            session: "codex-1".into(),
+            dedup: None,
+            model: None,
+            tokens: TokenRollup {
+                input: 350,
+                ..Default::default()
+            },
+            requests: 0.0,
+            cost: Cost::Unpriced,
+            accounting: Accounting::Cumulative,
+        }));
+        assert_eq!(
+            index
+                .rolling(ts(1_785_000_300), ChronoDuration::hours(5))
+                .input,
+            350
+        );
+    }
+
+    #[test]
     fn only_the_newest_observation_of_a_limit_survives() {
         let mut index = index();
         let older = LimitEvent {
@@ -494,7 +688,193 @@ mod tests {
         index.ingest(ParsedEvent::Usage(usage(1_785_700_000, "new", 10)));
         index.prune(ts(1_785_700_000));
         assert_eq!(index.seen.len(), 1);
-        assert_eq!(index.seen_order.len(), 1);
+        assert_eq!(index.seen_by_time.len(), 1);
+    }
+
+    #[test]
+    fn pruning_uses_event_time_when_records_arrive_out_of_order() {
+        let mut index = index();
+        index.ingest(ParsedEvent::Usage(usage(1_785_700_000, "new", 10)));
+        index.ingest(ParsedEvent::Usage(usage(1_785_000_000, "old", 10)));
+
+        index.prune(ts(1_785_700_000));
+
+        assert_eq!(index.seen.len(), 1);
+        assert!(index.ingest(ParsedEvent::Usage(usage(1_785_000_000, "old", 10))));
+        assert!(!index.ingest(ParsedEvent::Usage(usage(1_785_700_000, "new", 10))));
+    }
+
+    #[test]
+    fn pruning_does_not_discard_a_cumulative_baseline() {
+        let mut index = index();
+        for (session, at) in [("old", 1_785_000_000), ("new", 1_785_700_000)] {
+            index.ingest(ParsedEvent::Usage(UsageEvent {
+                at: ts(at),
+                session: session.into(),
+                dedup: None,
+                model: None,
+                tokens: TokenRollup {
+                    input: 100,
+                    ..Default::default()
+                },
+                requests: 0.0,
+                cost: Cost::Unpriced,
+                accounting: Accounting::Cumulative,
+            }));
+        }
+
+        index.prune(ts(1_785_700_000));
+
+        assert!(index.session_totals.contains_key("old"));
+        assert!(index.session_totals.contains_key("new"));
+    }
+
+    #[test]
+    fn a_session_resuming_after_retention_adds_only_its_delta() {
+        let mut index = index();
+        let start = ts(1_785_000_000);
+        index.ingest(ParsedEvent::Usage(UsageEvent {
+            at: start,
+            session: "long-running".into(),
+            dedup: None,
+            model: None,
+            tokens: TokenRollup {
+                input: 100,
+                ..Default::default()
+            },
+            requests: 0.0,
+            cost: Cost::Unpriced,
+            accounting: Accounting::Cumulative,
+        }));
+        let resumed = start + ChronoDuration::days(34);
+        index.prune(resumed);
+        index.ingest(ParsedEvent::Usage(UsageEvent {
+            at: resumed,
+            session: "long-running".into(),
+            dedup: None,
+            model: None,
+            tokens: TokenRollup {
+                input: 110,
+                ..Default::default()
+            },
+            requests: 0.0,
+            cost: Cost::Unpriced,
+            accounting: Accounting::Cumulative,
+        }));
+
+        assert_eq!(
+            index
+                .rolling(
+                    resumed + ChronoDuration::minutes(1),
+                    ChronoDuration::days(1),
+                )
+                .input,
+            10
+        );
+    }
+
+    #[test]
+    fn an_equal_timestamp_cannot_move_a_cumulative_baseline_backwards() {
+        let mut index = index();
+        let at = ts(1_785_700_000);
+        for tokens in [
+            TokenRollup {
+                input: 300,
+                ..Default::default()
+            },
+            TokenRollup {
+                input: 100,
+                output: 250,
+                ..Default::default()
+            },
+            TokenRollup {
+                input: 350,
+                ..Default::default()
+            },
+        ] {
+            index.ingest(ParsedEvent::Usage(UsageEvent {
+                at,
+                session: "same-second".into(),
+                dedup: None,
+                model: None,
+                tokens,
+                requests: 0.0,
+                cost: Cost::Unpriced,
+                accounting: Accounting::Cumulative,
+            }));
+        }
+        assert_eq!(
+            index
+                .rolling(at + ChronoDuration::minutes(1), ChronoDuration::hours(1))
+                .input,
+            350
+        );
+    }
+
+    #[test]
+    fn checkpoint_round_trip_preserves_dedup_and_cumulative_baselines() {
+        let mut index = index();
+        let incremental = usage(1_785_700_000, "dedup", 10);
+        index.ingest(ParsedEvent::Usage(incremental.clone()));
+        index.ingest(ParsedEvent::Usage(UsageEvent {
+            at: ts(1_785_700_000),
+            session: "running".into(),
+            dedup: None,
+            model: None,
+            tokens: TokenRollup {
+                input: 100,
+                ..Default::default()
+            },
+            requests: 0.0,
+            cost: Cost::Unpriced,
+            accounting: Accounting::Cumulative,
+        }));
+
+        let encoded = serde_json::to_vec(&index.checkpoint()).expect("serialize checkpoint");
+        let decoded = serde_json::from_slice(&encoded).expect("deserialize checkpoint");
+        let mut restored = EventIndex::restore(decoded).expect("restore checkpoint");
+
+        assert!(!restored.ingest(ParsedEvent::Usage(incremental)));
+        restored.ingest(ParsedEvent::Usage(UsageEvent {
+            at: ts(1_785_700_060),
+            session: "running".into(),
+            dedup: None,
+            model: None,
+            tokens: TokenRollup {
+                input: 130,
+                ..Default::default()
+            },
+            requests: 0.0,
+            cost: Cost::Unpriced,
+            accounting: Accounting::Cumulative,
+        }));
+        assert_eq!(
+            restored
+                .rolling(ts(1_785_700_100), ChronoDuration::hours(5))
+                .input,
+            140
+        );
+    }
+
+    #[test]
+    fn checkpoint_restore_rejects_duplicate_cumulative_sessions() {
+        let mut checkpoint = index().checkpoint();
+        let total = SessionTotal {
+            at: ts(1_785_700_000),
+            tokens: TokenRollup {
+                input: 10,
+                ..Default::default()
+            },
+        };
+        checkpoint
+            .session_totals
+            .push(("duplicate".into(), total.clone()));
+        checkpoint.session_totals.push(("duplicate".into(), total));
+
+        let error = EventIndex::restore(checkpoint).expect_err("duplicate session");
+        assert!(error
+            .to_string()
+            .contains("duplicate cumulative session duplicate"));
     }
 
     #[test]

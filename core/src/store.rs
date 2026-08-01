@@ -16,6 +16,7 @@ use crate::types::{Bucket, ProviderId};
 const CURSORS: TableDefinition<&str, &[u8]> = TableDefinition::new("cursors");
 const BUCKETS: TableDefinition<(&str, i64), &[u8]> = TableDefinition::new("buckets");
 const META: TableDefinition<&str, &[u8]> = TableDefinition::new("meta");
+const PROVIDER_CHECKPOINT_PREFIX: &str = "provider-checkpoint/";
 
 pub const DEFAULT_MAX_PENDING: usize = 500;
 pub const DEFAULT_MAX_AGE: Duration = Duration::from_secs(60);
@@ -80,7 +81,20 @@ impl BatchedStore {
 
     /// Queue a write, flushing first if a threshold has been crossed.
     pub fn push(&mut self, delta: Delta) -> Result<()> {
-        self.pending.push(delta);
+        if let Delta::Meta { key, value } = delta {
+            if let Some(Delta::Meta {
+                value: pending_value,
+                ..
+            }) = self.pending.iter_mut().find(|pending| {
+                matches!(pending, Delta::Meta { key: pending_key, .. } if pending_key == &key)
+            }) {
+                *pending_value = value;
+            } else {
+                self.pending.push(Delta::Meta { key, value });
+            }
+        } else {
+            self.pending.push(delta);
+        }
         if self.should_flush() {
             self.flush()?;
         }
@@ -160,6 +174,22 @@ impl BatchedStore {
         Ok(table.get(key)?.map(|value| value.value().to_vec()))
     }
 
+    /// Queue one provider's versioned engine checkpoint.
+    pub fn push_provider_checkpoint(
+        &mut self,
+        provider: ProviderId,
+        checkpoint: Vec<u8>,
+    ) -> Result<()> {
+        self.push(Delta::Meta {
+            key: provider_checkpoint_key(provider),
+            value: checkpoint,
+        })
+    }
+
+    pub fn load_provider_checkpoint(&self, provider: ProviderId) -> Result<Option<Vec<u8>>> {
+        self.read_meta(&provider_checkpoint_key(provider))
+    }
+
     pub fn pending_len(&self) -> usize {
         self.pending.len()
     }
@@ -167,6 +197,10 @@ impl BatchedStore {
     pub fn stats(&self) -> StoreStats {
         self.stats
     }
+}
+
+fn provider_checkpoint_key(provider: ProviderId) -> String {
+    format!("{PROVIDER_CHECKPOINT_PREFIX}{}", provider.key())
 }
 
 impl Drop for BatchedStore {
@@ -331,5 +365,55 @@ mod tests {
 
         let store = BatchedStore::open(&path).expect("reopen");
         assert_eq!(store.load_cursors().expect("load")[0].byte_offset, 77);
+    }
+
+    #[test]
+    fn pending_meta_for_the_same_key_is_coalesced() {
+        let path = scratch("coalesced-meta.redb");
+        let mut store = BatchedStore::open(&path)
+            .expect("open")
+            .with_limits(10_000, Duration::from_secs(3600));
+
+        for value in [b"first".as_slice(), b"second", b"latest"] {
+            store
+                .push(Delta::Meta {
+                    key: "same".into(),
+                    value: value.to_vec(),
+                })
+                .expect("push meta");
+        }
+        assert_eq!(store.pending_len(), 1);
+        store.flush().expect("flush");
+        assert_eq!(
+            store.read_meta("same").expect("read"),
+            Some(b"latest".to_vec())
+        );
+        assert_eq!(store.stats().records_written, 1);
+    }
+
+    #[test]
+    fn provider_checkpoint_round_trips_under_a_scoped_key() {
+        let path = scratch("provider-checkpoint.redb");
+        let mut store = BatchedStore::open(&path).expect("open");
+        store
+            .push_provider_checkpoint(ProviderId::Codex, b"codex-state".to_vec())
+            .expect("push codex checkpoint");
+        store
+            .push_provider_checkpoint(ProviderId::ClaudeCode, b"claude-state".to_vec())
+            .expect("push claude checkpoint");
+        store.flush().expect("flush");
+
+        assert_eq!(
+            store
+                .load_provider_checkpoint(ProviderId::Codex)
+                .expect("load codex"),
+            Some(b"codex-state".to_vec())
+        );
+        assert_eq!(
+            store
+                .load_provider_checkpoint(ProviderId::ClaudeCode)
+                .expect("load claude"),
+            Some(b"claude-state".to_vec())
+        );
     }
 }

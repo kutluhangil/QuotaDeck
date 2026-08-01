@@ -15,7 +15,7 @@ use std::time::{Duration, Instant};
 
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 
-use crate::error::Result;
+use crate::error::{Error, Result};
 
 /// Quiet period a path must have before its changes are reported.
 pub const DEFAULT_DEBOUNCE: Duration = Duration::from_millis(750);
@@ -73,19 +73,17 @@ impl Debouncer {
 /// A non-recursive watcher that emits coalesced batches of changed paths.
 pub struct DebouncedWatcher {
     watcher: RecommendedWatcher,
-    batches: Receiver<Vec<PathBuf>>,
+    batches: Receiver<Result<Vec<PathBuf>>>,
 }
 
 impl DebouncedWatcher {
     pub fn new(quiet: Duration) -> Result<Self> {
-        let (raw_tx, raw_rx) = channel::<Event>();
-        let (batch_tx, batch_rx) = channel::<Vec<PathBuf>>();
+        let (raw_tx, raw_rx) = channel::<notify::Result<Event>>();
+        let (batch_tx, batch_rx) = channel::<Result<Vec<PathBuf>>>();
 
         let watcher = notify::recommended_watcher(move |res: notify::Result<Event>| {
             // A dropped receiver means shutdown, which is not an error worth reporting.
-            if let Ok(event) = res {
-                let _ = raw_tx.send(event);
-            }
+            let _ = raw_tx.send(res);
         })?;
 
         thread::Builder::new()
@@ -101,49 +99,90 @@ impl DebouncedWatcher {
 
     /// Watch one directory, without descending into subdirectories.
     pub fn watch_dir(&mut self, dir: &Path) -> Result<()> {
-        self.watcher.watch(dir, RecursiveMode::NonRecursive)?;
+        self.watcher
+            .watch(dir, RecursiveMode::NonRecursive)
+            .map_err(|error| {
+                Error::Invalid(format!(
+                    "failed to watch directory {}: {error}",
+                    dir.display()
+                ))
+            })?;
         Ok(())
     }
 
     pub fn unwatch_dir(&mut self, dir: &Path) -> Result<()> {
-        self.watcher.unwatch(dir)?;
+        self.watcher.unwatch(dir).map_err(|error| {
+            Error::Invalid(format!(
+                "failed to stop watching directory {}: {error}",
+                dir.display()
+            ))
+        })?;
         Ok(())
     }
 
     /// Next batch of changed paths, or `None` if nothing settled within `timeout`.
-    pub fn next_batch(&self, timeout: Duration) -> Option<Vec<PathBuf>> {
-        self.batches.recv_timeout(timeout).ok()
+    pub fn next_batch(&self, timeout: Duration) -> Result<Option<Vec<PathBuf>>> {
+        receive_batch(&self.batches, timeout)
     }
 }
 
-fn debounce_loop(quiet: Duration, raw: Receiver<Event>, out: Sender<Vec<PathBuf>>) {
+fn receive_batch(
+    batches: &Receiver<Result<Vec<PathBuf>>>,
+    timeout: Duration,
+) -> Result<Option<Vec<PathBuf>>> {
+    match batches.recv_timeout(timeout) {
+        Ok(batch) => batch.map(Some),
+        Err(RecvTimeoutError::Timeout) => Ok(None),
+        Err(RecvTimeoutError::Disconnected) => Err(Error::Invalid(
+            "filesystem watcher event channel disconnected unexpectedly".into(),
+        )),
+    }
+}
+
+fn debounce_loop(
+    quiet: Duration,
+    raw: Receiver<notify::Result<Event>>,
+    out: Sender<Result<Vec<PathBuf>>>,
+) {
     let mut debouncer = Debouncer::new(quiet);
     loop {
         let now = Instant::now();
         let wait = debouncer.next_deadline(now).unwrap_or(quiet);
 
         match raw.recv_timeout(wait) {
-            Ok(event) => {
-                if is_content_change(&event.kind) {
-                    let now = Instant::now();
-                    for path in event.paths {
-                        debouncer.record(path, now);
+            Ok(result) => match result {
+                Ok(event) => {
+                    if is_content_change(&event.kind) {
+                        let now = Instant::now();
+                        for path in event.paths {
+                            debouncer.record(path, now);
+                        }
                     }
                 }
-            }
+                Err(error) => {
+                    if out
+                        .send(Err(Error::Invalid(format!(
+                            "filesystem watcher backend failed: {error}"
+                        ))))
+                        .is_err()
+                    {
+                        return;
+                    }
+                }
+            },
             Err(RecvTimeoutError::Timeout) => {}
             // The watcher was dropped: emit whatever is left and stop.
             Err(RecvTimeoutError::Disconnected) => {
                 let due = debouncer.take_due(Instant::now() + quiet);
                 if !due.is_empty() {
-                    let _ = out.send(due);
+                    let _ = out.send(Ok(due));
                 }
                 return;
             }
         }
 
         let due = debouncer.take_due(Instant::now());
-        if !due.is_empty() && out.send(due).is_err() {
+        if !due.is_empty() && out.send(Ok(due)).is_err() {
             return;
         }
     }
@@ -247,5 +286,22 @@ mod tests {
         use notify::event::{AccessKind, ModifyKind};
         assert!(!is_content_change(&EventKind::Access(AccessKind::Read)));
         assert!(is_content_change(&EventKind::Modify(ModifyKind::Any)));
+    }
+
+    #[test]
+    fn a_batch_timeout_is_not_reported_as_a_channel_failure() {
+        let (_sender, receiver) = channel();
+        assert_eq!(
+            receive_batch(&receiver, Duration::from_millis(1)).expect("receive"),
+            None
+        );
+    }
+
+    #[test]
+    fn a_disconnected_batch_channel_is_actionable() {
+        let (sender, receiver) = channel::<Result<Vec<PathBuf>>>();
+        drop(sender);
+        let error = receive_batch(&receiver, Duration::ZERO).expect_err("disconnected channel");
+        assert!(error.to_string().contains("disconnected unexpectedly"));
     }
 }

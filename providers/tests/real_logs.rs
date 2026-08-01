@@ -6,10 +6,16 @@
 //! cargo test -p quotadeck-providers --test real_logs -- --ignored --nocapture
 //! ```
 
+use std::fs::File;
+use std::io::{BufRead, BufReader, Write};
+use std::path::{Path, PathBuf};
+
 use chrono::{Duration, Utc};
+use quotadeck_core::discovery::find_files;
 use quotadeck_core::engine::ProviderEngine;
-use quotadeck_core::provider::{Provider, ProviderConfig};
-use quotadeck_core::types::{Confidence, WindowKind};
+use quotadeck_core::events::{EventIndex, ParsedEvent};
+use quotadeck_core::provider::{LineSource, Provider, ProviderConfig};
+use quotadeck_core::types::{Confidence, ProviderId, ProviderSnapshot, WindowKind};
 use quotadeck_providers::claude_code::ClaudeCode;
 use quotadeck_providers::codex::Codex;
 use quotadeck_providers::copilot_cli::CopilotCli;
@@ -80,13 +86,19 @@ fn codex_parses_every_real_rollout_and_reports_a_measured_window() {
 #[ignore = "requires Codex logs on this machine"]
 fn scanning_twice_gives_the_same_totals() {
     let provider = Codex;
-    if provider.discover_roots().is_empty() {
+    let roots = provider.discover_roots();
+    if roots.is_empty() {
         panic!("Codex is not installed here; this test needs its session logs");
     }
 
-    let mut first = ProviderEngine::new(Box::new(Codex));
+    // Codex may append to the active rollout while this test runs. Freeze only the relevant
+    // completed records so the assertion compares parser order/dedup behaviour, not two
+    // different instants of a live session. Keeping only token_count rows also avoids copying
+    // gigabytes of unrelated event messages into the test directory.
+    let frozen = FrozenCodex::capture(&roots);
+    let mut first = ProviderEngine::new(Box::new(frozen.clone()));
     first.refresh(None).expect("first scan");
-    let mut second = ProviderEngine::new(Box::new(Codex));
+    let mut second = ProviderEngine::new(Box::new(frozen));
     second.refresh(None).expect("second scan");
 
     let now = Utc::now();
@@ -94,6 +106,130 @@ fn scanning_twice_gives_the_same_totals() {
     let b = second.snapshot(now);
     assert_eq!(a.today, b.today);
     assert_eq!(a.series.len(), b.series.len());
+}
+
+#[derive(Clone)]
+struct FrozenCodex {
+    root: PathBuf,
+}
+
+impl FrozenCodex {
+    fn capture(source_roots: &[PathBuf]) -> Self {
+        let root = std::env::temp_dir().join(format!(
+            "quotadeck-frozen-codex-{}-{}",
+            std::process::id(),
+            Utc::now().timestamp_nanos_opt().expect("current timestamp")
+        ));
+        std::fs::create_dir_all(&root).expect("create frozen Codex root");
+
+        for found in find_files(source_roots, Codex.watch_globs()) {
+            let source_root = source_roots
+                .iter()
+                .find(|candidate| found.path.starts_with(candidate))
+                .expect("discovered file belongs to a source root");
+            let relative = found
+                .path
+                .strip_prefix(source_root)
+                .expect("strip source root");
+            freeze_relevant_lines(&found.path, &root.join(relative));
+        }
+
+        FrozenCodex { root }
+    }
+}
+
+impl Drop for FrozenCodex {
+    fn drop(&mut self) {
+        // Clones share one root; only the last one can remove it successfully.
+        if let Err(error) = std::fs::remove_dir_all(&self.root) {
+            if error.kind() != std::io::ErrorKind::NotFound {
+                panic!("remove frozen Codex root {}: {error}", self.root.display());
+            }
+        }
+    }
+}
+
+fn freeze_relevant_lines(source: &Path, destination: &Path) {
+    let input = File::open(source)
+        .unwrap_or_else(|error| panic!("open live Codex log {}: {error}", source.display()));
+    let mut reader = BufReader::new(input);
+    let mut line = Vec::new();
+    let mut output = None::<File>;
+
+    loop {
+        line.clear();
+        let read = reader
+            .read_until(b'\n', &mut line)
+            .unwrap_or_else(|error| panic!("read live Codex log {}: {error}", source.display()));
+        if read == 0 {
+            break;
+        }
+        let complete = line.last() == Some(&b'\n');
+        let relevant = line
+            .windows(b"\"token_count\"".len())
+            .any(|window| window == b"\"token_count\"");
+        if complete && relevant {
+            if output.is_none() {
+                let parent = destination.parent().expect("frozen log has a parent");
+                std::fs::create_dir_all(parent).unwrap_or_else(|error| {
+                    panic!(
+                        "create frozen Codex directory {}: {error}",
+                        parent.display()
+                    )
+                });
+                output = Some(File::create(destination).unwrap_or_else(|error| {
+                    panic!("create frozen Codex log {}: {error}", destination.display())
+                }));
+            }
+            output
+                .as_mut()
+                .expect("output was created")
+                .write_all(&line)
+                .unwrap_or_else(|error| {
+                    panic!("write frozen Codex log {}: {error}", destination.display())
+                });
+        }
+    }
+}
+
+impl Provider for FrozenCodex {
+    fn id(&self) -> ProviderId {
+        Codex.id()
+    }
+
+    fn display_name(&self) -> &'static str {
+        Codex.display_name()
+    }
+
+    fn discover_roots(&self) -> Vec<PathBuf> {
+        vec![self.root.clone()]
+    }
+
+    fn watch_globs(&self) -> &'static [&'static str] {
+        Codex.watch_globs()
+    }
+
+    fn parse_line(
+        &self,
+        source: &LineSource<'_>,
+        line: &str,
+        out: &mut Vec<ParsedEvent>,
+    ) -> quotadeck_core::Result<()> {
+        Codex.parse_line(source, line, out)
+    }
+
+    fn build_snapshot(
+        &self,
+        index: &EventIndex,
+        now: chrono::DateTime<Utc>,
+        config: &ProviderConfig,
+    ) -> ProviderSnapshot {
+        Codex.build_snapshot(index, now, config)
+    }
+
+    fn supports_measured(&self) -> bool {
+        Codex.supports_measured()
+    }
 }
 
 /// The claim the Claude Code provider stands on: at a ~46% duplicate rate, a scan that skips
