@@ -7,6 +7,7 @@ use std::sync::{Arc, Mutex};
 
 use chrono::{DateTime, Utc};
 use quotadeck_core::atomic_write::atomic_write;
+use quotadeck_core::breakdown::BreakdownPoint;
 use quotadeck_core::error::{Error, Result};
 use quotadeck_core::history::HistoryPoint;
 use quotadeck_core::paths;
@@ -78,6 +79,14 @@ pub struct ProviderHistory {
     /// Hours carrying usage, oldest first. Empty hours are omitted; the dashboard lays out
     /// the calendar itself, in the viewer's own zone.
     pub hours: Vec<HistoryPoint>,
+    /// The same hours split by the model that produced the usage. A point whose `label` is
+    /// `null` is usage the provider reported no model for — Codex names none in any record —
+    /// and the dashboard says so rather than dropping it.
+    pub models: Vec<BreakdownPoint>,
+    /// Records refused because the machine reported more distinct models than the breakdown
+    /// holds. Surfaced rather than folded into an "other" row, which would under-report a real
+    /// model without saying so.
+    pub models_dropped: u64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

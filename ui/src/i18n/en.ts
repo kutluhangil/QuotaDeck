@@ -184,6 +184,29 @@ export const en = {
     heatmapBusy: "busy",
   },
 
+  /**
+   * The breakdown list. Share of spend, never quota level — which is why it is drawn on the
+   * neutral ink ramp and why none of this copy borrows the ramp's words.
+   */
+  breakdown: {
+    models: "Spent on",
+    /**
+     * Not "Unknown". Codex names no model in any record, so this is a statement about what the
+     * tool wrote, not a guess about what ran.
+     */
+    unreported: "Model not reported",
+    /** Shown when nothing in the range carried a label at all. */
+    empty: "Nothing counted in this range",
+    /**
+     * Said outright. Quietly merging the rest into an "other" row would under-report a real
+     * model without admitting it.
+     */
+    dropped: (count: string) => `${count} records not attributed — too many distinct models`,
+    share: (label: string, percent: string) => `${label}, ${percent} of this range`,
+    /** Names the list itself for a screen reader, so it is not read as a second window list. */
+    listLabel: (tool: string) => `What ${tool} spent this range on, by model`,
+  },
+
   empty: {
     noTools: {
       title: "No supported tool found",

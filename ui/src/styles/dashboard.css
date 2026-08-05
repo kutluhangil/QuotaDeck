@@ -196,6 +196,55 @@
   margin: 0;
 }
 
+.board__breakdown {
+  display: flex;
+  flex-direction: column;
+  gap: var(--step-2);
+  padding-block-start: var(--step-3);
+  border-block-start: var(--hairline) solid var(--rule);
+}
+
+.board__breakdown h3 {
+  color: var(--ink-tertiary);
+  margin: 0;
+}
+
+/*
+ * The breakdown reuses the window rows' four columns, so "what was spent" is read in the same
+ * grammar as "how full it is" — but never in the same colours. Its bar is share of spend, and
+ * spend is volume. It takes the heat ramp for exactly the reason the heatmap does: the level
+ * ramp may not be borrowed, or a 90% share would read as a quota about to run out.
+ */
+.breakdown__track {
+  block-size: 6px;
+  inline-size: 100%;
+  display: block;
+  background: var(--heat-0);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.breakdown__fill {
+  block-size: 100%;
+  display: block;
+  background: var(--heat-4);
+  border-radius: 3px;
+  transition: inline-size 240ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .breakdown__fill {
+    transition: none;
+  }
+}
+
+/* A model the tool never named is a statement about the log, not a name. Set apart from the
+   rows that carry one, so it is not read as a model called "not reported". */
+.breakdown .row__label[data-unreported="true"] {
+  color: var(--ink-tertiary);
+  font-style: italic;
+}
+
 .board__foot {
   flex: 0 0 auto;
   block-size: var(--footer-height);

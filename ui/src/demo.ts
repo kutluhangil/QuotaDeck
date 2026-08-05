@@ -8,6 +8,7 @@
  */
 
 import type {
+  BreakdownPoint,
   Bucket,
   DeckState,
   HistoryPoint,
@@ -230,12 +231,64 @@ function hourly(days: number, seed: number, costPerToken: number): HistoryPoint[
   return points;
 }
 
+/**
+ * Splits an hourly series across labels, so the sample deck shows a breakdown built from the
+ * same numbers as its own totals rather than a second invented set that disagrees with them.
+ *
+ * `shares` must sum to 1. A `null` label is carried through as one, because a provider that
+ * reports no model is a real state the list has to be able to draw.
+ */
+function split(
+  hours: HistoryPoint[],
+  shares: [label: string | null, share: number][],
+): BreakdownPoint[] {
+  const points: BreakdownPoint[] = [];
+  for (const hour of hours) {
+    for (const [label, share] of shares) {
+      points.push({
+        start: hour.start,
+        label,
+        tokens: {
+          input: Math.round(hour.tokens.input * share),
+          output: Math.round(hour.tokens.output * share),
+          cacheRead: Math.round(hour.tokens.cacheRead * share),
+          cacheCreation: Math.round(hour.tokens.cacheCreation * share),
+          reasoning: Math.round(hour.tokens.reasoning * share),
+        },
+        cost: {
+          usd: hour.cost.usd * share,
+          unpricedTokens: Math.round(hour.cost.unpricedTokens * share),
+        },
+      });
+    }
+  }
+  return points;
+}
+
 export function demoHistory(): ProviderHistory[] {
+  const claude = hourly(30, 0xc0ffee, 1.4e-6);
+  // Codex names no model in any record, so its history carries tokens and no dollars.
+  const codex = hourly(30, 0x5eed, 0);
   return [
-    { id: "claude-code", hours: hourly(30, 0xc0ffee, 1.4e-6) },
-    // Codex names no model in any record, so its history carries tokens and no dollars.
-    { id: "codex", hours: hourly(30, 0x5eed, 0) },
-    { id: "copilot-cli", hours: [] },
+    {
+      id: "claude-code",
+      hours: claude,
+      models: split(claude, [
+        ["claude-opus-5", 0.58],
+        ["claude-sonnet-5", 0.34],
+        ["claude-haiku-4-5", 0.08],
+      ]),
+      modelsDropped: 0,
+    },
+    {
+      id: "codex",
+      hours: codex,
+      // One label, and it is `null`: the sample must show the state a real Codex install is in
+      // rather than inventing the model name the tool never wrote.
+      models: split(codex, [[null, 1]]),
+      modelsDropped: 0,
+    },
+    { id: "copilot-cli", hours: [], models: [], modelsDropped: 0 },
   ];
 }
 

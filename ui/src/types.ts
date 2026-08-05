@@ -124,12 +124,34 @@ export interface HistoryPoint {
 }
 
 /**
+ * One hour of counted usage attributed to a label.
+ *
+ * `label` is `null` where the provider reported none — Codex names no model in any record —
+ * and stays null all the way to the screen. Naming it here would put a claim where there is no
+ * measurement.
+ */
+export interface BreakdownPoint {
+  /** Unix epoch seconds at the start of the hour, in UTC. */
+  start: number;
+  label: string | null;
+  tokens: TokenRollup;
+  cost: CostRange;
+}
+
+/**
  * One provider's retained history. Hours with no usage are omitted — the dashboard lays out
  * the calendar itself, in the viewer's own zone.
  */
 export interface ProviderHistory {
   id: ProviderId;
   hours: HistoryPoint[];
+  /** The same hours split by the model that produced the usage. */
+  models: BreakdownPoint[];
+  /**
+   * Records the backend refused because the machine reported more distinct models than the
+   * breakdown holds. Shown outright rather than folded into an "other" row.
+   */
+  modelsDropped: number;
 }
 
 /** A ceiling one tier is assumed to allow over one window, in equivalent API dollars. */

@@ -1,9 +1,11 @@
 import { useEffect, useId, useRef, useState } from "react";
 
+import { BreakdownList } from "./components/BreakdownList";
 import { ConfidenceBadge } from "./components/ConfidenceBadge";
 import { EmptyState } from "./components/EmptyState";
 import { Heatmap } from "./components/Heatmap";
 import { WindowRow } from "./components/WindowRow";
+import { foldBreakdown, modelsDroppedFor, modelsFor } from "./breakdown";
 import {
   formatCost,
   formatDuration,
@@ -104,6 +106,8 @@ function ProviderPanel({
   const hours = historyFor(history, snapshot.id);
   const sum = totals(inRange(hours, range, nowSeconds));
   const cells = dailyCells(hours, HEATMAP_DAYS, nowSeconds);
+  const models = foldBreakdown(modelsFor(history, snapshot.id), range, nowSeconds);
+  const modelsDropped = modelsDroppedFor(history, snapshot.id);
 
   const name = strings.provider[snapshot.id];
   const headline = worstWindow(snapshot.windows);
@@ -182,6 +186,17 @@ function ProviderPanel({
           {strings.dashboard.unpriced(formatTokens(sum.unpricedTokens, locale))}
         </p>
       )}
+
+      {/* What the range went on. The totals above say how much; this says what for, which is
+          the question a total cannot answer and the one that changes what a user does next. */}
+      <section className="board__breakdown">
+        <h3 className="type-caption board__total-label">{strings.breakdown.models}</h3>
+        <BreakdownList
+          rows={models}
+          dropped={modelsDropped}
+          label={strings.breakdown.listLabel(name)}
+        />
+      </section>
 
       <Heatmap cells={cells} />
     </article>

@@ -7,6 +7,7 @@
 //! - Log files are never read from byte zero on a warm start; reads resume from a stored cursor.
 
 pub mod atomic_write;
+pub mod breakdown;
 pub mod cursor;
 pub mod discovery;
 pub mod engine;

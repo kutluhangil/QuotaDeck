@@ -133,6 +133,17 @@ export const tr: Catalogue = {
     heatmapBusy: "yoğun",
   },
 
+  breakdown: {
+    models: "Nereye harcandı",
+    unreported: "Model bildirilmedi",
+    empty: "Bu aralıkta sayılan bir şey yok",
+    dropped: (count) => `${count} kayıt ilişkilendirilemedi — ayrı model sayısı çok fazla`,
+    // `percent` zaten biçimlenmiş geliyor (`%42`); ikinci bir yüzde işareti eklenmez. Ek uyumu
+    // sayının okunuşuna bağlı olduğu için "kadarı" ile bağlanıyor, kesme işaretiyle değil.
+    share: (label, percent) => `${label} — bu aralığın ${percent} kadarı`,
+    listLabel: (tool) => `${tool} bu aralıkta neye harcadı, model bazında`,
+  },
+
   empty: {
     noTools: {
       title: "Desteklenen araç bulunamadı",

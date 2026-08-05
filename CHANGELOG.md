@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-08-05
+
+- Dashboard: added the model breakdown — what the selected range was actually spent on, per provider. The totals above it said how much; nothing said what for, even though the app has priced every record by model since Phase 5 and then dropped the model on the floor when folding to the hour. An Opus output token and a Haiku cache read differ by fifty times at published rates, so "1.2M tokens" was a number the user could not act on.
+- Dashboard: the breakdown bar is share of spend and takes the heat ramp, never the level ramp. Spend is volume, not fullness — the same argument that kept the heatmap off the level ramp in Phase 7. A 90% share drawn in the critical colour would read as a quota about to run out.
+- A model the tool never named stays unnamed. Codex writes no model in any record, so its whole breakdown is one row that says the model was not reported, set in italic tertiary ink so it is not read as a model called "Not reported". The sample deck ships that state rather than inventing a name for it, because it is what a real Codex install looks like.
+- Rows are ranked on cost where the range was fully priced and on tokens where it was not. An unpriced model bills at zero dollars, and ranking on cost alone would sort the heaviest consumer in the range last — the exact row worth seeing. For the same reason its cell prints a token count instead of `$0.00`.
+- Added `core/src/breakdown.rs`: usage folded to the hour and split by an interned label. Hourly rather than at bucket resolution, because a month of five-minute buckets multiplied by every distinct label is the memory budget spent on a surface nobody has open. Interned because `add` runs once per counted record across a whole corpus, and keying the map by label text would allocate a `String` per record — measured at 107 ms against 69 for a cold parse before interning, and 72 after.
+- Distinct labels are capped at 64 and the overflow is counted, not merged. Folding the rest into an "other" row would under-report a real model without admitting it, which is the failure `CostRange::unpriced_tokens` already exists to prevent. The dashboard prints the refused count outright.
+- The breakdown is filled behind the same guard as the bucket series, so a duplicate, a zero delta or a backwards cumulative total never reaches it. Two places counting the same record under different rules is how a total starts disagreeing with the sum of its own parts; a test asserts the two agree.
+- The checkpoint field is `#[serde(default)]`, so a checkpoint written before this existed still restores — the breakdown comes back empty and refills from the next tick rather than forcing a re-read of every log on disk. The label cap is re-applied on restore, so a checkpoint from a build with a larger cap cannot smuggle more labels in.
+- Perf after the change: cold parse 73–93 ms against 3000, quiet tick 3.4–5.3 ms against 20, peak RSS 7.3 MB against 60. All four budgets green.
+- Added `docs/superpowers/plans/2026-08-05-usage-breakdown.md` — the four phases this is the first of.
+
 ## 2026-08-01
 
 - Windows/release: replaced the non-functional MSIX command with signed x64/arm64 NSIS Store packaging, added user-controlled launch-at-sign-in registration, native OS locale detection, explicit settings/tray/window errors, and deterministic app-icon verification.

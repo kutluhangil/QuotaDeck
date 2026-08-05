@@ -1006,6 +1006,8 @@ fn publish(
                         history_from,
                         now,
                     ),
+                    models: engine.index().models().points(history_from, now),
+                    models_dropped: engine.index().models().labels_dropped(),
                 });
                 if report.parse_errors > 0 {
                     eprintln!(

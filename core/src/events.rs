@@ -5,6 +5,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use chrono::{DateTime, Duration as ChronoDuration, Utc};
 use serde::{Deserialize, Serialize};
 
+use crate::breakdown::BreakdownSeries;
 use crate::error::{Error, Result};
 use crate::types::{
     Bucket, BucketSeries, Confidence, Cost, CostRange, QuotaWindow, TokenRollup, WindowKind,
@@ -110,6 +111,11 @@ pub struct EventIndex {
     seen_by_time: BTreeMap<i64, Vec<u64>>,
     session_totals: HashMap<String, SessionTotal>,
     series: BucketSeries,
+    /// Counted usage folded to the hour and split by the model that produced it. Answers "what
+    /// spent the quota", which the bucket series cannot: it carries one number per five minutes
+    /// with no idea which model earned it, and an Opus output token is worth fifty Haiku cache
+    /// reads at published rates.
+    models: BreakdownSeries,
     /// Newest observation per (limit_id, window_minutes).
     limits: BTreeMap<(String, u32), LimitEvent>,
     last_activity: Option<DateTime<Utc>>,
@@ -131,6 +137,11 @@ pub struct EventIndexCheckpoint {
     seen_by_time: Vec<(i64, Vec<u64>)>,
     session_totals: Vec<(String, SessionTotal)>,
     series: BucketSeries,
+    /// Defaulted on read so a checkpoint written before the breakdown existed still restores.
+    /// It comes back empty and refills from the next tick's reads rather than forcing a
+    /// full re-ingest of every log on disk.
+    #[serde(default)]
+    models: BreakdownSeries,
     limits: Vec<LimitEvent>,
     last_activity: Option<DateTime<Utc>>,
     duplicates_skipped: u64,
@@ -144,6 +155,7 @@ impl EventIndex {
             seen_by_time: BTreeMap::new(),
             session_totals: HashMap::new(),
             series: BucketSeries::new(),
+            models: BreakdownSeries::new(),
             limits: BTreeMap::new(),
             last_activity: None,
             retention,
@@ -222,6 +234,12 @@ impl EventIndex {
         if !delta.is_zero() || usage.requests != 0.0 {
             self.series
                 .add(usage.at, &delta, usage.requests, usage.cost);
+            // Behind the same guard as the bucket series, so a duplicate, a zero delta or a
+            // backwards cumulative total never reaches the breakdown either. Two places
+            // counting the same record under different rules is how a total starts disagreeing
+            // with the sum of its own parts.
+            self.models
+                .add(usage.at, usage.model.as_deref(), &delta, usage.cost);
         }
 
         self.last_activity = Some(match self.last_activity {
@@ -237,6 +255,7 @@ impl EventIndex {
         let seen_before = self.seen.len();
         let cutoff = now - self.retention;
         self.series.trim_before(cutoff);
+        self.models.trim_before(cutoff);
         let retained = self.seen_by_time.split_off(&cutoff.timestamp());
         let expired = std::mem::replace(&mut self.seen_by_time, retained);
         for fingerprints in expired.into_values() {
@@ -289,6 +308,11 @@ impl EventIndex {
         &self.series
     }
 
+    /// Counted usage split by model, folded to the hour.
+    pub fn models(&self) -> &BreakdownSeries {
+        &self.models
+    }
+
     pub fn last_activity(&self) -> Option<DateTime<Utc>> {
         self.last_activity
     }
@@ -328,6 +352,7 @@ impl EventIndex {
                 .collect(),
             session_totals,
             series: self.series.clone(),
+            models: self.models.clone(),
             limits: self.limits.values().cloned().collect(),
             last_activity: self.last_activity,
             duplicates_skipped: self.duplicates_skipped,
@@ -391,6 +416,7 @@ impl EventIndex {
             seen_by_time,
             session_totals,
             series: checkpoint.series,
+            models: checkpoint.models,
             limits,
             last_activity: checkpoint.last_activity,
             retention: ChronoDuration::seconds(checkpoint.retention_seconds),
@@ -895,5 +921,218 @@ mod tests {
                 ..
             }
         ));
+    }
+}
+
+#[cfg(test)]
+mod model_breakdown_tests {
+    use super::*;
+    use chrono::TimeZone;
+
+    fn ts(secs: i64) -> DateTime<Utc> {
+        Utc.timestamp_opt(secs, 0)
+            .single()
+            .expect("valid timestamp")
+    }
+
+    fn index() -> EventIndex {
+        EventIndex::new(ChronoDuration::days(7))
+    }
+
+    /// Start of an hour, so a test asserting on a fold does not straddle two.
+    const HOUR: i64 = 1_785_715_200;
+
+    fn usage(at: i64, id: &str, model: Option<&str>, input: u64, cost: Cost) -> UsageEvent {
+        UsageEvent {
+            at: ts(at),
+            session: "s1".into(),
+            dedup: Some(DedupKey::new(id, "req")),
+            model: model.map(str::to_owned),
+            tokens: TokenRollup {
+                input,
+                ..Default::default()
+            },
+            requests: 0.0,
+            cost,
+            accounting: Accounting::Incremental,
+        }
+    }
+
+    #[test]
+    fn usage_is_folded_into_the_model_breakdown() {
+        let mut index = index();
+        index.ingest(ParsedEvent::Usage(usage(
+            HOUR,
+            "a",
+            Some("claude-opus-5"),
+            100,
+            Cost::Usd(3.0),
+        )));
+        index.ingest(ParsedEvent::Usage(usage(
+            HOUR + 120,
+            "b",
+            Some("claude-haiku-4-5"),
+            900,
+            Cost::Usd(0.1),
+        )));
+
+        let points = index.models().points(ts(HOUR), ts(HOUR + 3600));
+        assert_eq!(points.len(), 2);
+
+        let opus = points
+            .iter()
+            .find(|point| point.label.as_deref() == Some("claude-opus-5"))
+            .expect("opus is reported");
+        assert_eq!(opus.tokens.input, 100);
+        assert!((opus.cost.usd - 3.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn a_record_with_no_model_is_kept_apart_rather_than_named() {
+        // Codex names no model in any record. Reporting those under an invented label would put
+        // a claim where there is no measurement.
+        let mut index = index();
+        index.ingest(ParsedEvent::Usage(usage(HOUR, "a", None, 500, Cost::Usd(1.0))));
+
+        let points = index.models().points(ts(HOUR), ts(HOUR + 3600));
+        assert_eq!(points.len(), 1);
+        assert_eq!(points[0].label, None);
+        assert_eq!(points[0].tokens.input, 500);
+    }
+
+    #[test]
+    fn a_duplicate_record_does_not_reach_the_model_breakdown() {
+        let mut index = index();
+        let record = usage(HOUR, "a", Some("claude-opus-5"), 100, Cost::Usd(1.0));
+        assert!(index.ingest(ParsedEvent::Usage(record.clone())));
+        assert!(!index.ingest(ParsedEvent::Usage(record)));
+
+        let points = index.models().points(ts(HOUR), ts(HOUR + 3600));
+        assert_eq!(points.len(), 1);
+        assert_eq!(points[0].tokens.input, 100);
+    }
+
+    #[test]
+    fn the_breakdown_totals_agree_with_the_rolling_series() {
+        // The two are filled from the same delta behind the same guard; a disagreement means one
+        // of them started counting something the other did not.
+        let mut index = index();
+        for (i, model) in ["m1", "m2", "m1", "m3"].iter().enumerate() {
+            index.ingest(ParsedEvent::Usage(usage(
+                HOUR + i as i64 * 60,
+                &format!("msg{i}"),
+                Some(model),
+                100,
+                Cost::Usd(0.5),
+            )));
+        }
+
+        let series_total = index.rolling(ts(HOUR + 3600), ChronoDuration::hours(2)).input;
+        let breakdown_total: u64 = index
+            .models()
+            .points(ts(HOUR), ts(HOUR + 3600))
+            .iter()
+            .map(|point| point.tokens.input)
+            .sum();
+        assert_eq!(series_total, breakdown_total);
+        assert_eq!(series_total, 400);
+    }
+
+    #[test]
+    fn a_cumulative_provider_contributes_its_delta_not_its_running_total() {
+        let mut index = index();
+        let mut first = usage(HOUR, "a", Some("m"), 100, Cost::Usd(1.0));
+        first.accounting = Accounting::Cumulative;
+        first.dedup = None;
+        let mut second = usage(HOUR + 60, "b", Some("m"), 250, Cost::Usd(1.0));
+        second.accounting = Accounting::Cumulative;
+        second.dedup = None;
+
+        index.ingest(ParsedEvent::Usage(first));
+        index.ingest(ParsedEvent::Usage(second));
+
+        let points = index.models().points(ts(HOUR), ts(HOUR + 3600));
+        assert_eq!(points.len(), 1);
+        // 100 then a delta of 150, not 100 then 250.
+        assert_eq!(points[0].tokens.input, 250);
+    }
+
+    #[test]
+    fn pruning_trims_the_model_breakdown_with_the_series() {
+        let mut index = EventIndex::new(ChronoDuration::hours(2));
+        index.ingest(ParsedEvent::Usage(usage(
+            HOUR,
+            "old",
+            Some("m"),
+            100,
+            Cost::Usd(1.0),
+        )));
+        index.ingest(ParsedEvent::Usage(usage(
+            HOUR + 4 * 3600,
+            "new",
+            Some("m"),
+            100,
+            Cost::Usd(1.0),
+        )));
+
+        index.prune(ts(HOUR + 4 * 3600));
+
+        let points = index.models().points(ts(HOUR), ts(HOUR + 8 * 3600));
+        assert_eq!(points.len(), 1);
+        assert_eq!(points[0].start, HOUR + 4 * 3600);
+    }
+
+    #[test]
+    fn the_model_breakdown_survives_a_checkpoint_round_trip() {
+        let mut index = index();
+        index.ingest(ParsedEvent::Usage(usage(
+            HOUR,
+            "a",
+            Some("claude-opus-5"),
+            100,
+            Cost::Usd(3.0),
+        )));
+        index.ingest(ParsedEvent::Usage(usage(HOUR, "b", None, 50, Cost::Unpriced)));
+
+        let encoded = serde_json::to_vec(&index.checkpoint()).expect("checkpoint serializes");
+        let decoded: EventIndexCheckpoint =
+            serde_json::from_slice(&encoded).expect("checkpoint deserializes");
+        let restored = EventIndex::restore(decoded).expect("checkpoint restores");
+
+        assert_eq!(
+            restored.models().points(ts(HOUR), ts(HOUR + 3600)),
+            index.models().points(ts(HOUR), ts(HOUR + 3600))
+        );
+    }
+
+    #[test]
+    fn a_checkpoint_written_before_the_model_breakdown_existed_still_restores() {
+        let mut index = index();
+        index.ingest(ParsedEvent::Usage(usage(
+            HOUR,
+            "a",
+            Some("m"),
+            100,
+            Cost::Usd(1.0),
+        )));
+
+        let mut value =
+            serde_json::to_value(index.checkpoint()).expect("checkpoint serializes to a value");
+        value
+            .as_object_mut()
+            .expect("checkpoint is an object")
+            .remove("models")
+            .expect("the models field was written");
+
+        let decoded: EventIndexCheckpoint =
+            serde_json::from_value(value).expect("an older checkpoint still deserializes");
+        let restored = EventIndex::restore(decoded).expect("an older checkpoint still restores");
+
+        // The history is not lost, only the breakdown, which refills from the next reads.
+        assert!(restored.models().is_empty());
+        assert_eq!(
+            restored.rolling(ts(HOUR + 60), ChronoDuration::hours(1)).input,
+            100
+        );
     }
 }
