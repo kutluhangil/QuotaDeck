@@ -26,7 +26,7 @@ use std::path::PathBuf;
 use chrono::{DateTime, Utc};
 use quotadeck_core::error::{Error, Result};
 use quotadeck_core::events::{
-    Accounting, DedupKey, EventIndex, LimitEvent, ParsedEvent, UsageEvent,
+    Accounting, DedupKey, EventIndex, LimitEvent, ParsedEvent, SessionEvent, UsageEvent,
 };
 use quotadeck_core::paths;
 use quotadeck_core::provider::{default_snapshot, LineSource, Provider, ProviderConfig};
@@ -37,6 +37,13 @@ use serde::Deserialize;
 /// keeps the JSON parser off the other 99.5%.
 const MARKER: &str = "\"token_count\"";
 
+/// The session-opening record, one line per rollout file. It is the only place Codex names the
+/// directory the session runs in — a `token_count` record carries counters and nothing else.
+const SESSION_MARKER: &str = "\"session_meta\"";
+
+/// The record's own `type`. A `session_meta` payload carries no `type` of its own.
+const SESSION_TYPE: &str = "session_meta";
+
 /// Used when a record omits `limit_id`. Older CLI builds did not emit it.
 const DEFAULT_LIMIT_ID: &str = "codex";
 
@@ -45,19 +52,26 @@ pub struct Codex;
 #[derive(Deserialize)]
 struct Record {
     timestamp: DateTime<Utc>,
+    /// The record's own type. `session_meta` carries no `payload.type`, so the two levels
+    /// cannot be collapsed into one check.
+    #[serde(default, rename = "type")]
+    kind: Option<String>,
     #[serde(default)]
     payload: Option<Payload>,
 }
 
 #[derive(Deserialize)]
 struct Payload {
-    #[serde(rename = "type")]
-    kind: String,
+    #[serde(default, rename = "type")]
+    kind: Option<String>,
     /// Null in a small number of real records; the line still carries usable limits.
     #[serde(default)]
     info: Option<Info>,
     #[serde(default)]
     rate_limits: Option<RateLimits>,
+    /// `session_meta` only: the directory the session was started in.
+    #[serde(default)]
+    cwd: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -150,7 +164,8 @@ impl Provider for Codex {
         line: &str,
         out: &mut Vec<ParsedEvent>,
     ) -> Result<()> {
-        if !line.contains(MARKER) {
+        let session_meta = line.contains(SESSION_MARKER);
+        if !session_meta && !line.contains(MARKER) {
             return Ok(());
         }
 
@@ -165,7 +180,21 @@ impl Provider for Codex {
         let Some(payload) = record.payload else {
             return Ok(());
         };
-        if payload.kind != "token_count" {
+
+        if record.kind.as_deref() == Some(SESSION_TYPE) {
+            // Written once, at the head of the file, and never repeated on the usage rows.
+            // The index holds the mapping so a cursor already past this line keeps attributing.
+            if let Some(cwd) = payload.cwd {
+                out.push(ParsedEvent::Session(SessionEvent {
+                    at: record.timestamp,
+                    session: source.session_key(),
+                    project: cwd,
+                }));
+            }
+            return Ok(());
+        }
+
+        if payload.kind.as_deref() != Some("token_count") {
             return Ok(());
         }
 
@@ -193,6 +222,7 @@ impl Provider for Codex {
                         turn.total_tokens.to_string(),
                     )),
                     model: None,
+                    project: None,
                     tokens,
                     requests: 0.0,
                     // A `token_count` record names no model, and the embedded price table
@@ -302,6 +332,48 @@ mod tests {
             }
         }
         index
+    }
+
+    fn only_session(events: &[ParsedEvent]) -> SessionEvent {
+        events
+            .iter()
+            .find_map(|e| match e {
+                ParsedEvent::Session(s) => Some(s.clone()),
+                _ => None,
+            })
+            .expect("expected a session event")
+    }
+
+    #[test]
+    fn the_session_opening_record_names_the_directory_the_rollout_ran_in() {
+        let session = only_session(&parse_fixture("session_meta.jsonl"));
+        assert_eq!(session.project, "/work/project");
+        assert_eq!(session.session, "rollout-2026-07-25T21-04-40-019f9a73");
+        assert_eq!(
+            session.at,
+            "2025-11-12T22:42:51.517Z"
+                .parse::<DateTime<Utc>>()
+                .expect("the record's own timestamp")
+        );
+    }
+
+    #[test]
+    fn a_token_count_record_names_no_directory_of_its_own() {
+        // Codex writes the directory once and never repeats it, which is why the mapping is
+        // held by the index rather than by this parser.
+        let usage = only_usage(&parse_fixture("token_count_plus.jsonl"));
+        assert_eq!(usage.project, None);
+    }
+
+    #[test]
+    fn usage_read_after_the_session_record_is_attributed_to_it() {
+        let index = index_of(&["session_meta.jsonl", "token_count_plus.jsonl"]);
+        let now = "2026-07-25T22:00:00Z".parse::<DateTime<Utc>>().expect("now");
+        let points = index
+            .projects()
+            .points(now - Duration::days(30), now + Duration::hours(1));
+        assert_eq!(points.len(), 1, "{points:#?}");
+        assert_eq!(points[0].label.as_deref(), Some("/work/project"));
     }
 
     #[test]
@@ -469,9 +541,20 @@ mod tests {
     }
 
     #[test]
-    fn records_that_are_not_token_counts_are_ignored() {
+    fn records_that_are_neither_token_counts_nor_session_openings_are_ignored() {
         for line in fixture("synthetic_noise.jsonl").lines() {
-            assert!(parse(line).is_empty(), "unexpected event from: {line}");
+            let events = parse(line);
+            // The file opens with a `session_meta`, which is read for its directory and
+            // nothing else. Everything after it must produce nothing at all — including the
+            // tool output that contains the string `token_count` verbatim.
+            match events.first() {
+                None => {}
+                Some(ParsedEvent::Session(session)) => {
+                    assert_eq!(events.len(), 1, "{events:#?}");
+                    assert_eq!(session.project, "/tmp/example");
+                }
+                other => panic!("unexpected event from: {line}\n{other:#?}"),
+            }
         }
     }
 

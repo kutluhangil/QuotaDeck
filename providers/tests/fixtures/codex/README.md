@@ -12,6 +12,7 @@ counters and limit readings.
 | `token_count_zero_breakdown.jsonl` | `rate_limits: null` and an all-zero breakdown with a non-zero `total_tokens` (2.2% of records) |
 | `token_count_null_info.jsonl` | `info: null` with limits present |
 | `token_count_premium_no_window.jsonl` | `limit_id: "premium"`, both window slots null |
+| `session_meta.jsonl` | The record opening a rollout file, carrying the session's `cwd` — the only place Codex names the directory the work was done in. The session uuid and the path are replaced; nothing else was changed |
 
 `synthetic_` files cover shapes the schema permits but this machine never produced. They
 exist so a CLI build that starts emitting them is handled rather than silently ignored.

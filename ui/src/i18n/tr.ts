@@ -135,13 +135,18 @@ export const tr: Catalogue = {
 
   breakdown: {
     models: "Nereye harcandı",
+    projects: "Hangi dizinde harcandı",
     unreported: "Model bildirilmedi",
+    unattributed: "Dizin bildirilmedi",
     empty: "Bu aralıkta sayılan bir şey yok",
     dropped: (count) => `${count} kayıt ilişkilendirilemedi — ayrı model sayısı çok fazla`,
+    droppedProjects: (count) =>
+      `${count} kayıt ilişkilendirilemedi — ayrı dizin sayısı çok fazla`,
     // `percent` zaten biçimlenmiş geliyor (`%42`); ikinci bir yüzde işareti eklenmez. Ek uyumu
     // sayının okunuşuna bağlı olduğu için "kadarı" ile bağlanıyor, kesme işaretiyle değil.
     share: (label, percent) => `${label} — bu aralığın ${percent} kadarı`,
     listLabel: (tool) => `${tool} bu aralıkta neye harcadı, model bazında`,
+    projectListLabel: (tool) => `${tool} bu aralıkta neye harcadı, dizin bazında`,
   },
 
   empty: {

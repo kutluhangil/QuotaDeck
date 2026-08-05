@@ -190,11 +190,18 @@ export const en = {
    */
   breakdown: {
     models: "Spent on",
+    projects: "Spent where",
     /**
      * Not "Unknown". Codex names no model in any record, so this is a statement about what the
      * tool wrote, not a guess about what ran.
      */
     unreported: "Model not reported",
+    /**
+     * Same rule for the directory. Claude Code's `projects/` folder name encodes `/` and `.`
+     * as `-` and cannot be reversed, so a record that names no directory stays unnamed rather
+     * than being labelled from its path.
+     */
+    unattributed: "Directory not reported",
     /** Shown when nothing in the range carried a label at all. */
     empty: "Nothing counted in this range",
     /**
@@ -202,9 +209,12 @@ export const en = {
      * model without admitting it.
      */
     dropped: (count: string) => `${count} records not attributed — too many distinct models`,
+    droppedProjects: (count: string) =>
+      `${count} records not attributed — too many distinct directories`,
     share: (label: string, percent: string) => `${label}, ${percent} of this range`,
     /** Names the list itself for a screen reader, so it is not read as a second window list. */
     listLabel: (tool: string) => `What ${tool} spent this range on, by model`,
+    projectListLabel: (tool: string) => `What ${tool} spent this range on, by directory`,
   },
 
   empty: {

@@ -204,6 +204,7 @@ mod tests {
                 session: format!("s{i}"),
                 dedup: None,
                 model: None,
+                project: None,
                 tokens: TokenRollup {
                     input: 10,
                     ..Default::default()

@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { foldBreakdown, modelsDroppedFor, modelsFor } from "./breakdown";
+import {
+  foldBreakdown,
+  modelsDroppedFor,
+  modelsFor,
+  projectsDroppedFor,
+  projectsFor,
+  shortenPaths,
+} from "./breakdown";
 import type { BreakdownPoint, ProviderHistory } from "./types";
 
 const NOW = 1_785_715_200;
@@ -116,6 +123,8 @@ describe("modelsFor", () => {
       hours: [],
       models: [point(1, null, 100, 1)],
       modelsDropped: 3,
+      projects: [point(1, "/work/one", 100, 1), point(2, "/work/two", 50, 0.5)],
+      projectsDropped: 7,
     },
   ];
 
@@ -130,5 +139,64 @@ describe("modelsFor", () => {
 
   it("reports the dropped count", () => {
     expect(modelsDroppedFor(history, "codex")).toBe(3);
+  });
+});
+
+describe("projectsFor", () => {
+  const history: ProviderHistory[] = [
+    {
+      id: "codex",
+      hours: [],
+      models: [],
+      modelsDropped: 0,
+      projects: [point(1, "/work/one", 100, 1)],
+      projectsDropped: 7,
+    },
+  ];
+
+  it("finds a provider's points", () => {
+    expect(projectsFor(history, "codex")).toHaveLength(1);
+  });
+
+  it("returns an empty array for a provider the backend sent nothing for", () => {
+    expect(projectsFor(history, "claude-code")).toEqual([]);
+    expect(projectsDroppedFor(history, "claude-code")).toBe(0);
+  });
+
+  it("reports the dropped count", () => {
+    expect(projectsDroppedFor(history, "codex")).toBe(7);
+  });
+});
+
+describe("shortenPaths", () => {
+  it("keeps the last segment when that is already unambiguous", () => {
+    const short = shortenPaths(["/Volumes/Vault/QuotaDeck", "/Volumes/Vault/LiftGenius"]);
+    expect(short.get("/Volumes/Vault/QuotaDeck")).toBe("QuotaDeck");
+    expect(short.get("/Volumes/Vault/LiftGenius")).toBe("LiftGenius");
+  });
+
+  it("grows only the labels that would otherwise collide", () => {
+    // Two real directories here end in `app`. Showing both as "app" would read as one
+    // project holding twice the spend it has.
+    const short = shortenPaths(["/work/Archives/app", "/work/Ledger/app", "/work/Deck"]);
+    expect(short.get("/work/Archives/app")).toBe("Archives/app");
+    expect(short.get("/work/Ledger/app")).toBe("Ledger/app");
+    expect(short.get("/work/Deck")).toBe("Deck");
+  });
+
+  it("falls back to the whole path when nothing shorter separates two labels", () => {
+    const short = shortenPaths(["/one/work/app", "/two/work/app"]);
+    expect(short.get("/one/work/app")).toBe("one/work/app");
+    expect(short.get("/two/work/app")).toBe("two/work/app");
+  });
+
+  it("splits a Windows path on its own separator", () => {
+    const short = shortenPaths(["C:\\Users\\dev\\Deck"]);
+    expect(short.get("C:\\Users\\dev\\Deck")).toBe("Deck");
+  });
+
+  it("leaves a label with no segments alone", () => {
+    expect(shortenPaths(["/"]).get("/")).toBe("/");
+    expect(shortenPaths([""]).get("")).toBe("");
   });
 });

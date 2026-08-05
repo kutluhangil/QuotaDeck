@@ -279,6 +279,14 @@ export function demoHistory(): ProviderHistory[] {
         ["claude-haiku-4-5", 0.08],
       ]),
       modelsDropped: 0,
+      // Two directories ending in the same segment, so the sample exercises the shortening
+      // rule rather than only the easy case.
+      projects: split(claude, [
+        ["/Volumes/Vault/QuotaDeck", 0.62],
+        ["/Volumes/Vault/Archives/app", 0.27],
+        ["/Volumes/Vault/Ledger/app", 0.11],
+      ]),
+      projectsDropped: 0,
     },
     {
       id: "codex",
@@ -287,8 +295,18 @@ export function demoHistory(): ProviderHistory[] {
       // rather than inventing the model name the tool never wrote.
       models: split(codex, [[null, 1]]),
       modelsDropped: 0,
+      // Codex does name the directory, in the record that opens a rollout file.
+      projects: split(codex, [["/Volumes/Vault/QuotaDeck", 1]]),
+      projectsDropped: 0,
     },
-    { id: "copilot-cli", hours: [], models: [], modelsDropped: 0 },
+    {
+      id: "copilot-cli",
+      hours: [],
+      models: [],
+      modelsDropped: 0,
+      projects: [],
+      projectsDropped: 0,
+    },
   ];
 }
 

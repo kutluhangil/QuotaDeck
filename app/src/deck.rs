@@ -87,6 +87,11 @@ pub struct ProviderHistory {
     /// holds. Surfaced rather than folded into an "other" row, which would under-report a real
     /// model without saying so.
     pub models_dropped: u64,
+    /// The same hours split by the directory the work was done in, as the tool recorded it.
+    /// A point whose `label` is `null` is usage no tool named a directory for.
+    pub projects: Vec<BreakdownPoint>,
+    /// Records refused for carrying more distinct directories than the breakdown holds.
+    pub projects_dropped: u64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

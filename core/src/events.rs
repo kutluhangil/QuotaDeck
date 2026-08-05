@@ -16,6 +16,14 @@ use crate::types::{
 /// or adversarial session identifiers.
 const MAX_SESSION_TOTALS: usize = 100_000;
 
+/// Session-to-project mappings held at once.
+///
+/// Tighter than [`MAX_SESSION_TOTALS`] because the entries are longer-lived: nothing prunes
+/// them with the retention horizon, since a session that started before it may still be
+/// writing. A machine here holds 154 Codex rollouts and 186 Copilot sessions, so this is three
+/// orders of magnitude of headroom over the real shape while still being a bound.
+const MAX_SESSION_PROJECTS: usize = 20_000;
+
 /// Identifies a usage record so the same record seen twice is counted once.
 ///
 /// The two parts are provider-defined; together they must be unique per real API call.
@@ -74,6 +82,11 @@ pub struct UsageEvent {
     pub session: String,
     pub dedup: Option<DedupKey>,
     pub model: Option<String>,
+    /// Where the work was done, as the tool itself recorded it — an absolute working
+    /// directory, never a name derived from a file path. Providers that write it per record
+    /// set it here; the ones that write it once per session leave it `None` and let
+    /// [`SessionEvent`] supply it.
+    pub project: Option<String>,
     pub tokens: TokenRollup,
     /// Provider-native billing units, where one exists (Copilot premium requests).
     pub requests: f64,
@@ -95,10 +108,25 @@ pub struct LimitEvent {
     pub resets_at: Option<DateTime<Utc>>,
 }
 
+/// A session's working directory, as the tool wrote it.
+///
+/// Codex and Copilot record it once, in a session-opening record that carries no usage at all,
+/// and never repeat it on the usage rows themselves. Carrying the mapping in the index rather
+/// than in the parser is what makes it survive a byte-offset cursor: the opening record is read
+/// once, ticks or restarts before the usage that belongs to it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SessionEvent {
+    pub at: DateTime<Utc>,
+    pub session: String,
+    /// The directory verbatim. Nothing is decoded, shortened or inferred here.
+    pub project: String,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum ParsedEvent {
     Usage(UsageEvent),
     Limit(LimitEvent),
+    Session(SessionEvent),
 }
 
 /// Accumulates parsed events into everything a snapshot needs.
@@ -116,6 +144,11 @@ pub struct EventIndex {
     /// with no idea which model earned it, and an Opus output token is worth fifty Haiku cache
     /// reads at published rates.
     models: BreakdownSeries,
+    /// The same usage split by the directory the work was done in. Answers the question a
+    /// single monthly total cannot: which piece of work the quota actually went to.
+    projects: BreakdownSeries,
+    /// Project per session, for the providers that write it once and never repeat it.
+    session_projects: HashMap<String, SessionProject>,
     /// Newest observation per (limit_id, window_minutes).
     limits: BTreeMap<(String, u32), LimitEvent>,
     last_activity: Option<DateTime<Utc>>,
@@ -127,6 +160,13 @@ pub struct EventIndex {
 struct SessionTotal {
     at: DateTime<Utc>,
     tokens: TokenRollup,
+}
+
+/// One session's project, with the instant it was reported so the oldest can be evicted.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+struct SessionProject {
+    at: DateTime<Utc>,
+    project: String,
 }
 
 /// Serializable state nested inside the provider-level versioned checkpoint.
@@ -142,6 +182,14 @@ pub struct EventIndexCheckpoint {
     /// full re-ingest of every log on disk.
     #[serde(default)]
     models: BreakdownSeries,
+    /// Defaulted on read for the same reason as `models`.
+    #[serde(default)]
+    projects: BreakdownSeries,
+    /// Persisted rather than rebuilt: the record that names a session's project sits at the
+    /// head of a file the cursor is long past, so a restart that dropped this would leave every
+    /// running session unattributed until the tool opened a new one.
+    #[serde(default)]
+    session_projects: Vec<(String, SessionProject)>,
     limits: Vec<LimitEvent>,
     last_activity: Option<DateTime<Utc>>,
     duplicates_skipped: u64,
@@ -156,6 +204,8 @@ impl EventIndex {
             session_totals: HashMap::new(),
             series: BucketSeries::new(),
             models: BreakdownSeries::new(),
+            projects: BreakdownSeries::new(),
+            session_projects: HashMap::new(),
             limits: BTreeMap::new(),
             last_activity: None,
             retention,
@@ -168,7 +218,35 @@ impl EventIndex {
         match event {
             ParsedEvent::Limit(limit) => self.ingest_limit(limit),
             ParsedEvent::Usage(usage) => self.ingest_usage(usage),
+            ParsedEvent::Session(session) => self.ingest_session(session),
         }
+    }
+
+    /// Remember which project a session belongs to. Returns `false` when nothing changed.
+    ///
+    /// A newer record wins, so a session whose directory the tool re-reports is not pinned to
+    /// the first value seen. Past [`MAX_SESSION_PROJECTS`] the oldest mapping is evicted rather
+    /// than the new one refused: the newest sessions are the ones still writing usage.
+    fn ingest_session(&mut self, session: SessionEvent) -> bool {
+        match self.session_projects.get(&session.session) {
+            Some(existing)
+                if existing.at >= session.at && existing.project == session.project =>
+            {
+                return false;
+            }
+            Some(existing) if existing.at > session.at => return false,
+            _ => {}
+        }
+        let key = session.session.clone();
+        self.session_projects.insert(
+            key.clone(),
+            SessionProject {
+                at: session.at,
+                project: session.project,
+            },
+        );
+        self.bound_session_projects(&key);
+        true
     }
 
     fn ingest_limit(&mut self, limit: LimitEvent) -> bool {
@@ -240,6 +318,15 @@ impl EventIndex {
             // with the sum of its own parts.
             self.models
                 .add(usage.at, usage.model.as_deref(), &delta, usage.cost);
+            // The record's own directory wins; the session map is only consulted for the
+            // providers that never repeat it on a usage row. Neither is derived from a file
+            // path, so a record nobody recorded a directory for stays unattributed.
+            let project = usage.project.as_deref().or_else(|| {
+                self.session_projects
+                    .get(&usage.session)
+                    .map(|entry| entry.project.as_str())
+            });
+            self.projects.add(usage.at, project, &delta, usage.cost);
         }
 
         self.last_activity = Some(match self.last_activity {
@@ -256,6 +343,7 @@ impl EventIndex {
         let cutoff = now - self.retention;
         self.series.trim_before(cutoff);
         self.models.trim_before(cutoff);
+        self.projects.trim_before(cutoff);
         let retained = self.seen_by_time.split_off(&cutoff.timestamp());
         let expired = std::mem::replace(&mut self.seen_by_time, retained);
         for fingerprints in expired.into_values() {
@@ -313,6 +401,11 @@ impl EventIndex {
         &self.models
     }
 
+    /// Counted usage split by the directory the work was done in, folded to the hour.
+    pub fn projects(&self) -> &BreakdownSeries {
+        &self.projects
+    }
+
     pub fn last_activity(&self) -> Option<DateTime<Utc>> {
         self.last_activity
     }
@@ -336,6 +429,21 @@ impl EventIndex {
         }
     }
 
+    fn bound_session_projects(&mut self, current: &str) {
+        if self.session_projects.len() <= MAX_SESSION_PROJECTS {
+            return;
+        }
+        let oldest = self
+            .session_projects
+            .iter()
+            .filter(|(session, _)| session.as_str() != current)
+            .min_by_key(|(_, entry)| entry.at)
+            .map(|(session, _)| session.clone());
+        if let Some(session) = oldest {
+            self.session_projects.remove(&session);
+        }
+    }
+
     pub fn checkpoint(&self) -> EventIndexCheckpoint {
         let mut session_totals: Vec<_> = self
             .session_totals
@@ -343,6 +451,12 @@ impl EventIndex {
             .map(|(session, total)| (session.clone(), total.clone()))
             .collect();
         session_totals.sort_by(|a, b| a.0.cmp(&b.0));
+        let mut session_projects: Vec<_> = self
+            .session_projects
+            .iter()
+            .map(|(session, entry)| (session.clone(), entry.clone()))
+            .collect();
+        session_projects.sort_by(|a, b| a.0.cmp(&b.0));
         EventIndexCheckpoint {
             retention_seconds: self.retention.num_seconds(),
             seen_by_time: self
@@ -353,6 +467,8 @@ impl EventIndex {
             session_totals,
             series: self.series.clone(),
             models: self.models.clone(),
+            projects: self.projects.clone(),
+            session_projects,
             limits: self.limits.values().cloned().collect(),
             last_activity: self.last_activity,
             duplicates_skipped: self.duplicates_skipped,
@@ -411,12 +527,29 @@ impl EventIndex {
             }
         }
 
+        if checkpoint.session_projects.len() > MAX_SESSION_PROJECTS {
+            return Err(Error::Invalid(format!(
+                "event index checkpoint contains {} session projects; maximum is {MAX_SESSION_PROJECTS}",
+                checkpoint.session_projects.len()
+            )));
+        }
+        let mut session_projects = HashMap::new();
+        for (session, entry) in checkpoint.session_projects {
+            if session_projects.insert(session.clone(), entry).is_some() {
+                return Err(Error::Invalid(format!(
+                    "event index checkpoint contains duplicate session project {session}"
+                )));
+            }
+        }
+
         Ok(EventIndex {
             seen,
             seen_by_time,
             session_totals,
             series: checkpoint.series,
             models: checkpoint.models,
+            projects: checkpoint.projects,
+            session_projects,
             limits,
             last_activity: checkpoint.last_activity,
             retention: ChronoDuration::seconds(checkpoint.retention_seconds),
@@ -466,6 +599,7 @@ mod tests {
             session: "s1".into(),
             dedup: Some(DedupKey::new(id, "req")),
             model: Some("claude-opus-5".into()),
+            project: None,
             tokens: TokenRollup {
                 input,
                 ..Default::default()
@@ -527,6 +661,7 @@ mod tests {
                 session: "codex-1".into(),
                 dedup: None,
                 model: None,
+                project: None,
                 tokens: TokenRollup {
                     input: total,
                     ..Default::default()
@@ -554,6 +689,7 @@ mod tests {
                 session: "codex-1".into(),
                 dedup: None,
                 model: None,
+                project: None,
                 tokens: TokenRollup {
                     input: total,
                     ..Default::default()
@@ -581,6 +717,7 @@ mod tests {
                     session: session.into(),
                     dedup: None,
                     model: None,
+                    project: None,
                     tokens: TokenRollup {
                         input: total,
                         ..Default::default()
@@ -608,6 +745,7 @@ mod tests {
                 session: "codex-1".into(),
                 dedup: None,
                 model: None,
+                project: None,
                 tokens: TokenRollup {
                     input: total,
                     ..Default::default()
@@ -623,6 +761,7 @@ mod tests {
             session: "codex-1".into(),
             dedup: None,
             model: None,
+            project: None,
             tokens: TokenRollup {
                 input: 350,
                 ..Default::default()
@@ -739,6 +878,7 @@ mod tests {
                 session: session.into(),
                 dedup: None,
                 model: None,
+                project: None,
                 tokens: TokenRollup {
                     input: 100,
                     ..Default::default()
@@ -764,6 +904,7 @@ mod tests {
             session: "long-running".into(),
             dedup: None,
             model: None,
+            project: None,
             tokens: TokenRollup {
                 input: 100,
                 ..Default::default()
@@ -779,6 +920,7 @@ mod tests {
             session: "long-running".into(),
             dedup: None,
             model: None,
+            project: None,
             tokens: TokenRollup {
                 input: 110,
                 ..Default::default()
@@ -823,6 +965,7 @@ mod tests {
                 session: "same-second".into(),
                 dedup: None,
                 model: None,
+                project: None,
                 tokens,
                 requests: 0.0,
                 cost: Cost::Unpriced,
@@ -847,6 +990,7 @@ mod tests {
             session: "running".into(),
             dedup: None,
             model: None,
+            project: None,
             tokens: TokenRollup {
                 input: 100,
                 ..Default::default()
@@ -866,6 +1010,7 @@ mod tests {
             session: "running".into(),
             dedup: None,
             model: None,
+            project: None,
             tokens: TokenRollup {
                 input: 130,
                 ..Default::default()
@@ -948,6 +1093,7 @@ mod model_breakdown_tests {
             session: "s1".into(),
             dedup: Some(DedupKey::new(id, "req")),
             model: model.map(str::to_owned),
+            project: None,
             tokens: TokenRollup {
                 input,
                 ..Default::default()
@@ -1130,6 +1276,295 @@ mod model_breakdown_tests {
 
         // The history is not lost, only the breakdown, which refills from the next reads.
         assert!(restored.models().is_empty());
+        assert_eq!(
+            restored.rolling(ts(HOUR + 60), ChronoDuration::hours(1)).input,
+            100
+        );
+    }
+}
+
+#[cfg(test)]
+mod project_breakdown_tests {
+    use super::*;
+    use chrono::TimeZone;
+
+    fn ts(secs: i64) -> DateTime<Utc> {
+        Utc.timestamp_opt(secs, 0)
+            .single()
+            .expect("valid timestamp")
+    }
+
+    fn index() -> EventIndex {
+        EventIndex::new(ChronoDuration::days(7))
+    }
+
+    const HOUR: i64 = 1_785_715_200;
+
+    fn usage(at: i64, id: &str, project: Option<&str>, input: u64) -> UsageEvent {
+        UsageEvent {
+            at: ts(at),
+            session: "s1".into(),
+            dedup: Some(DedupKey::new(id, "req")),
+            model: Some("claude-opus-5".into()),
+            project: project.map(str::to_owned),
+            tokens: TokenRollup {
+                input,
+                ..Default::default()
+            },
+            requests: 0.0,
+            cost: Cost::Usd(0.01),
+            accounting: Accounting::Incremental,
+        }
+    }
+
+    fn session(at: i64, name: &str, project: &str) -> ParsedEvent {
+        ParsedEvent::Session(SessionEvent {
+            at: ts(at),
+            session: name.into(),
+            project: project.into(),
+        })
+    }
+
+    fn labels(index: &EventIndex) -> Vec<(Option<String>, u64)> {
+        index
+            .projects()
+            .points(ts(HOUR), ts(HOUR + 3600))
+            .into_iter()
+            .map(|point| (point.label, point.tokens.input))
+            .collect()
+    }
+
+    #[test]
+    fn usage_carrying_its_own_directory_is_folded_under_it() {
+        let mut index = index();
+        index.ingest(ParsedEvent::Usage(usage(HOUR, "a", Some("/work/one"), 100)));
+        index.ingest(ParsedEvent::Usage(usage(
+            HOUR + 60,
+            "b",
+            Some("/work/two"),
+            300,
+        )));
+
+        assert_eq!(
+            labels(&index),
+            vec![
+                (Some("/work/one".to_string()), 100),
+                (Some("/work/two".to_string()), 300),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_session_record_attributes_usage_that_names_no_directory_itself() {
+        // Codex and Copilot write the directory once, in a record carrying no usage at all.
+        let mut index = index();
+        index.ingest(session(HOUR, "s1", "/work/codex-project"));
+        index.ingest(ParsedEvent::Usage(usage(HOUR + 60, "a", None, 250)));
+
+        assert_eq!(
+            labels(&index),
+            vec![(Some("/work/codex-project".to_string()), 250)]
+        );
+    }
+
+    #[test]
+    fn usage_from_a_session_nobody_named_stays_unattributed() {
+        let mut index = index();
+        index.ingest(session(HOUR, "other-session", "/work/elsewhere"));
+        index.ingest(ParsedEvent::Usage(usage(HOUR, "a", None, 100)));
+
+        assert_eq!(labels(&index), vec![(None, 100)]);
+    }
+
+    #[test]
+    fn a_records_own_directory_wins_over_the_session_mapping() {
+        let mut index = index();
+        index.ingest(session(HOUR, "s1", "/work/session-wide"));
+        index.ingest(ParsedEvent::Usage(usage(
+            HOUR,
+            "a",
+            Some("/work/this-row"),
+            100,
+        )));
+
+        assert_eq!(labels(&index), vec![(Some("/work/this-row".to_string()), 100)]);
+    }
+
+    #[test]
+    fn a_duplicate_record_does_not_reach_the_project_breakdown() {
+        let mut index = index();
+        let record = usage(HOUR, "a", Some("/work/one"), 100);
+        assert!(index.ingest(ParsedEvent::Usage(record.clone())));
+        assert!(!index.ingest(ParsedEvent::Usage(record)));
+
+        assert_eq!(labels(&index), vec![(Some("/work/one".to_string()), 100)]);
+    }
+
+    #[test]
+    fn the_project_totals_agree_with_the_rolling_series() {
+        let mut index = index();
+        index.ingest(session(HOUR, "s1", "/work/one"));
+        for i in 0..4 {
+            index.ingest(ParsedEvent::Usage(usage(
+                HOUR + i * 60,
+                &format!("msg{i}"),
+                if i % 2 == 0 { Some("/work/two") } else { None },
+                100,
+            )));
+        }
+
+        let series_total = index.rolling(ts(HOUR + 3600), ChronoDuration::hours(2)).input;
+        let breakdown_total: u64 = labels(&index).iter().map(|(_, tokens)| tokens).sum();
+        assert_eq!(series_total, breakdown_total);
+        assert_eq!(series_total, 400);
+    }
+
+    #[test]
+    fn a_re_reported_session_directory_does_not_move_earlier_usage() {
+        // The mapping applies at ingest, so a session that reopens elsewhere splits cleanly
+        // instead of retroactively relabelling what was already counted.
+        let mut index = index();
+        index.ingest(session(HOUR, "s1", "/work/before"));
+        index.ingest(ParsedEvent::Usage(usage(HOUR, "a", None, 100)));
+        index.ingest(session(HOUR + 120, "s1", "/work/after"));
+        index.ingest(ParsedEvent::Usage(usage(HOUR + 180, "b", None, 300)));
+
+        assert_eq!(
+            labels(&index),
+            vec![
+                (Some("/work/after".to_string()), 300),
+                (Some("/work/before".to_string()), 100),
+            ]
+        );
+    }
+
+    #[test]
+    fn an_older_session_record_does_not_overwrite_a_newer_mapping() {
+        let mut index = index();
+        assert!(index.ingest(session(HOUR + 120, "s1", "/work/current")));
+        assert!(!index.ingest(session(HOUR, "s1", "/work/stale")));
+        index.ingest(ParsedEvent::Usage(usage(HOUR + 180, "a", None, 100)));
+
+        assert_eq!(labels(&index), vec![(Some("/work/current".to_string()), 100)]);
+    }
+
+    #[test]
+    fn re_reading_the_same_session_record_reports_no_change() {
+        let mut index = index();
+        assert!(index.ingest(session(HOUR, "s1", "/work/one")));
+        assert!(!index.ingest(session(HOUR, "s1", "/work/one")));
+    }
+
+    #[test]
+    fn pruning_trims_the_project_breakdown_with_the_series() {
+        let mut index = EventIndex::new(ChronoDuration::hours(2));
+        index.ingest(ParsedEvent::Usage(usage(HOUR, "old", Some("/work/one"), 100)));
+        index.ingest(ParsedEvent::Usage(usage(
+            HOUR + 4 * 3600,
+            "new",
+            Some("/work/one"),
+            100,
+        )));
+
+        index.prune(ts(HOUR + 4 * 3600));
+
+        let points = index.projects().points(ts(HOUR), ts(HOUR + 8 * 3600));
+        assert_eq!(points.len(), 1);
+        assert_eq!(points[0].start, HOUR + 4 * 3600);
+    }
+
+    #[test]
+    fn the_session_mapping_survives_pruning_so_a_running_session_stays_attributed() {
+        // The record naming the directory sits at the head of a file the cursor is long past.
+        // Pruning it with the buckets would silently unattribute a session still writing.
+        let mut index = EventIndex::new(ChronoDuration::hours(2));
+        index.ingest(session(HOUR, "s1", "/work/long-running"));
+        index.prune(ts(HOUR + 4 * 3600));
+        index.ingest(ParsedEvent::Usage(usage(HOUR + 4 * 3600, "a", None, 100)));
+
+        let points = index.projects().points(ts(HOUR), ts(HOUR + 8 * 3600));
+        assert_eq!(points.len(), 1);
+        assert_eq!(points[0].label.as_deref(), Some("/work/long-running"));
+    }
+
+    #[test]
+    fn the_session_mapping_is_bounded() {
+        let mut index = index();
+        for i in 0..=MAX_SESSION_PROJECTS {
+            index.ingest(session(HOUR + i as i64, &format!("s{i}"), "/work/one"));
+        }
+        assert_eq!(index.session_projects.len(), MAX_SESSION_PROJECTS);
+        // The oldest went, not the newest — the newest sessions are the ones still writing.
+        assert!(!index.session_projects.contains_key("s0"));
+        assert!(index
+            .session_projects
+            .contains_key(&format!("s{MAX_SESSION_PROJECTS}")));
+    }
+
+    #[test]
+    fn the_project_breakdown_survives_a_checkpoint_round_trip() {
+        let mut index = index();
+        index.ingest(session(HOUR, "s1", "/work/one"));
+        index.ingest(ParsedEvent::Usage(usage(HOUR, "a", None, 100)));
+        index.ingest(ParsedEvent::Usage(usage(HOUR, "b", Some("/work/two"), 50)));
+
+        let encoded = serde_json::to_vec(&index.checkpoint()).expect("checkpoint serializes");
+        let decoded: EventIndexCheckpoint =
+            serde_json::from_slice(&encoded).expect("checkpoint deserializes");
+        let mut restored = EventIndex::restore(decoded).expect("checkpoint restores");
+
+        assert_eq!(
+            restored.projects().points(ts(HOUR), ts(HOUR + 3600)),
+            index.projects().points(ts(HOUR), ts(HOUR + 3600))
+        );
+
+        // And the mapping still attributes usage read after the restart.
+        restored.ingest(ParsedEvent::Usage(usage(HOUR + 600, "c", None, 70)));
+        let after = restored.projects().points(ts(HOUR), ts(HOUR + 3600));
+        let one = after
+            .iter()
+            .find(|point| point.label.as_deref() == Some("/work/one"))
+            .expect("the session mapping survived the restart");
+        assert_eq!(one.tokens.input, 170);
+    }
+
+    #[test]
+    fn checkpoint_restore_rejects_a_duplicate_session_project() {
+        let mut checkpoint = index().checkpoint();
+        let entry = SessionProject {
+            at: ts(HOUR),
+            project: "/work/one".into(),
+        };
+        checkpoint
+            .session_projects
+            .push(("duplicate".into(), entry.clone()));
+        checkpoint.session_projects.push(("duplicate".into(), entry));
+
+        let error = EventIndex::restore(checkpoint).expect_err("duplicate session project");
+        assert!(error
+            .to_string()
+            .contains("duplicate session project duplicate"));
+    }
+
+    #[test]
+    fn a_checkpoint_written_before_the_project_breakdown_existed_still_restores() {
+        let mut index = index();
+        index.ingest(session(HOUR, "s1", "/work/one"));
+        index.ingest(ParsedEvent::Usage(usage(HOUR, "a", None, 100)));
+
+        let mut value =
+            serde_json::to_value(index.checkpoint()).expect("checkpoint serializes to a value");
+        let object = value.as_object_mut().expect("checkpoint is an object");
+        object.remove("projects").expect("the field was written");
+        object
+            .remove("sessionProjects")
+            .expect("the field was written");
+
+        let decoded: EventIndexCheckpoint =
+            serde_json::from_value(value).expect("an older checkpoint still deserializes");
+        let restored = EventIndex::restore(decoded).expect("an older checkpoint still restores");
+
+        assert!(restored.projects().is_empty());
         assert_eq!(
             restored.rolling(ts(HOUR + 60), ChronoDuration::hours(1)).input,
             100

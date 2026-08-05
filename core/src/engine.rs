@@ -522,6 +522,7 @@ mod tests {
                 session: source.session_key(),
                 dedup: None,
                 model: None,
+                project: None,
                 tokens: TokenRollup {
                     input: 1,
                     ..Default::default()
@@ -752,6 +753,7 @@ mod tests {
             session: "old".into(),
             dedup: Some(crate::events::DedupKey::new("old", "request")),
             model: None,
+            project: None,
             tokens: TokenRollup {
                 input: 10,
                 ..Default::default()

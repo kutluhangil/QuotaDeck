@@ -15,6 +15,7 @@ read by this parser and none are checked in.
 | `shutdown_no_usage.jsonl` | Empty `modelMetrics` with zero credits (15 of 186 sessions here) |
 | `session_error_quota_exceeded.jsonl` | `errorCode: "quota_exceeded"`, status 402 — the monthly allowance was gone |
 | `session_error_context_limit.jsonl` | A `context_limit` error, which says nothing about quota and must report no limit |
+| `session_start.jsonl` | The record opening a session, carrying `context.cwd` — the only place Copilot names the directory the work was done in. The uuids, the paths, the repository name and the commit hashes are replaced; nothing else was changed |
 
 `synthetic_` files cover shapes the schema permits but this machine never produced.
 

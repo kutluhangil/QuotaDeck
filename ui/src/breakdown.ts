@@ -87,3 +87,58 @@ export function modelsFor(history: ProviderHistory[], id: string): BreakdownPoin
 export function modelsDroppedFor(history: ProviderHistory[], id: string): number {
   return history.find((entry) => entry.id === id)?.modelsDropped ?? 0;
 }
+
+/** One provider's project points, or an empty array when the backend sent none. */
+export function projectsFor(history: ProviderHistory[], id: string): BreakdownPoint[] {
+  return history.find((entry) => entry.id === id)?.projects ?? [];
+}
+
+/** How many records the backend refused for carrying a directory past its label cap. */
+export function projectsDroppedFor(history: ProviderHistory[], id: string): number {
+  return history.find((entry) => entry.id === id)?.projectsDropped ?? 0;
+}
+
+/**
+ * The shortest trailing path segments that still tell these directories apart.
+ *
+ * A project label is the absolute working directory the tool recorded, which is the only
+ * unambiguous form and far too long for a row in a card. Printing the last segment alone would
+ * collapse `…/Archives` and `…/Archives/app` into one visible name, so each label is shortened
+ * only as far as it stays unique among the labels being drawn beside it. The full path is still
+ * carried to the row, which shows it on hover.
+ *
+ * Separator-agnostic: a Windows path splits on `\` the same way a POSIX one splits on `/`.
+ */
+export function shortenPaths(labels: string[]): Map<string, string> {
+  const segments = new Map<string, string[]>();
+  for (const label of labels) {
+    segments.set(
+      label,
+      label.split(/[\\/]+/).filter((part) => part.length > 0),
+    );
+  }
+
+  const shortened = new Map<string, string>();
+  for (const label of labels) {
+    const parts = segments.get(label) ?? [];
+    if (parts.length === 0) {
+      // A label with nothing to shorten — the filesystem root, or an empty string.
+      shortened.set(label, label);
+      continue;
+    }
+
+    let depth = 1;
+    while (depth < parts.length) {
+      const candidate = parts.slice(-depth).join("/");
+      const collides = labels.some((other) => {
+        if (other === label) return false;
+        const otherParts = segments.get(other) ?? [];
+        return otherParts.slice(-depth).join("/") === candidate;
+      });
+      if (!collides) break;
+      depth += 1;
+    }
+    shortened.set(label, parts.slice(-depth).join("/"));
+  }
+  return shortened;
+}

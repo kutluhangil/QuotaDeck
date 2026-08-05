@@ -5,7 +5,14 @@ import { ConfidenceBadge } from "./components/ConfidenceBadge";
 import { EmptyState } from "./components/EmptyState";
 import { Heatmap } from "./components/Heatmap";
 import { WindowRow } from "./components/WindowRow";
-import { foldBreakdown, modelsDroppedFor, modelsFor } from "./breakdown";
+import {
+  foldBreakdown,
+  modelsDroppedFor,
+  modelsFor,
+  projectsDroppedFor,
+  projectsFor,
+  shortenPaths,
+} from "./breakdown";
 import {
   formatCost,
   formatDuration,
@@ -108,6 +115,13 @@ function ProviderPanel({
   const cells = dailyCells(hours, HEATMAP_DAYS, nowSeconds);
   const models = foldBreakdown(modelsFor(history, snapshot.id), range, nowSeconds);
   const modelsDropped = modelsDroppedFor(history, snapshot.id);
+  const projects = foldBreakdown(projectsFor(history, snapshot.id), range, nowSeconds);
+  const projectsDropped = projectsDroppedFor(history, snapshot.id);
+  // Shortened against the rows actually on screen, so two directories sharing a last segment
+  // never draw as one project.
+  const projectNames = shortenPaths(
+    projects.map((row) => row.label).filter((label): label is string => label !== null),
+  );
 
   const name = strings.provider[snapshot.id];
   const headline = worstWindow(snapshot.windows);
@@ -195,6 +209,22 @@ function ProviderPanel({
           rows={models}
           dropped={modelsDropped}
           label={strings.breakdown.listLabel(name)}
+          unreported={strings.breakdown.unreported}
+          droppedNote={strings.breakdown.dropped}
+        />
+      </section>
+
+      {/* The same spend, cut the other way. "Which model" says what it cost; "which directory"
+          says what it was for, and that is the cut a user acts on. */}
+      <section className="board__breakdown">
+        <h3 className="type-caption board__total-label">{strings.breakdown.projects}</h3>
+        <BreakdownList
+          rows={projects}
+          dropped={projectsDropped}
+          label={strings.breakdown.projectListLabel(name)}
+          unreported={strings.breakdown.unattributed}
+          droppedNote={strings.breakdown.droppedProjects}
+          display={(label) => projectNames.get(label) ?? label}
         />
       </section>
 

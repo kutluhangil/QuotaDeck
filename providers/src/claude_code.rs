@@ -136,6 +136,12 @@ struct Record {
     /// be read here.
     #[serde(default, rename = "sessionId")]
     session_id: Option<String>,
+    /// The directory the session was started in, written on every row — 9655 of 9655 usage
+    /// rows on this machine carried it. Read rather than decoded out of the `projects/`
+    /// directory name, which encodes `/` and `.` as `-` and cannot be reversed: a real
+    /// `goit-js-hw-05` and a real path separator are the same character there.
+    #[serde(default)]
+    cwd: Option<String>,
     #[serde(default)]
     message: Option<Message>,
     #[serde(default)]
@@ -399,6 +405,9 @@ fn push_usage(source: &LineSource<'_>, record: &Record, out: &mut Vec<ParsedEven
             _ => None,
         },
         model: message.model.clone(),
+        // Verbatim. A row that carries none stays unattributed rather than being labelled
+        // from the encoded directory name, which is not reversible.
+        project: record.cwd.clone(),
         tokens,
         requests: 0.0,
         cost,
@@ -631,6 +640,30 @@ mod tests {
     }
 
     #[test]
+    fn a_usage_row_is_attributed_to_the_directory_it_ran_in() {
+        // Read from the row, not decoded out of the `projects/-work-project` directory name:
+        // that encoding maps `/` and `.` onto the same `-` a real directory name may contain,
+        // so reversing it would invent a project.
+        let usage = only_usage(&parse_fixture("assistant_usage.jsonl"));
+        assert_eq!(usage.project.as_deref(), Some("/work/project"));
+    }
+
+    #[test]
+    fn a_row_that_names_no_directory_is_left_unattributed() {
+        let usage = only_usage(&parse_fixture("synthetic_usage_without_cwd.jsonl"));
+        assert_eq!(usage.project, None);
+        assert!(usage.tokens.total() > 0, "the tokens still count");
+    }
+
+    #[test]
+    fn a_subagent_row_is_attributed_to_the_same_directory_as_its_parent() {
+        // Subagent spend belongs to the project that spawned it, and the transcript says so
+        // itself rather than the attribution being inferred from the nested path.
+        let usage = only_usage(&parse_fixture("subagent_usage.jsonl"));
+        assert_eq!(usage.project.as_deref(), Some("/work/project"));
+    }
+
+    #[test]
     fn an_api_error_row_contributes_nothing() {
         // Written with model "<synthetic>" and every counter zero.
         assert!(parse_fixture("synthetic_error_row.jsonl").is_empty());
@@ -822,6 +855,7 @@ mod tests {
                 session: "s".into(),
                 dedup: None,
                 model: Some("claude-opus-5".into()),
+                project: None,
                 tokens: TokenRollup {
                     output: 10_000,
                     ..Default::default()
@@ -876,6 +910,7 @@ mod tests {
                 session: "s".into(),
                 dedup: None,
                 model: Some("claude-opus-5".into()),
+                project: None,
                 tokens: TokenRollup {
                     output: 100_000,
                     ..Default::default()
@@ -933,6 +968,7 @@ mod tests {
             session: "s".into(),
             dedup: None,
             model: Some("claude-opus-5".into()),
+            project: None,
             tokens: TokenRollup {
                 output: 1_000,
                 ..Default::default()
@@ -964,6 +1000,7 @@ mod tests {
             session: "s".into(),
             dedup: None,
             model: Some("claude-opus-5".into()),
+            project: None,
             tokens: TokenRollup {
                 output: 100_000,
                 ..Default::default()

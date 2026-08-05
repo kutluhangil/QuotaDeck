@@ -152,6 +152,13 @@ export interface ProviderHistory {
    * breakdown holds. Shown outright rather than folded into an "other" row.
    */
   modelsDropped: number;
+  /**
+   * The same hours split by the directory the work was done in, as the tool itself recorded
+   * it. `null` is usage no tool named a directory for, never a guess from a file path.
+   */
+  projects: BreakdownPoint[];
+  /** Records refused for carrying more distinct directories than the breakdown holds. */
+  projectsDropped: number;
 }
 
 /** A ceiling one tier is assumed to allow over one window, in equivalent API dollars. */

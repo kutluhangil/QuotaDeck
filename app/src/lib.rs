@@ -1008,6 +1008,8 @@ fn publish(
                     ),
                     models: engine.index().models().points(history_from, now),
                     models_dropped: engine.index().models().labels_dropped(),
+                    projects: engine.index().projects().points(history_from, now),
+                    projects_dropped: engine.index().projects().labels_dropped(),
                 });
                 if report.parse_errors > 0 {
                     eprintln!(

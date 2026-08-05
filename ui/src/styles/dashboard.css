@@ -238,6 +238,19 @@
   }
 }
 
+/*
+ * A directory label is a path, and the honest form of a path is long. The first column is
+ * `auto`, so an unbounded label would eat the bar it is supposed to be read against. What is
+ * drawn is clipped; the whole value stays in the row's `title` and in the name the meter
+ * announces, so it is folded rather than lost. Wide enough that no model id is clipped.
+ */
+.breakdown .row__label {
+  display: block;
+  max-inline-size: 22ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* A model the tool never named is a statement about the log, not a name. Set apart from the
    rows that carry one, so it is not read as a model called "not reported". */
 .breakdown .row__label[data-unreported="true"] {

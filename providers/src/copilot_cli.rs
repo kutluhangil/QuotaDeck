@@ -45,7 +45,7 @@ use std::path::PathBuf;
 use chrono::{DateTime, Datelike, Duration, NaiveDate, TimeZone, Utc};
 use quotadeck_core::error::{Error, Result};
 use quotadeck_core::events::{
-    Accounting, DedupKey, EventIndex, LimitEvent, ParsedEvent, UsageEvent,
+    Accounting, DedupKey, EventIndex, LimitEvent, ParsedEvent, SessionEvent, UsageEvent,
 };
 use quotadeck_core::paths;
 use quotadeck_core::plan;
@@ -64,6 +64,9 @@ const LIFECYCLE_MARKER: &str = "\"session.";
 
 const SHUTDOWN_TYPE: &str = "session.shutdown";
 const ERROR_TYPE: &str = "session.error";
+/// Opens the file and names the directory the session runs in. The shutdown record that
+/// carries the usage does not repeat it.
+const START_TYPE: &str = "session.start";
 
 /// The error code Copilot writes when the monthly allowance is gone. Distinct from its
 /// `query` and `context_limit` errors, which say nothing about quota.
@@ -145,6 +148,17 @@ struct Data {
     /// `session.error` only.
     #[serde(default)]
     error_code: Option<String>,
+    /// `session.start` only.
+    #[serde(default)]
+    context: Option<Context>,
+}
+
+/// Where the session ran. Only `cwd` is read; the record also carries the git remote and the
+/// commit the session started on, and neither is any of this app's business.
+#[derive(Deserialize)]
+struct Context {
+    #[serde(default)]
+    cwd: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -249,6 +263,7 @@ impl Provider for CopilotCli {
         match record.kind.as_deref() {
             Some(SHUTDOWN_TYPE) => push_usage(source, &record, data, at, out),
             Some(ERROR_TYPE) => push_exhaustion(data, at, out),
+            Some(START_TYPE) => push_session(source, data, at, out),
             _ => {}
         }
         Ok(())
@@ -313,6 +328,26 @@ fn session_key(source: &LineSource<'_>) -> String {
         .unwrap_or_else(|| source.session_key())
 }
 
+/// The directory this session runs in, for the shutdown record that will arrive later.
+///
+/// A session with no `context.cwd` produces nothing rather than an invented label; its spend
+/// is then reported as unattributed, which is the truth about what the tool wrote.
+fn push_session(
+    source: &LineSource<'_>,
+    data: &Data,
+    at: DateTime<Utc>,
+    out: &mut Vec<ParsedEvent>,
+) {
+    let Some(cwd) = data.context.as_ref().and_then(|context| context.cwd.clone()) else {
+        return;
+    };
+    out.push(ParsedEvent::Session(SessionEvent {
+        at,
+        session: session_key(source),
+        project: cwd,
+    }));
+}
+
 /// One usage event per model in the shutdown record.
 ///
 /// The whole session lands at the shutdown instant because that is the only time Copilot
@@ -344,6 +379,7 @@ fn push_usage(
                 .as_ref()
                 .map(|id| DedupKey::new(format!("{session}:{id}"), model.clone())),
             model: Some(model.clone()),
+            project: None,
             tokens,
             requests,
             // Metered by GitHub at a published conversion, so this is the vendor's own figure
@@ -366,6 +402,7 @@ fn push_usage(
                 session,
                 dedup: record.id.as_ref().map(|id| DedupKey::new(id, "premium")),
                 model: None,
+                project: None,
                 tokens: TokenRollup::default(),
                 requests: premium,
                 cost: Cost::Unpriced,
@@ -503,6 +540,46 @@ mod tests {
         text.parse().expect("a valid timestamp")
     }
 
+    fn only_session(events: &[ParsedEvent]) -> SessionEvent {
+        events
+            .iter()
+            .find_map(|e| match e {
+                ParsedEvent::Session(s) => Some(s.clone()),
+                _ => None,
+            })
+            .expect("expected a session event")
+    }
+
+    #[test]
+    fn the_session_opening_record_names_the_directory_the_session_ran_in() {
+        let session = only_session(&parse_fixture("session_start.jsonl"));
+        assert_eq!(session.project, "/work/project");
+        assert_eq!(
+            session.session, "013dbf3b-05fc-4e50-b279-c8e08d2624c4",
+            "the same session identity the shutdown record lands under"
+        );
+        assert_eq!(session.at, at("2026-07-09T00:10:16.163Z"));
+    }
+
+    #[test]
+    fn a_shutdown_record_names_no_directory_of_its_own() {
+        // Copilot writes the directory in the opening record and never repeats it, which is
+        // why the mapping is held by the index rather than by this parser.
+        let usage = only_usage(&parse_fixture("shutdown_gpt_mini.jsonl"));
+        assert_eq!(usage.project, None);
+    }
+
+    #[test]
+    fn a_whole_sessions_spend_is_attributed_to_the_directory_it_opened_in() {
+        let index = index_of(&["session_start.jsonl", "shutdown_gpt_mini.jsonl"]);
+        let now = at("2026-07-09T01:00:00Z");
+        let points = index
+            .projects()
+            .points(now - Duration::days(30), now + Duration::hours(1));
+        assert_eq!(points.len(), 1, "{points:#?}");
+        assert_eq!(points[0].label.as_deref(), Some("/work/project"));
+    }
+
     #[test]
     fn a_real_shutdown_yields_one_usage_row_per_model() {
         let events = parse_fixture("shutdown_gpt_mini.jsonl");
@@ -621,9 +698,19 @@ mod tests {
     }
 
     #[test]
-    fn records_that_are_not_shutdowns_or_quota_errors_are_ignored() {
+    fn records_that_are_not_shutdowns_quota_errors_or_session_openings_are_ignored() {
         for line in fixture("synthetic_noise.jsonl").lines() {
-            assert!(parse(line).is_empty(), "unexpected event from: {line}");
+            let events = parse(line);
+            // The file carries a `session.start`, which is read for its directory and nothing
+            // else. Every other record must produce nothing at all.
+            match events.first() {
+                None => {}
+                Some(ParsedEvent::Session(session)) => {
+                    assert_eq!(events.len(), 1, "{events:#?}");
+                    assert_eq!(session.project, "/tmp/example");
+                }
+                other => panic!("unexpected event from: {line}\n{other:#?}"),
+            }
         }
     }
 
