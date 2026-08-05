@@ -8,6 +8,7 @@
 
 pub mod atomic_write;
 pub mod breakdown;
+pub mod burst;
 pub mod cursor;
 pub mod discovery;
 pub mod engine;

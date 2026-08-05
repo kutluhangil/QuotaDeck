@@ -408,6 +408,10 @@ fn push_usage(source: &LineSource<'_>, record: &Record, out: &mut Vec<ParsedEven
         // Verbatim. A row that carries none stays unattributed rather than being labelled
         // from the encoded directory name, which is not reversible.
         project: record.cwd.clone(),
+        // Which of the three declared transcript shapes this file is. The row itself says
+        // nothing about it — `isSidechain` marks a forked conversation, not an agent — so the
+        // path the tool chose to write to is the evidence.
+        origin: source.agent_origin(),
         tokens,
         requests: 0.0,
         cost,
@@ -497,6 +501,7 @@ fn derived_window(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use quotadeck_core::events::AgentOrigin;
     use quotadeck_core::types::Cost;
     use std::path::Path;
 
@@ -653,6 +658,28 @@ mod tests {
         let usage = only_usage(&parse_fixture("synthetic_usage_without_cwd.jsonl"));
         assert_eq!(usage.project, None);
         assert!(usage.tokens.total() > 0, "the tokens still count");
+    }
+
+    #[test]
+    fn a_row_carries_the_thread_of_work_its_file_belongs_to() {
+        // The three declared globs, parsed through the paths a real machine writes.
+        let subagent = only_usage(&parse_in(
+            "/x/projects/-work-project/39f7b905/subagents/agent-a123.jsonl",
+            &fixture("subagent_usage.jsonl"),
+        ));
+        assert_eq!(subagent.origin, AgentOrigin::Subagent);
+
+        let workflow = only_usage(&parse_in(
+            "/x/projects/-work-project/dda1/subagents/workflows/wf_b49/agent-a57.jsonl",
+            &fixture("subagent_usage.jsonl"),
+        ));
+        assert_eq!(workflow.origin, AgentOrigin::Workflow);
+
+        // And the ordinary session file, which is what the other tests parse through.
+        assert_eq!(
+            only_usage(&parse_fixture("assistant_usage.jsonl")).origin,
+            AgentOrigin::Main
+        );
     }
 
     #[test]
@@ -856,6 +883,7 @@ mod tests {
                 dedup: None,
                 model: Some("claude-opus-5".into()),
                 project: None,
+                origin: AgentOrigin::Main,
                 tokens: TokenRollup {
                     output: 10_000,
                     ..Default::default()
@@ -911,6 +939,7 @@ mod tests {
                 dedup: None,
                 model: Some("claude-opus-5".into()),
                 project: None,
+                origin: AgentOrigin::Main,
                 tokens: TokenRollup {
                     output: 100_000,
                     ..Default::default()
@@ -969,6 +998,7 @@ mod tests {
             dedup: None,
             model: Some("claude-opus-5".into()),
             project: None,
+            origin: AgentOrigin::Main,
             tokens: TokenRollup {
                 output: 1_000,
                 ..Default::default()
@@ -1001,6 +1031,7 @@ mod tests {
             dedup: None,
             model: Some("claude-opus-5".into()),
             project: None,
+            origin: AgentOrigin::Main,
             tokens: TokenRollup {
                 output: 100_000,
                 ..Default::default()

@@ -92,6 +92,11 @@ pub struct ProviderHistory {
     pub projects: Vec<BreakdownPoint>,
     /// Records refused for carrying more distinct directories than the breakdown holds.
     pub projects_dropped: u64,
+    /// The same hours split by which thread of work produced them — the main conversation, a
+    /// subagent, or an agent inside a workflow run. Three labels at most.
+    pub agents: Vec<BreakdownPoint>,
+    /// Kept for symmetry with the other two dimensions; three fixed labels cannot overflow.
+    pub agents_dropped: u64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -470,6 +475,7 @@ mod tests {
             last_activity: None,
             unavailable: None,
             read_error: None,
+            burst: None,
         }
     }
 

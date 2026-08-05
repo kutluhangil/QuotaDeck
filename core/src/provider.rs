@@ -14,7 +14,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::error::Result;
-use crate::events::{EventIndex, ParsedEvent};
+use crate::events::{AgentOrigin, EventIndex, ParsedEvent};
 use crate::types::{PlanOption, ProviderId, ProviderSnapshot};
 
 /// User settings a provider needs in order to fold its snapshot.
@@ -52,6 +52,37 @@ pub struct LineSource<'a> {
 impl<'a> LineSource<'a> {
     pub fn new(path: &'a Path) -> Self {
         LineSource { path }
+    }
+
+    /// Which of a tool's transcript shapes this file is, read from the path alone.
+    ///
+    /// Matches the three shapes Claude Code declares in [`Provider::watch_globs`]:
+    /// `<project>/<session>.jsonl`, `<project>/<session>/subagents/*.jsonl` and
+    /// `<project>/<session>/subagents/workflows/<run>/*.jsonl`. Recognised by the directory
+    /// names rather than by depth below a root, so a provider that nests them one level deeper
+    /// is still classified correctly and no root has to be threaded down here.
+    ///
+    /// A tool that writes no such directories reports [`AgentOrigin::Main`] for every file,
+    /// which is the truth about what it wrote.
+    pub fn agent_origin(&self) -> AgentOrigin {
+        let mut seen_subagents = false;
+        for component in self.path.components() {
+            let std::path::Component::Normal(name) = component else {
+                continue;
+            };
+            if name == "subagents" {
+                seen_subagents = true;
+            } else if seen_subagents && name == "workflows" {
+                // A workflow run lives below the subagents directory, so the inner shape is
+                // checked before the outer one can claim it.
+                return AgentOrigin::Workflow;
+            }
+        }
+        if seen_subagents {
+            AgentOrigin::Subagent
+        } else {
+            AgentOrigin::Main
+        }
     }
 
     /// Default session identity: the file name. Providers that carry an explicit session id
@@ -166,6 +197,9 @@ pub fn snapshot_with_windows(
         last_activity: index.last_activity(),
         unavailable: None,
         read_error: None,
+        // Read from the agent dimension, so a provider that writes no separate agent
+        // transcripts reports nothing here rather than a burst built from its main thread.
+        burst: crate::burst::detect(index.agents(), now),
     }
 }
 
@@ -196,6 +230,45 @@ mod tests {
         );
     }
 
+    #[test]
+    fn the_three_transcript_shapes_are_told_apart_by_their_own_path() {
+        let cases = [
+            (
+                "/x/projects/-work-project/6333905-27b5.jsonl",
+                AgentOrigin::Main,
+            ),
+            (
+                "/x/projects/-work-project/39f7b905/subagents/agent-a123.jsonl",
+                AgentOrigin::Subagent,
+            ),
+            (
+                "/x/projects/-work-project/dda1a669/subagents/workflows/wf_b49e/agent-a572.jsonl",
+                AgentOrigin::Workflow,
+            ),
+            // Nothing about the other tools' layouts looks like an agent transcript.
+            ("/x/sessions/2026/07/25/rollout-019f.jsonl", AgentOrigin::Main),
+            (
+                "/x/session-state/013dbf3b/events.jsonl",
+                AgentOrigin::Main,
+            ),
+        ];
+        for (path, expected) in cases {
+            let path = PathBuf::from(path);
+            assert_eq!(LineSource::new(&path).agent_origin(), expected, "{path:?}");
+        }
+    }
+
+    #[test]
+    fn a_workflow_transcript_is_not_reported_as_a_plain_subagent() {
+        // Both shapes carry a `subagents` directory, so the inner one has to win or every
+        // workflow agent would be counted as an ordinary subagent.
+        let path =
+            PathBuf::from("/x/projects/-p/s/subagents/workflows/wf_1/agent-a.jsonl");
+        assert_eq!(LineSource::new(&path).agent_origin(), AgentOrigin::Workflow);
+        assert!(LineSource::new(&path).agent_origin().is_agent());
+        assert!(!AgentOrigin::Main.is_agent());
+    }
+
     fn index_with_usage_at(now: DateTime<Utc>, ages: &[chrono::Duration]) -> EventIndex {
         let mut index = EventIndex::new(chrono::Duration::days(32));
         for (i, age) in ages.iter().enumerate() {
@@ -205,6 +278,7 @@ mod tests {
                 dedup: None,
                 model: None,
                 project: None,
+                origin: AgentOrigin::Main,
                 tokens: TokenRollup {
                     input: 10,
                     ..Default::default()

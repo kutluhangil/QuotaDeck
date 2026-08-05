@@ -478,7 +478,7 @@ fn read_file(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::events::{Accounting, UsageEvent};
+    use crate::events::{Accounting, AgentOrigin, UsageEvent};
     use crate::provider::default_snapshot;
     use crate::types::{ProviderId, TokenRollup};
     use std::io::Write;
@@ -523,6 +523,7 @@ mod tests {
                 dedup: None,
                 model: None,
                 project: None,
+                origin: AgentOrigin::Main,
                 tokens: TokenRollup {
                     input: 1,
                     ..Default::default()
@@ -754,6 +755,7 @@ mod tests {
             dedup: Some(crate::events::DedupKey::new("old", "request")),
             model: None,
             project: None,
+            origin: AgentOrigin::Main,
             tokens: TokenRollup {
                 input: 10,
                 ..Default::default()

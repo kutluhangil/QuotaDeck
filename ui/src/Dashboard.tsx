@@ -6,6 +6,8 @@ import { EmptyState } from "./components/EmptyState";
 import { Heatmap } from "./components/Heatmap";
 import { WindowRow } from "./components/WindowRow";
 import {
+  agentsDroppedFor,
+  agentsFor,
   foldBreakdown,
   modelsDroppedFor,
   modelsFor,
@@ -34,6 +36,7 @@ import {
   type Range,
 } from "./history";
 import { identityHue } from "./identity";
+import type { Catalogue } from "./i18n";
 import { useDeck, useDeckState, useHistory, useLocale, useStrings } from "./store";
 import { paceFor, sortedWindows, worstWindow, type ProviderSnapshot } from "./types";
 
@@ -115,6 +118,8 @@ function ProviderPanel({
   const cells = dailyCells(hours, HEATMAP_DAYS, nowSeconds);
   const models = foldBreakdown(modelsFor(history, snapshot.id), range, nowSeconds);
   const modelsDropped = modelsDroppedFor(history, snapshot.id);
+  const agents = foldBreakdown(agentsFor(history, snapshot.id), range, nowSeconds);
+  const agentsDropped = agentsDroppedFor(history, snapshot.id);
   const projects = foldBreakdown(projectsFor(history, snapshot.id), range, nowSeconds);
   const projectsDropped = projectsDroppedFor(history, snapshot.id);
   // Shortened against the rows actually on screen, so two directories sharing a last segment
@@ -228,9 +233,34 @@ function ProviderPanel({
         />
       </section>
 
+      {/* Not "what for" but "who by". The one cut that separates spend somebody typed from
+          spend that ran on its own, which is the difference this app was built to show. */}
+      <section className="board__breakdown">
+        <h3 className="type-caption board__total-label">{strings.breakdown.agents}</h3>
+        <BreakdownList
+          rows={agents}
+          dropped={agentsDropped}
+          label={strings.breakdown.agentListLabel(name)}
+          unreported={strings.breakdown.unattributed}
+          droppedNote={strings.breakdown.droppedAgents}
+          display={(label) => originName(label, strings)}
+        />
+      </section>
+
       <Heatmap cells={cells} />
     </article>
   );
+}
+
+/**
+ * The catalogue's name for an origin key.
+ *
+ * A key the backend added and this build does not know is shown verbatim rather than dropped
+ * or renamed — it is still a real label, and inventing a translation for it would be worse.
+ */
+function originName(label: string, strings: Catalogue): string {
+  const names: Record<string, string> = strings.breakdown.origin;
+  return names[label] ?? label;
 }
 
 export function Dashboard() {

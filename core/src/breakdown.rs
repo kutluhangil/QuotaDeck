@@ -26,10 +26,13 @@ use crate::types::{Cost, CostRange, TokenRollup};
 
 /// Distinct labels one dimension will hold before it starts refusing new ones.
 ///
-/// A real machine runs a handful of models and a few dozen projects. The cap is here for the
-/// malformed and the adversarial: a provider that wrote a fresh identifier per record would
-/// otherwise grow this map without bound for as long as the retention window is open.
-pub const MAX_BREAKDOWN_LABELS: usize = 64;
+/// The cap is here for the malformed and the adversarial: a provider that wrote a fresh
+/// identifier per record would otherwise grow this map without bound for as long as the
+/// retention window is open. It is not meant to bind on real usage, and 64 nearly did — this
+/// machine's Claude Code history carries 57 distinct project directories over 32 days, so a
+/// handful of new projects would have started refusing real ones. Doubled once the project
+/// dimension landed and the real shape was measured.
+pub const MAX_BREAKDOWN_LABELS: usize = 128;
 
 /// One hour of usage carrying one label.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

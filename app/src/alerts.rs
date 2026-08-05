@@ -15,9 +15,10 @@
 //! usually closed and its webview may be suspended, so the notification has to be written on
 //! the side that raised it.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use chrono::{DateTime, Utc};
+use quotadeck_core::burst::Burst;
 use quotadeck_core::types::{Confidence, ProviderId, QuotaWindow};
 
 use crate::deck::{DeckState, Settings};
@@ -53,6 +54,11 @@ type Key = (ProviderId, String, u32);
 #[derive(Debug, Default)]
 pub struct Alerts {
     fired: HashMap<Key, Fired>,
+    /// Providers whose current burst has already been announced. A burst is one episode, not a
+    /// reading: the hour it is measured over slides forward on every tick, so without this the
+    /// same runaway workflow would notify once a minute for as long as it ran. Cleared the
+    /// moment the burst is gone, which makes the next one news again.
+    bursting: HashSet<ProviderId>,
     /// False until a complete pass has been folded, which is what makes the first one silent.
     primed: bool,
 }
@@ -105,6 +111,21 @@ impl Alerts {
                 );
                 if announce {
                     alerts.push(alert_for(snapshot.id, window, percent, language));
+                }
+            }
+
+            // Not a window and not on the level ramp: this is spend behaving oddly, not a
+            // quota running out. It is announced from here anyway, because the panel is
+            // usually closed and this is the one surface that reaches the user without it.
+            match &snapshot.burst {
+                Some(burst) if self.bursting.insert(snapshot.id) => {
+                    if announce {
+                        alerts.push(burst_alert(snapshot.id, burst, language));
+                    }
+                }
+                Some(_) => {}
+                None => {
+                    self.bursting.remove(&snapshot.id);
                 }
             }
         }
@@ -161,6 +182,14 @@ fn alert_for(
     }
 }
 
+fn burst_alert(provider: ProviderId, burst: &Burst, language: Language) -> Alert {
+    Alert {
+        provider,
+        title: provider_name(provider),
+        body: language.burst_body(burst.factor, &language.group_digits(burst.tokens)),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -207,10 +236,106 @@ mod tests {
                 last_activity: None,
                 unavailable: None,
                 read_error: None,
+                burst: None,
             }],
             updated_at: now(),
             scanning,
         }
+    }
+
+    fn burst_state(burst: Option<Burst>) -> DeckState {
+        let mut state = state(Vec::new(), false);
+        state.providers[0].burst = burst;
+        state
+    }
+
+    fn burst() -> Burst {
+        Burst {
+            since: now() - chrono::Duration::hours(1),
+            tokens: 4_200_000,
+            cost: CostRange {
+                usd: 18.0,
+                unpriced_tokens: 0,
+            },
+            factor: 8.0,
+        }
+    }
+
+    #[test]
+    fn a_running_burst_is_announced_once_not_once_per_tick() {
+        // The hour it is measured over slides forward every tick, so a burst that is still
+        // running is the same episode and not new news.
+        let settings = settings();
+        let mut alerts = Alerts::new();
+        alerts.evaluate(&burst_state(None), &settings, now());
+
+        assert_eq!(
+            alerts.evaluate(&burst_state(Some(burst())), &settings, now()).len(),
+            1
+        );
+        for _ in 0..5 {
+            assert!(alerts
+                .evaluate(&burst_state(Some(burst())), &settings, now())
+                .is_empty());
+        }
+    }
+
+    #[test]
+    fn a_burst_that_ended_is_news_again_when_it_returns() {
+        let settings = settings();
+        let mut alerts = Alerts::new();
+        alerts.evaluate(&burst_state(None), &settings, now());
+        alerts.evaluate(&burst_state(Some(burst())), &settings, now());
+
+        assert!(alerts
+            .evaluate(&burst_state(None), &settings, now())
+            .is_empty());
+        assert_eq!(
+            alerts.evaluate(&burst_state(Some(burst())), &settings, now()).len(),
+            1
+        );
+    }
+
+    #[test]
+    fn the_first_pass_is_silent_about_a_burst_too() {
+        // Launching into a machine that is mid-workflow must not fire on startup.
+        let settings = settings();
+        let mut alerts = Alerts::new();
+        assert!(alerts
+            .evaluate(&burst_state(Some(burst())), &settings, now())
+            .is_empty());
+    }
+
+    #[test]
+    fn a_burst_that_started_while_muted_is_not_replayed_afterwards() {
+        let mut settings = settings();
+        let mut alerts = Alerts::new();
+        alerts.evaluate(&burst_state(None), &settings, now());
+
+        settings.muted_until = Some(now() + chrono::Duration::hours(1));
+        assert!(alerts
+            .evaluate(&burst_state(Some(burst())), &settings, now())
+            .is_empty());
+
+        settings.muted_until = None;
+        assert!(
+            alerts
+                .evaluate(&burst_state(Some(burst())), &settings, now())
+                .is_empty(),
+            "the mute expiring must not turn into a burst of stale notifications"
+        );
+    }
+
+    #[test]
+    fn the_burst_notification_says_what_it_is_measured_against() {
+        let settings = settings();
+        let mut alerts = Alerts::new();
+        alerts.evaluate(&burst_state(None), &settings, now());
+        let raised = alerts.evaluate(&burst_state(Some(burst())), &settings, now());
+
+        let body = &raised[0].body;
+        assert!(body.contains("8×"), "{body}");
+        assert!(body.contains("4,200,000"), "{body}");
     }
 
     /// Past the silent first pass, so a test can assert on what an ordinary tick does.

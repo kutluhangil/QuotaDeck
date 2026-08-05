@@ -125,6 +125,8 @@ describe("modelsFor", () => {
       modelsDropped: 3,
       projects: [point(1, "/work/one", 100, 1), point(2, "/work/two", 50, 0.5)],
       projectsDropped: 7,
+      agents: [point(1, "subagent", 100, 1)],
+      agentsDropped: 0,
     },
   ];
 
@@ -151,6 +153,8 @@ describe("projectsFor", () => {
       modelsDropped: 0,
       projects: [point(1, "/work/one", 100, 1)],
       projectsDropped: 7,
+      agents: [point(1, "subagent", 100, 1)],
+      agentsDropped: 0,
     },
   ];
 

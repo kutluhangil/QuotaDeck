@@ -113,6 +113,23 @@ export interface ProviderSnapshot {
   unavailable: UnavailableReason | null;
   /** Persisted detail for a malformed completed provider record. */
   readError?: string | null;
+  /**
+   * An hour of agent spend far past this user's own usual hour, where one is running.
+   *
+   * Not a quota reading: it says spend is behaving oddly, not that a limit is close. It is
+   * therefore never drawn on the level ramp.
+   */
+  burst?: Burst | null;
+}
+
+/** What the backend's own burst rule found. Its threshold is this user's median agent hour. */
+export interface Burst {
+  /** Start of the hour the figures cover, Unix epoch seconds as an ISO instant. */
+  since: string;
+  tokens: number;
+  cost: CostRange;
+  /** How many times a usual agent hour this is. */
+  factor: number;
 }
 
 /** One hour of counted usage, as the dashboard pulls it. */
@@ -159,6 +176,13 @@ export interface ProviderHistory {
   projects: BreakdownPoint[];
   /** Records refused for carrying more distinct directories than the breakdown holds. */
   projectsDropped: number;
+  /**
+   * The same hours split by which thread of work produced them. Labels are the stable keys
+   * `main`, `subagent` and `workflow`; the catalogue names them.
+   */
+  agents: BreakdownPoint[];
+  /** Kept for symmetry; three fixed labels cannot overflow. */
+  agentsDropped: number;
 }
 
 /** A ceiling one tier is assumed to allow over one window, in equivalent API dollars. */

@@ -45,7 +45,8 @@ use std::path::PathBuf;
 use chrono::{DateTime, Datelike, Duration, NaiveDate, TimeZone, Utc};
 use quotadeck_core::error::{Error, Result};
 use quotadeck_core::events::{
-    Accounting, DedupKey, EventIndex, LimitEvent, ParsedEvent, SessionEvent, UsageEvent,
+    Accounting, AgentOrigin, DedupKey, EventIndex, LimitEvent, ParsedEvent, SessionEvent,
+    UsageEvent,
 };
 use quotadeck_core::paths;
 use quotadeck_core::plan;
@@ -380,6 +381,7 @@ fn push_usage(
                 .map(|id| DedupKey::new(format!("{session}:{id}"), model.clone())),
             model: Some(model.clone()),
             project: None,
+            origin: AgentOrigin::Main,
             tokens,
             requests,
             // Metered by GitHub at a published conversion, so this is the vendor's own figure
@@ -403,6 +405,7 @@ fn push_usage(
                 dedup: record.id.as_ref().map(|id| DedupKey::new(id, "premium")),
                 model: None,
                 project: None,
+                origin: AgentOrigin::Main,
                 tokens: TokenRollup::default(),
                 requests: premium,
                 cost: Cost::Unpriced,

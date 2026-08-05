@@ -98,6 +98,22 @@ export function projectsDroppedFor(history: ProviderHistory[], id: string): numb
   return history.find((entry) => entry.id === id)?.projectsDropped ?? 0;
 }
 
+/** One provider's agent points, or an empty array when the backend sent none. */
+export function agentsFor(history: ProviderHistory[], id: string): BreakdownPoint[] {
+  return history.find((entry) => entry.id === id)?.agents ?? [];
+}
+
+/**
+ * How many records the backend refused for carrying an origin past its label cap.
+ *
+ * Three fixed keys cannot overflow today. It is read from the payload anyway rather than
+ * assumed to be zero: a build that adds a fourth thread of work must not start dropping
+ * records silently because this surface decided in advance that it could not happen.
+ */
+export function agentsDroppedFor(history: ProviderHistory[], id: string): number {
+  return history.find((entry) => entry.id === id)?.agentsDropped ?? 0;
+}
+
 /**
  * The shortest trailing path segments that still tell these directories apart.
  *

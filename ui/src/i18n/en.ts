@@ -215,6 +215,29 @@ export const en = {
     /** Names the list itself for a screen reader, so it is not read as a second window list. */
     listLabel: (tool: string) => `What ${tool} spent this range on, by model`,
     projectListLabel: (tool: string) => `What ${tool} spent this range on, by directory`,
+    agents: "Who spent it",
+    /** The three transcript shapes Claude Code writes. Every other tool reports only the first. */
+    origin: {
+      main: "Main thread",
+      subagent: "Subagents",
+      workflow: "Workflow agents",
+    },
+    droppedAgents: (count: string) =>
+      `${count} records not attributed — too many distinct kinds of agent`,
+    agentListLabel: (tool: string) => `What ${tool} spent this range on, by thread of work`,
+  },
+
+  /**
+   * The burst row. Not a quota reading and never on the level ramp: it says spend is behaving
+   * oddly, not that a limit is close. The copy always names what the figure is measured
+   * against, because that comparison is the entire claim.
+   */
+  burst: {
+    label: "Agents",
+    /** `factor` arrives already formatted, e.g. `8`. */
+    meta: (factor: string) => `${factor}× a usual hour`,
+    detail: (tokens: string, factor: string) =>
+      `Agents spent ${tokens} tokens in the last hour, about ${factor}× a usual hour for you.`,
   },
 
   empty: {

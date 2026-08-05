@@ -87,6 +87,9 @@ pub struct UsageEvent {
     /// set it here; the ones that write it once per session leave it `None` and let
     /// [`SessionEvent`] supply it.
     pub project: Option<String>,
+    /// Which thread of work produced this record. Providers that do not separate agent
+    /// transcripts leave it at [`AgentOrigin::Main`].
+    pub origin: AgentOrigin,
     pub tokens: TokenRollup,
     /// Provider-native billing units, where one exists (Copilot premium requests).
     pub requests: f64,
@@ -106,6 +109,44 @@ pub struct LimitEvent {
     pub window_minutes: u32,
     pub used_percent: f32,
     pub resets_at: Option<DateTime<Utc>>,
+}
+
+/// Which thread of work a record came from.
+///
+/// Claude Code writes a subagent's transcript to its own file, and a workflow agent's to
+/// another one below that. Those calls bill to the same subscription as the main thread and
+/// were already being counted — what was missing is that a folded record no longer said which
+/// of the three it came from, so spend nobody was watching could not be told from spend
+/// somebody typed.
+///
+/// Every other tool reports [`AgentOrigin::Main`]: neither Codex nor Copilot writes a separate
+/// transcript per agent, and claiming otherwise would invent a distinction they do not make.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum AgentOrigin {
+    /// The conversation a person is typing into.
+    #[default]
+    Main,
+    /// A subagent transcript — an agent the main thread dispatched.
+    Subagent,
+    /// An agent inside a workflow run, which the main thread dispatched only indirectly.
+    Workflow,
+}
+
+impl AgentOrigin {
+    /// Stable key, used as the breakdown label and never shown to the user untranslated.
+    pub fn key(self) -> &'static str {
+        match self {
+            AgentOrigin::Main => "main",
+            AgentOrigin::Subagent => "subagent",
+            AgentOrigin::Workflow => "workflow",
+        }
+    }
+
+    /// Whether this is work that ran without someone watching a prompt for it.
+    pub fn is_agent(self) -> bool {
+        !matches!(self, AgentOrigin::Main)
+    }
 }
 
 /// A session's working directory, as the tool wrote it.
@@ -149,6 +190,10 @@ pub struct EventIndex {
     projects: BreakdownSeries,
     /// Project per session, for the providers that write it once and never repeat it.
     session_projects: HashMap<String, SessionProject>,
+    /// The same usage split by which thread of work produced it. Three labels at most, so
+    /// unlike the other two dimensions this one cannot overflow — it exists to answer "how
+    /// much of this did anybody actually ask for", which is what the burst rule reads.
+    agents: BreakdownSeries,
     /// Newest observation per (limit_id, window_minutes).
     limits: BTreeMap<(String, u32), LimitEvent>,
     last_activity: Option<DateTime<Utc>>,
@@ -190,6 +235,9 @@ pub struct EventIndexCheckpoint {
     /// running session unattributed until the tool opened a new one.
     #[serde(default)]
     session_projects: Vec<(String, SessionProject)>,
+    /// Defaulted on read for the same reason as `models`.
+    #[serde(default)]
+    agents: BreakdownSeries,
     limits: Vec<LimitEvent>,
     last_activity: Option<DateTime<Utc>>,
     duplicates_skipped: u64,
@@ -206,6 +254,7 @@ impl EventIndex {
             models: BreakdownSeries::new(),
             projects: BreakdownSeries::new(),
             session_projects: HashMap::new(),
+            agents: BreakdownSeries::new(),
             limits: BTreeMap::new(),
             last_activity: None,
             retention,
@@ -327,6 +376,8 @@ impl EventIndex {
                     .map(|entry| entry.project.as_str())
             });
             self.projects.add(usage.at, project, &delta, usage.cost);
+            self.agents
+                .add(usage.at, Some(usage.origin.key()), &delta, usage.cost);
         }
 
         self.last_activity = Some(match self.last_activity {
@@ -344,6 +395,7 @@ impl EventIndex {
         self.series.trim_before(cutoff);
         self.models.trim_before(cutoff);
         self.projects.trim_before(cutoff);
+        self.agents.trim_before(cutoff);
         let retained = self.seen_by_time.split_off(&cutoff.timestamp());
         let expired = std::mem::replace(&mut self.seen_by_time, retained);
         for fingerprints in expired.into_values() {
@@ -404,6 +456,11 @@ impl EventIndex {
     /// Counted usage split by the directory the work was done in, folded to the hour.
     pub fn projects(&self) -> &BreakdownSeries {
         &self.projects
+    }
+
+    /// Counted usage split by which thread of work produced it, folded to the hour.
+    pub fn agents(&self) -> &BreakdownSeries {
+        &self.agents
     }
 
     pub fn last_activity(&self) -> Option<DateTime<Utc>> {
@@ -469,6 +526,7 @@ impl EventIndex {
             models: self.models.clone(),
             projects: self.projects.clone(),
             session_projects,
+            agents: self.agents.clone(),
             limits: self.limits.values().cloned().collect(),
             last_activity: self.last_activity,
             duplicates_skipped: self.duplicates_skipped,
@@ -550,6 +608,7 @@ impl EventIndex {
             models: checkpoint.models,
             projects: checkpoint.projects,
             session_projects,
+            agents: checkpoint.agents,
             limits,
             last_activity: checkpoint.last_activity,
             retention: ChronoDuration::seconds(checkpoint.retention_seconds),
@@ -600,6 +659,7 @@ mod tests {
             dedup: Some(DedupKey::new(id, "req")),
             model: Some("claude-opus-5".into()),
             project: None,
+            origin: AgentOrigin::Main,
             tokens: TokenRollup {
                 input,
                 ..Default::default()
@@ -662,6 +722,7 @@ mod tests {
                 dedup: None,
                 model: None,
                 project: None,
+                origin: AgentOrigin::Main,
                 tokens: TokenRollup {
                     input: total,
                     ..Default::default()
@@ -690,6 +751,7 @@ mod tests {
                 dedup: None,
                 model: None,
                 project: None,
+                origin: AgentOrigin::Main,
                 tokens: TokenRollup {
                     input: total,
                     ..Default::default()
@@ -718,6 +780,7 @@ mod tests {
                     dedup: None,
                     model: None,
                     project: None,
+                    origin: AgentOrigin::Main,
                     tokens: TokenRollup {
                         input: total,
                         ..Default::default()
@@ -746,6 +809,7 @@ mod tests {
                 dedup: None,
                 model: None,
                 project: None,
+                origin: AgentOrigin::Main,
                 tokens: TokenRollup {
                     input: total,
                     ..Default::default()
@@ -762,6 +826,7 @@ mod tests {
             dedup: None,
             model: None,
             project: None,
+            origin: AgentOrigin::Main,
             tokens: TokenRollup {
                 input: 350,
                 ..Default::default()
@@ -879,6 +944,7 @@ mod tests {
                 dedup: None,
                 model: None,
                 project: None,
+                origin: AgentOrigin::Main,
                 tokens: TokenRollup {
                     input: 100,
                     ..Default::default()
@@ -905,6 +971,7 @@ mod tests {
             dedup: None,
             model: None,
             project: None,
+            origin: AgentOrigin::Main,
             tokens: TokenRollup {
                 input: 100,
                 ..Default::default()
@@ -921,6 +988,7 @@ mod tests {
             dedup: None,
             model: None,
             project: None,
+            origin: AgentOrigin::Main,
             tokens: TokenRollup {
                 input: 110,
                 ..Default::default()
@@ -966,6 +1034,7 @@ mod tests {
                 dedup: None,
                 model: None,
                 project: None,
+                origin: AgentOrigin::Main,
                 tokens,
                 requests: 0.0,
                 cost: Cost::Unpriced,
@@ -991,6 +1060,7 @@ mod tests {
             dedup: None,
             model: None,
             project: None,
+            origin: AgentOrigin::Main,
             tokens: TokenRollup {
                 input: 100,
                 ..Default::default()
@@ -1011,6 +1081,7 @@ mod tests {
             dedup: None,
             model: None,
             project: None,
+            origin: AgentOrigin::Main,
             tokens: TokenRollup {
                 input: 130,
                 ..Default::default()
@@ -1094,6 +1165,7 @@ mod model_breakdown_tests {
             dedup: Some(DedupKey::new(id, "req")),
             model: model.map(str::to_owned),
             project: None,
+            origin: AgentOrigin::Main,
             tokens: TokenRollup {
                 input,
                 ..Default::default()
@@ -1284,6 +1356,148 @@ mod model_breakdown_tests {
 }
 
 #[cfg(test)]
+mod agent_breakdown_tests {
+    use super::*;
+    use chrono::TimeZone;
+
+    const HOUR: i64 = 1_785_715_200;
+
+    fn ts(secs: i64) -> DateTime<Utc> {
+        Utc.timestamp_opt(secs, 0)
+            .single()
+            .expect("valid timestamp")
+    }
+
+    fn usage(at: i64, id: &str, origin: AgentOrigin, input: u64) -> ParsedEvent {
+        ParsedEvent::Usage(UsageEvent {
+            at: ts(at),
+            session: "s1".into(),
+            dedup: Some(DedupKey::new(id, "req")),
+            model: Some("claude-opus-5".into()),
+            project: Some("/work/one".into()),
+            origin,
+            tokens: TokenRollup {
+                input,
+                ..Default::default()
+            },
+            requests: 0.0,
+            cost: Cost::Usd(0.01),
+            accounting: Accounting::Incremental,
+        })
+    }
+
+    fn labels(index: &EventIndex) -> Vec<(Option<String>, u64)> {
+        index
+            .agents()
+            .points(ts(HOUR), ts(HOUR + 3600))
+            .into_iter()
+            .map(|point| (point.label, point.tokens.input))
+            .collect()
+    }
+
+    #[test]
+    fn the_three_threads_of_work_are_counted_apart() {
+        let mut index = EventIndex::new(ChronoDuration::days(7));
+        index.ingest(usage(HOUR, "a", AgentOrigin::Main, 100));
+        index.ingest(usage(HOUR + 60, "b", AgentOrigin::Subagent, 300));
+        index.ingest(usage(HOUR + 120, "c", AgentOrigin::Workflow, 700));
+
+        assert_eq!(
+            labels(&index),
+            vec![
+                (Some("main".to_string()), 100),
+                (Some("subagent".to_string()), 300),
+                (Some("workflow".to_string()), 700),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_duplicate_record_does_not_reach_the_agent_breakdown() {
+        let mut index = EventIndex::new(ChronoDuration::days(7));
+        let record = usage(HOUR, "a", AgentOrigin::Subagent, 100);
+        assert!(index.ingest(record.clone()));
+        assert!(!index.ingest(record));
+
+        assert_eq!(labels(&index), vec![(Some("subagent".to_string()), 100)]);
+    }
+
+    #[test]
+    fn the_agent_totals_agree_with_the_rolling_series() {
+        let mut index = EventIndex::new(ChronoDuration::days(7));
+        for (i, origin) in [
+            AgentOrigin::Main,
+            AgentOrigin::Subagent,
+            AgentOrigin::Subagent,
+            AgentOrigin::Workflow,
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            index.ingest(usage(HOUR + i as i64 * 60, &format!("m{i}"), origin, 100));
+        }
+
+        let series_total = index.rolling(ts(HOUR + 3600), ChronoDuration::hours(2)).input;
+        let breakdown_total: u64 = labels(&index).iter().map(|(_, tokens)| tokens).sum();
+        assert_eq!(series_total, breakdown_total);
+        assert_eq!(series_total, 400);
+    }
+
+    #[test]
+    fn pruning_trims_the_agent_breakdown_with_the_series() {
+        let mut index = EventIndex::new(ChronoDuration::hours(2));
+        index.ingest(usage(HOUR, "old", AgentOrigin::Subagent, 100));
+        index.ingest(usage(HOUR + 4 * 3600, "new", AgentOrigin::Subagent, 100));
+
+        index.prune(ts(HOUR + 4 * 3600));
+
+        let points = index.agents().points(ts(HOUR), ts(HOUR + 8 * 3600));
+        assert_eq!(points.len(), 1);
+        assert_eq!(points[0].start, HOUR + 4 * 3600);
+    }
+
+    #[test]
+    fn the_agent_breakdown_survives_a_checkpoint_round_trip() {
+        let mut index = EventIndex::new(ChronoDuration::days(7));
+        index.ingest(usage(HOUR, "a", AgentOrigin::Workflow, 100));
+
+        let encoded = serde_json::to_vec(&index.checkpoint()).expect("checkpoint serializes");
+        let decoded: EventIndexCheckpoint =
+            serde_json::from_slice(&encoded).expect("checkpoint deserializes");
+        let restored = EventIndex::restore(decoded).expect("checkpoint restores");
+
+        assert_eq!(
+            restored.agents().points(ts(HOUR), ts(HOUR + 3600)),
+            index.agents().points(ts(HOUR), ts(HOUR + 3600))
+        );
+    }
+
+    #[test]
+    fn a_checkpoint_written_before_the_agent_breakdown_existed_still_restores() {
+        let mut index = EventIndex::new(ChronoDuration::days(7));
+        index.ingest(usage(HOUR, "a", AgentOrigin::Subagent, 100));
+
+        let mut value =
+            serde_json::to_value(index.checkpoint()).expect("checkpoint serializes to a value");
+        value
+            .as_object_mut()
+            .expect("checkpoint is an object")
+            .remove("agents")
+            .expect("the agents field was written");
+
+        let decoded: EventIndexCheckpoint =
+            serde_json::from_value(value).expect("an older checkpoint still deserializes");
+        let restored = EventIndex::restore(decoded).expect("an older checkpoint still restores");
+
+        assert!(restored.agents().is_empty());
+        assert_eq!(
+            restored.rolling(ts(HOUR + 60), ChronoDuration::hours(1)).input,
+            100
+        );
+    }
+}
+
+#[cfg(test)]
 mod project_breakdown_tests {
     use super::*;
     use chrono::TimeZone;
@@ -1307,6 +1521,7 @@ mod project_breakdown_tests {
             dedup: Some(DedupKey::new(id, "req")),
             model: Some("claude-opus-5".into()),
             project: project.map(str::to_owned),
+            origin: AgentOrigin::Main,
             tokens: TokenRollup {
                 input,
                 ..Default::default()

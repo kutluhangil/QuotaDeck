@@ -26,7 +26,8 @@ use std::path::PathBuf;
 use chrono::{DateTime, Utc};
 use quotadeck_core::error::{Error, Result};
 use quotadeck_core::events::{
-    Accounting, DedupKey, EventIndex, LimitEvent, ParsedEvent, SessionEvent, UsageEvent,
+    Accounting, AgentOrigin, DedupKey, EventIndex, LimitEvent, ParsedEvent, SessionEvent,
+    UsageEvent,
 };
 use quotadeck_core::paths;
 use quotadeck_core::provider::{default_snapshot, LineSource, Provider, ProviderConfig};
@@ -223,6 +224,7 @@ impl Provider for Codex {
                     )),
                     model: None,
                     project: None,
+                    origin: AgentOrigin::Main,
                     tokens,
                     requests: 0.0,
                     // A `token_count` record names no model, and the embedded price table

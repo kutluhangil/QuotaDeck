@@ -1010,6 +1010,8 @@ fn publish(
                     models_dropped: engine.index().models().labels_dropped(),
                     projects: engine.index().projects().points(history_from, now),
                     projects_dropped: engine.index().projects().labels_dropped(),
+                    agents: engine.index().agents().points(history_from, now),
+                    agents_dropped: engine.index().agents().labels_dropped(),
                 });
                 if report.parse_errors > 0 {
                     eprintln!(

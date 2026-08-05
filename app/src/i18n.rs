@@ -146,6 +146,41 @@ impl Language {
             Language::Tr => format!("{window} limiti %{percent:.0} doldu."),
         }
     }
+
+    /// The notification for an hour of agent spend far past this user's usual.
+    ///
+    /// Says what it is measured against, because the whole claim rests on that: "a lot" is not
+    /// a fact, "eight times your usual hour" is. The figure is the user's own median hour.
+    pub fn burst_body(self, factor: f32, tokens: &str) -> String {
+        match self {
+            Language::En => format!(
+                "Agents have spent {tokens} tokens in the last hour — about {factor:.0}× a usual hour. Check nothing is running unattended."
+            ),
+            Language::Tr => format!(
+                "Agent'lar son bir saatte {tokens} token harcadı — olağan bir saatin yaklaşık {factor:.0} katı. Başıboş çalışan bir şey var mı, bak."
+            ),
+        }
+    }
+
+    /// Thousands-separated token count for the notification body.
+    ///
+    /// The panel leaves this to `Intl`; nothing equivalent exists on this side, and a raw
+    /// nine-digit run is unreadable in a notification.
+    pub fn group_digits(self, value: u64) -> String {
+        let digits = value.to_string();
+        let separator = match self {
+            Language::En => ',',
+            Language::Tr => '.',
+        };
+        let mut out = String::with_capacity(digits.len() + digits.len() / 3);
+        for (i, ch) in digits.chars().enumerate() {
+            if i > 0 && (digits.len() - i) % 3 == 0 {
+                out.push(separator);
+            }
+            out.push(ch);
+        }
+        out
+    }
 }
 
 #[cfg(target_os = "macos")]

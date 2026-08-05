@@ -287,6 +287,14 @@ export function demoHistory(): ProviderHistory[] {
         ["/Volumes/Vault/Ledger/app", 0.11],
       ]),
       projectsDropped: 0,
+      // Claude Code is the one tool that writes a transcript per agent, so it is the only one
+      // whose sample carries more than the main thread.
+      agents: split(claude, [
+        ["main", 0.55],
+        ["subagent", 0.31],
+        ["workflow", 0.14],
+      ]),
+      agentsDropped: 0,
     },
     {
       id: "codex",
@@ -298,6 +306,8 @@ export function demoHistory(): ProviderHistory[] {
       // Codex does name the directory, in the record that opens a rollout file.
       projects: split(codex, [["/Volumes/Vault/QuotaDeck", 1]]),
       projectsDropped: 0,
+      agents: split(codex, [["main", 1]]),
+      agentsDropped: 0,
     },
     {
       id: "copilot-cli",
@@ -306,6 +316,8 @@ export function demoHistory(): ProviderHistory[] {
       modelsDropped: 0,
       projects: [],
       projectsDropped: 0,
+      agents: [],
+      agentsDropped: 0,
     },
   ];
 }

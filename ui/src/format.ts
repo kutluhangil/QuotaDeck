@@ -150,6 +150,20 @@ export function formatPercent(percent: number, locale: Locale): string {
 }
 
 /**
+ * A multiple of something, as in "8× a usual hour".
+ *
+ * Whole numbers above ten, one decimal below: the difference between 4.2× and 4.7× is worth
+ * seeing at the low end, and nobody needs a tenth of a multiple at forty.
+ */
+export function formatFactor(factor: number, locale: Locale): string {
+  const digits = factor >= 10 ? 0 : 1;
+  return numberFormat(locale, {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: digits,
+  }).format(factor);
+}
+
+/**
  * Equivalent API cost. Cents matter under a dollar and are noise above ten, so the precision
  * follows the magnitude rather than being fixed.
  *

@@ -4,6 +4,7 @@ import {
   formatClock,
   formatCost,
   formatDuration,
+  formatFactor,
   formatPercent,
   formatRelative,
   formatSpan,
@@ -22,6 +23,7 @@ import {
   sortedWindows,
   totalTokens,
   worstWindow,
+  type Burst,
   type Locale,
   type ProviderSnapshot,
   type QuotaWindow,
@@ -73,6 +75,27 @@ function TodayLine({ snapshot, now }: { snapshot: ProviderSnapshot; now: number 
   return <span>{last ? strings.card.lastActivity(last) : strings.card.neverUsed}</span>;
 }
 
+/**
+ * An hour of agent spend far past this user's usual, when the backend found one.
+ *
+ * Deliberately not a `WindowRow`: it carries no percentage, no bar and none of the level
+ * ramp's colours. Nothing here is close to a limit — what is unusual is the rate, and drawing
+ * that in the critical colour would teach the ramp a second meaning.
+ */
+function BurstRow({ burst }: { burst: Burst }) {
+  const strings = useStrings();
+  const locale = useLocale();
+  const factor = formatFactor(burst.factor, locale);
+  return (
+    <li className="card__burst" role="note">
+      <span className="type-caption card__burst-label">{strings.burst.label}</span>
+      <span className="type-caption card__burst-body">
+        {strings.burst.detail(formatTokens(burst.tokens, locale), factor)}
+      </span>
+    </li>
+  );
+}
+
 /** The countdown a row shows on the right: how long until this window lets go. */
 function resetMeta(window: QuotaWindow, now: number, strings: Catalogue): string {
   const seconds = secondsUntil(window.resetsAt, now);
@@ -106,6 +129,7 @@ export function ProviderCard({
    * worst bar below it, in the one form that survives a greyscale screenshot.
    */
   const level = percent === null ? null : levelFor(percent);
+  const burst = snapshot.burst ?? null;
   const paceClock = pace === null ? null : formatClock(pace.exhaustedAt, locale);
 
   return (
@@ -167,11 +191,18 @@ export function ProviderCard({
                 }
               />
             )}
+            {burst && <BurstRow burst={burst} />}
           </ul>
           {snapshot.series.length > 0 && headline && (
             <HorizonStrip window={headline} series={snapshot.series} now={now} />
           )}
         </>
+      ) : burst ? (
+        // No window to show, but something is still running up a bill. The one case where the
+        // burst is the whole card body rather than a row under the readings.
+        <ul className="card__rows" role="list" aria-label={strings.a11y.windows(name)}>
+          <BurstRow burst={burst} />
+        </ul>
       ) : needsSetup ? (
         <p className="type-body card__quiet">
           {strings.card.pickPlan}

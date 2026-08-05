@@ -270,6 +270,37 @@
   opacity: 0.7;
 }
 
+/*
+ * The burst row. It spans the whole four-column grid rather than sitting in it, because it has
+ * no percentage to align under the readings above — it is a sentence, not a measurement.
+ *
+ * No level ramp, by rule: nothing here says a quota is close to full. The mark is a rule down
+ * the leading edge in the same neutral ink the heat scale uses, so it reads as "look at this"
+ * without borrowing the vocabulary that means "you are nearly out".
+ */
+.card__burst {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--step-1) var(--step-2);
+  padding-inline-start: var(--step-2);
+  border-inline-start: 2px solid var(--heat-4);
+  color: var(--ink-secondary);
+}
+
+.card__burst-label {
+  color: var(--ink-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+
+.card__burst-body {
+  flex: 1 1 12ch;
+  min-inline-size: 0;
+}
+
 .card__foot {
   display: flex;
   justify-content: space-between;

@@ -453,6 +453,11 @@ pub struct ProviderSnapshot {
     /// the warning persists until that source file is replaced or removed.
     #[serde(default)]
     pub read_error: Option<String>,
+    /// An hour of agent spend that stands out against this user's own history, where one is
+    /// running. Not a quota reading and never drawn on the level ramp — see
+    /// [`crate::burst::detect`].
+    #[serde(default)]
+    pub burst: Option<crate::burst::Burst>,
 }
 
 impl ProviderSnapshot {
@@ -468,6 +473,7 @@ impl ProviderSnapshot {
             last_activity: None,
             unavailable: Some(reason),
             read_error: None,
+            burst: None,
         }
     }
 }

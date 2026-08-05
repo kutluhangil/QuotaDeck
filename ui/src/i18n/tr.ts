@@ -147,6 +147,21 @@ export const tr: Catalogue = {
     share: (label, percent) => `${label} — bu aralığın ${percent} kadarı`,
     listLabel: (tool) => `${tool} bu aralıkta neye harcadı, model bazında`,
     projectListLabel: (tool) => `${tool} bu aralıkta neye harcadı, dizin bazında`,
+    agents: "Kim harcadı",
+    origin: {
+      main: "Ana konuşma",
+      subagent: "Alt agent'lar",
+      workflow: "Workflow agent'ları",
+    },
+    droppedAgents: (count) => `${count} kayıt ilişkilendirilemedi — ayrı agent türü çok fazla`,
+    agentListLabel: (tool) => `${tool} bu aralıkta neye harcadı, iş türü bazında`,
+  },
+
+  burst: {
+    label: "Agent'lar",
+    meta: (factor) => `olağan saatin ${factor} katı`,
+    detail: (tokens, factor) =>
+      `Agent'lar son bir saatte ${tokens} token harcadı — senin olağan bir saatinin yaklaşık ${factor} katı.`,
   },
 
   empty: {

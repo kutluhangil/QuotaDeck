@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { formatCost, formatDuration, formatPercent, formatTokens } from "./format";
+import {
+  formatCost,
+  formatDuration,
+  formatFactor,
+  formatPercent,
+  formatTokens,
+} from "./format";
 import { en } from "./i18n/en";
 import { tr } from "./i18n/tr";
 
@@ -68,5 +74,20 @@ describe("formatDuration", () => {
   it("keeps the minute component padded so a countdown does not jitter", () => {
     expect(formatDuration(2 * 3_600 + 5 * 60, en)).toBe("2h 05m");
     expect(formatDuration(47 * 60, tr)).toBe("47dk");
+  });
+});
+
+describe("formatFactor", () => {
+  it("keeps a decimal where the difference is worth seeing", () => {
+    expect(formatFactor(4.2, "en")).toBe("4.2");
+    expect(formatFactor(4.2, "tr")).toBe("4,2");
+  });
+
+  it("drops it once the number is large enough for it to be noise", () => {
+    expect(formatFactor(41.7, "en")).toBe("42");
+  });
+
+  it("does not print a trailing zero on a whole multiple", () => {
+    expect(formatFactor(8, "en")).toBe("8");
   });
 });
