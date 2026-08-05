@@ -6,6 +6,7 @@
 
 pub mod alerts;
 pub mod deck;
+pub mod export;
 pub mod i18n;
 pub mod icon;
 pub mod sandbox;

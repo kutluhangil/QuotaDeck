@@ -165,3 +165,35 @@ Six per platform, all from the sample deck so no real usage or path is shown:
 6. A threshold notification
 
 No provider logos in any of them (§1).
+
+## 9. Exit codes
+
+`quotadeck-debug export` writes to stdout and reports the deck's worst reading through its exit
+status, so a shell can branch on the quota without parsing anything. The listing may promise
+this: it is a local read of files the user already has, and it adds no capability the sandbox
+entitlements do not already cover.
+
+| Code | Meaning |
+|---|---|
+| `0` | ok — every window was read and none is near its limit |
+| `10` | near the limit — at least one window at or past 90%, the same point `PaceRisk` calls at risk |
+| `11` | limit hit — at least one window reporting 100% or more |
+| `20` | indeterminate — nothing reported a percentage, or the first pass had not finished |
+| `1` | the command itself failed: an unreadable settings file, an unknown provider key, a scan error |
+
+`20` is deliberately not `0`. A machine with no supported tool installed, or one whose logs are
+not readable from a sandboxed process, has no reading to give — and a script that read that as
+"plenty left" would be wrong in exactly the case the user most needs to know about.
+
+Both writers take the same snapshot the panel renders:
+
+```
+quotadeck-debug export --json                  the whole deck and its retained history
+quotadeck-debug export --csv                   one row per hour, per dimension, per label
+quotadeck-debug export --csv --provider codex  one tool only
+```
+
+The CSV leaves the cost cell empty where nothing in the row carried a price, rather than writing
+`0` — a model released after this build has no published rate, and a zero in a spreadsheet reads
+as free. Its `unpricedTokens` column carries what that row spent instead. `labelsDropped` repeats
+the count of labels the breakdown refused, on every row of the dimension that refused them.

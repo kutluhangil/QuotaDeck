@@ -4,15 +4,19 @@
 //! verified against real logs from a terminal before any UI exists.
 
 use std::cmp::Ordering::Equal;
+use std::io::Write;
 use std::process::ExitCode;
 
 use chrono::{DateTime, Duration, Local, Utc};
-use quotadeck_app::icon;
+use quotadeck_app::deck::{DeckState, ProviderHistory, Settings};
+use quotadeck_app::{export, icon};
 use quotadeck_core::discovery::{access, RootAccess};
-use quotadeck_core::engine::ProviderEngine;
+use quotadeck_core::engine::{ProviderEngine, DEFAULT_RETENTION_DAYS};
 use quotadeck_core::horizon;
 use quotadeck_core::provider::ProviderConfig;
-use quotadeck_core::types::{Confidence, ProviderSnapshot, QuotaWindow, WindowKind};
+use quotadeck_core::types::{
+    Confidence, ProviderSnapshot, QuotaWindow, UnavailableReason, WindowKind,
+};
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -39,6 +43,7 @@ fn main() -> ExitCode {
                 ExitCode::FAILURE
             }
         },
+        Some("export") => export(&args[1..]),
         Some("tray") => match args.get(1) {
             Some(key) => tray_preview(key),
             None => {
@@ -60,8 +65,169 @@ fn main() -> ExitCode {
 
 fn usage() {
     eprintln!(
-        "usage:\n  quotadeck list                  detected providers on this machine\n  quotadeck paths                 resolved home, data dir and root access\n  quotadeck debug <key> [plan]    parse one provider and print what it found\n  quotadeck tray <key>            draw the menu bar item for that provider\n  quotadeck statusline            what connecting the Claude Code status line would change\n  quotadeck statusline install    write the shim into settings.json\n  quotadeck statusline revert     put settings.json back"
+        "usage:\n  quotadeck list                  detected providers on this machine\n  quotadeck paths                 resolved home, data dir and root access\n  quotadeck debug <key> [plan]    parse one provider and print what it found\n  quotadeck export [--json|--csv] [--provider <key>]\n                                  the deck to stdout; exits 0 ok, 10 near, 11 hit, 20 unknown\n  quotadeck tray <key>            draw the menu bar item for that provider\n  quotadeck statusline            what connecting the Claude Code status line would change\n  quotadeck statusline install    write the shim into settings.json\n  quotadeck statusline revert     put settings.json back"
     );
+}
+
+/// What `export` was asked for. JSON unless the caller said otherwise.
+#[derive(Clone, Copy, PartialEq)]
+enum Format {
+    Json,
+    Csv,
+}
+
+/// Read every provider this machine has and write the result to stdout.
+///
+/// The exit status is the deck's worst reading, so a shell can branch on the quota without
+/// parsing anything — see `docs/STORE.md` §9. Nothing is written to disk: the app's own data
+/// directory is the only path this process ever writes to, and an export is not part of it.
+fn export(args: &[String]) -> ExitCode {
+    let mut format: Option<Format> = None;
+    let mut only: Option<&str> = None;
+    let mut rest = args.iter();
+    while let Some(arg) = rest.next() {
+        let chosen = match arg.as_str() {
+            "--json" => Some(Format::Json),
+            "--csv" => Some(Format::Csv),
+            "--provider" => match rest.next() {
+                Some(key) => {
+                    only = Some(key);
+                    None
+                }
+                None => {
+                    eprintln!("--provider needs a key; run `quotadeck list` to see them");
+                    return ExitCode::FAILURE;
+                }
+            },
+            other => {
+                eprintln!("unknown export option: {other}");
+                usage();
+                return ExitCode::FAILURE;
+            }
+        };
+        if let Some(chosen) = chosen {
+            // Two formats is not a preference, it is a mistake worth reporting: whichever one
+            // won silently would land in somebody's pipeline.
+            if format.is_some_and(|earlier| earlier != chosen) {
+                eprintln!("--json and --csv cannot both be given");
+                return ExitCode::FAILURE;
+            }
+            format = Some(chosen);
+        }
+    }
+
+    let settings = match Settings::load() {
+        Ok(settings) => settings,
+        Err(e) => {
+            eprintln!("settings could not be read: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
+
+    let mut providers = Vec::new();
+    for provider in quotadeck_providers::all() {
+        if only.is_some_and(|key| key != provider.id().key()) {
+            continue;
+        }
+        providers.push(provider);
+    }
+    if providers.is_empty() {
+        match only {
+            Some(key) => eprintln!("unknown provider: {key}"),
+            None => eprintln!("no provider is compiled into this build"),
+        }
+        return ExitCode::FAILURE;
+    }
+
+    let now = Utc::now();
+    let history_from = now - Duration::days(DEFAULT_RETENTION_DAYS);
+    let mut snapshots = Vec::with_capacity(providers.len());
+    let mut history = Vec::with_capacity(providers.len());
+
+    for provider in providers {
+        let id = provider.id();
+        let mut engine = ProviderEngine::new(provider);
+        engine.set_config(settings.config_for(id));
+
+        match engine.access() {
+            RootAccess::Readable => {}
+            RootAccess::Missing => {
+                snapshots.push(ProviderSnapshot::unavailable(
+                    id,
+                    UnavailableReason::NotInstalled,
+                ));
+                continue;
+            }
+            RootAccess::Denied => {
+                snapshots.push(ProviderSnapshot::unavailable(
+                    id,
+                    UnavailableReason::PermissionDenied,
+                ));
+                continue;
+            }
+        }
+
+        // One unreadable tool does not take the others down with it, and it does not vanish
+        // from the export either: it is written out as unavailable, and it contributes no
+        // percentage, so the exit status falls back to indeterminate rather than to ok.
+        if let Err(e) = engine.refresh(None) {
+            eprintln!("{}: could not be read: {e}", id.key());
+            snapshots.push(ProviderSnapshot::unavailable(
+                id,
+                UnavailableReason::ReadError,
+            ));
+            continue;
+        }
+
+        history.push(ProviderHistory {
+            id,
+            hours: quotadeck_core::history::hours(engine.index().bucket_series(), history_from, now),
+            models: engine.index().models().points(history_from, now),
+            models_dropped: engine.index().models().labels_dropped(),
+            projects: engine.index().projects().points(history_from, now),
+            projects_dropped: engine.index().projects().labels_dropped(),
+            agents: engine.index().agents().points(history_from, now),
+            agents_dropped: engine.index().agents().labels_dropped(),
+        });
+        snapshots.push(engine.snapshot(now));
+    }
+
+    let state = DeckState {
+        providers: snapshots,
+        updated_at: now,
+        // Every file was read before anything was written, so this is a measurement rather
+        // than a lower bound.
+        scanning: false,
+    };
+
+    let written = match format.unwrap_or(Format::Json) {
+        Format::Json => export::to_json(&state, &history),
+        Format::Csv => export::to_csv(&history),
+    };
+    let text = match written {
+        Ok(text) => text,
+        Err(e) => {
+            eprintln!("the export could not be written: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
+
+    // `print!` panics on a broken pipe, and this command exists to be piped — `export --csv |
+    // head` would abort with a stack trace. A reader that stopped reading is its own decision,
+    // not a failure of the export, so the quota status is still what this reports.
+    let mut stdout = std::io::stdout().lock();
+    match stdout
+        .write_all(text.as_bytes())
+        .and_then(|()| stdout.flush())
+    {
+        Ok(()) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::BrokenPipe => {}
+        Err(e) => {
+            eprintln!("the export could not be written to stdout: {e}");
+            return ExitCode::FAILURE;
+        }
+    }
+    ExitCode::from(export::exit_code(&state))
 }
 
 /// Render the menu bar item to the terminal.
