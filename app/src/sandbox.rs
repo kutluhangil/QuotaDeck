@@ -19,12 +19,12 @@
 
 use std::path::{Path, PathBuf};
 
-use quotadeck_core::atomic_write::atomic_write;
 use quotadeck_core::error::{Error, Result};
 use quotadeck_core::paths;
 use serde::Serialize;
 
 /// Where the bookmark lives. Inside our own container, which needs no permission at all.
+#[cfg(target_os = "macos")]
 const BOOKMARK_FILE: &str = "home.bookmark";
 
 /// What the panel knows about the user's access, as the frontend renders it.
@@ -53,6 +53,7 @@ impl AccessState {
     }
 }
 
+#[cfg(target_os = "macos")]
 fn bookmark_path() -> Result<PathBuf> {
     paths::data_dir()
         .map(|dir| dir.join(BOOKMARK_FILE))
@@ -73,6 +74,7 @@ mod macos {
     use objc2_foundation::{
         NSData, NSString, NSURLBookmarkCreationOptions, NSURLBookmarkResolutionOptions, NSURL,
     };
+    use quotadeck_core::atomic_write::atomic_write;
 
     /// A live security-scoped grant.
     ///
@@ -309,11 +311,13 @@ pub fn sandboxed() -> bool {
     }
 }
 
+#[cfg(target_os = "macos")]
 fn same_directory(left: &Path, right: &Path) -> bool {
     let canonical = |path: &Path| path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
     canonical(left) == canonical(right)
 }
 
+#[cfg(target_os = "macos")]
 fn homes_differ(environment_home: Option<&Path>, real_home: Option<&Path>) -> bool {
     match (environment_home, real_home) {
         (Some(environment_home), Some(real_home)) => !same_directory(environment_home, real_home),
@@ -356,6 +360,7 @@ mod tests {
         assert_eq!(state.granted, !sandboxed());
     }
 
+    #[cfg(target_os = "macos")]
     #[test]
     fn only_a_rewritten_home_implies_a_runtime_sandbox() {
         assert!(!homes_differ(
@@ -369,6 +374,7 @@ mod tests {
         assert!(!homes_differ(None, Some(Path::new("/Users/me"))));
     }
 
+    #[cfg(target_os = "macos")]
     #[test]
     fn a_folder_picker_selection_must_be_the_home_itself() {
         assert!(same_directory(
@@ -381,6 +387,7 @@ mod tests {
         ));
     }
 
+    #[cfg(target_os = "macos")]
     #[test]
     fn the_bookmark_never_leaves_our_own_container() {
         let path = bookmark_path().expect("a bookmark path");

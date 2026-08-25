@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 /// Identity of a file independent of its path, so a rotated file is recognised as new.
 ///
 /// On Unix this is the device and inode pair. On Windows it is the volume serial number
-/// and file index, which are only populated for metadata read from an open handle.
+/// and file index read directly from the open handle.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FileIdentity {
     pub volume: u64,
@@ -32,15 +32,54 @@ impl FileIdentity {
 
     #[cfg(windows)]
     pub fn of_file(file: &File) -> std::io::Result<Self> {
-        use std::os::windows::fs::MetadataExt;
-        let metadata = file.metadata()?;
-        // Both are `None` for metadata not obtained from a handle; zero is then a safe
-        // fallback because rotation is still caught by the size check.
+        use std::mem::MaybeUninit;
+        use std::os::windows::io::AsRawHandle;
+
+        let mut information = MaybeUninit::<ByHandleFileInformation>::zeroed();
+        // SAFETY: `file.as_raw_handle()` is a live file handle, and `information` points to
+        // writable storage with the exact layout GetFileInformationByHandle requires.
+        let succeeded = unsafe {
+            get_file_information_by_handle(file.as_raw_handle(), information.as_mut_ptr())
+        };
+        if succeeded == 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+        // SAFETY: Windows initialized the whole structure because the call above succeeded.
+        let information = unsafe { information.assume_init() };
         Ok(FileIdentity {
-            volume: u64::from(metadata.volume_serial_number().unwrap_or(0)),
-            index: metadata.file_index().unwrap_or(0),
+            volume: u64::from(information.volume_serial_number),
+            index: (u64::from(information.file_index_high) << 32)
+                | u64::from(information.file_index_low),
         })
     }
+}
+
+#[cfg(windows)]
+#[repr(C)]
+struct ByHandleFileInformation {
+    file_attributes: u32,
+    creation_time_low: u32,
+    creation_time_high: u32,
+    last_access_time_low: u32,
+    last_access_time_high: u32,
+    last_write_time_low: u32,
+    last_write_time_high: u32,
+    volume_serial_number: u32,
+    file_size_high: u32,
+    file_size_low: u32,
+    number_of_links: u32,
+    file_index_high: u32,
+    file_index_low: u32,
+}
+
+#[cfg(windows)]
+#[link(name = "kernel32")]
+extern "system" {
+    #[link_name = "GetFileInformationByHandle"]
+    fn get_file_information_by_handle(
+        file: std::os::windows::io::RawHandle,
+        information: *mut ByHandleFileInformation,
+    ) -> i32;
 }
 
 /// Why a cursor was reset back to the start of the file.
