@@ -297,6 +297,9 @@ fn export(args: &[String]) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
+    if let Some(notice) = clamp_notice(&prepared) {
+        eprintln!("{notice}");
+    }
 
     // `print!` panics on a broken pipe, and this command exists to be piped — `export --csv |
     // head` would abort with a stack trace. A reader that stopped reading is its own decision,
@@ -314,6 +317,18 @@ fn export(args: &[String]) -> ExitCode {
         }
     }
     ExitCode::from(export::exit_code(&state))
+}
+
+fn clamp_notice(prepared: &export::PreparedExport) -> Option<String> {
+    prepared.clamped.then(|| {
+        format!(
+            "requested export history from {} was clamped to the retained range starting at {}; stdout contains the effective range [{} , {})",
+            prepared.requested_range.from.to_rfc3339(),
+            prepared.effective_range.from.to_rfc3339(),
+            prepared.effective_range.from.to_rfc3339(),
+            prepared.effective_range.to.to_rfc3339(),
+        )
+    })
 }
 
 /// Render the menu bar item to the terminal.
@@ -920,5 +935,41 @@ mod provider_policy_tests {
         );
         assert_eq!(request.range.from, now - Duration::days(90));
         assert_eq!(request.range.to, now);
+    }
+
+    #[test]
+    fn clamped_exports_explain_the_effective_range_on_stderr() {
+        let requested_from = DateTime::parse_from_rfc3339("2026-07-01T00:00:00Z")
+            .expect("requested from")
+            .with_timezone(&Utc);
+        let effective_from = DateTime::parse_from_rfc3339("2026-07-24T00:00:00Z")
+            .expect("effective from")
+            .with_timezone(&Utc);
+        let to = DateTime::parse_from_rfc3339("2026-08-25T00:00:00Z")
+            .expect("to")
+            .with_timezone(&Utc);
+        let prepared = export::PreparedExport {
+            text: String::new(),
+            mime_type: "text/csv;charset=utf-8",
+            suggested_filename: "usage.csv".into(),
+            rows: 0,
+            requested_range: export::HistoryRange {
+                from: requested_from,
+                to,
+            },
+            effective_range: export::HistoryRange {
+                from: effective_from,
+                to,
+            },
+            clamped: true,
+        };
+
+        let notice = clamp_notice(&prepared).expect("clamp is reported");
+        assert!(notice.contains("2026-07-01T00:00:00+00:00"), "{notice}");
+        assert!(notice.contains("2026-07-24T00:00:00+00:00"), "{notice}");
+        assert!(
+            notice.contains("stdout contains the effective range"),
+            "{notice}"
+        );
     }
 }

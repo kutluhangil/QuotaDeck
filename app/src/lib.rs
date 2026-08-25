@@ -926,8 +926,20 @@ fn apply_retention_change(
                 .map(|provider| (provider.id(), provider))
                 .collect();
         let mut next = Vec::with_capacity(engines.len());
-        for managed in engines.iter() {
+        for mut managed in std::mem::take(engines) {
             let provider_id = managed.provider().id();
+            if !settings.is_provider_enabled(provider_id) {
+                // A disabled provider is not read. Keep its complete checkpoint-backed engine
+                // intact and mark the rebuild for the first enabled pass; replacing it with an
+                // empty engine here would make a later retention decrease persist an empty
+                // checkpoint over the only recoverable history.
+                managed.retention_rebuild = Some(RetentionRebuild {
+                    from_days: effective.into(),
+                    to_days: requested.into(),
+                });
+                next.push(managed);
+                continue;
+            }
             let provider = replacements.remove(&provider_id).ok_or_else(|| {
                 Error::Invalid(format!(
                     "compiled provider registry has no replacement for retention change provider {:?}",
@@ -936,12 +948,10 @@ fn apply_retention_change(
             })?;
             next.push(ManagedEngine {
                 engine: ProviderEngine::with_retention(provider, requested.duration()),
-                retention_rebuild: settings.is_provider_enabled(provider_id).then_some(
-                    RetentionRebuild {
-                        from_days: effective.into(),
-                        to_days: requested.into(),
-                    },
-                ),
+                retention_rebuild: Some(RetentionRebuild {
+                    from_days: effective.into(),
+                    to_days: requested.into(),
+                }),
             });
         }
         *engines = next;
