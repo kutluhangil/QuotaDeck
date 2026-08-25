@@ -242,7 +242,13 @@ export interface DeckState {
   refreshError: string | null;
 }
 
-export type HealthState = "healthy" | "stale" | "error" | "disabled" | "unavailable";
+export type HealthState =
+  | "healthy"
+  | "rebuilding"
+  | "stale"
+  | "error"
+  | "disabled"
+  | "unavailable";
 
 export interface ProviderHealth {
   provider: ProviderId;

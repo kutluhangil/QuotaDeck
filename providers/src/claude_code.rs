@@ -35,7 +35,7 @@ use quotadeck_core::error::{Error, Result};
 use quotadeck_core::events::{
     Accounting, DedupKey, EventIndex, LimitEvent, ParsedEvent, UsageEvent,
 };
-use quotadeck_core::pricing::{cost_of, PricedUsage};
+use quotadeck_core::pricing::{cost_of_at, embedded_pricing_revision, PricedUsage};
 use quotadeck_core::provider::{snapshot_with_windows, LineSource, Provider, ProviderConfig};
 use quotadeck_core::types::{
     Confidence, Cost, DerivationBasis, PlanCeiling, PlanOption, ProviderId, ProviderSnapshot,
@@ -255,6 +255,10 @@ impl Provider for ClaudeCode {
         "Claude Code"
     }
 
+    fn pricing_revision(&self) -> u64 {
+        embedded_pricing_revision()
+    }
+
     fn discover_roots(&self) -> Vec<PathBuf> {
         let mut roots = Vec::new();
         if let Some(projects) = paths::present_in_home(".claude/projects") {
@@ -382,7 +386,7 @@ fn push_usage(source: &LineSource<'_>, record: &Record, out: &mut Vec<ParsedEven
     }
 
     let cost = match message.model.as_deref() {
-        Some(model) => match cost_of(model, &usage.priced()) {
+        Some(model) => match cost_of_at(model, at, &usage.priced()) {
             Some(usd) => Cost::Usd(usd),
             // A model the embedded table does not know. Counted apart rather than at zero, so
             // an estimate built on cost can say it is incomplete.
@@ -705,6 +709,25 @@ mod tests {
             Cost::Unpriced,
             "a price we do not have is not a price of zero"
         );
+    }
+
+    #[test]
+    fn event_timestamp_selects_the_verified_price_period() {
+        let events = parse_fixture("synthetic_price_boundary.jsonl");
+        let costs: Vec<_> = events
+            .iter()
+            .filter_map(|event| match event {
+                ParsedEvent::Usage(usage) => Some(usage.cost),
+                _ => None,
+            })
+            .collect();
+
+        assert_eq!(costs.len(), 2);
+        assert_eq!(costs[0], Cost::Unpriced, "the earlier instant is uncovered");
+        match costs[1] {
+            Cost::Usd(usd) => assert!((usd - 0.8).abs() < 1e-12, "{usd}"),
+            other => panic!("expected the boundary instant to be priced, got {other:?}"),
+        }
     }
 
     #[test]

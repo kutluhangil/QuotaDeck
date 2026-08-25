@@ -2,6 +2,7 @@
 
 ## 2026-08-25
 
+- Pricing: apply official Anthropic rates by event date, version price-dependent checkpoints, and rebuild only providers whose pricing revision changed.
 - Alerts: added reliable projected-exhaustion notifications with health gating, reset-aware re-arming, mute/first-pass silence, and same-window threshold coalescing.
 - Tray: added ordered local provider summaries plus Dashboard and single-flight Refresh actions, rebuilding the native menu only when its pure model changes.
 - Refresh: exposed ordered provider health and generation-based manual refresh across the read-loop owner, panel, and dashboard while preserving the last successful snapshot through later failures.

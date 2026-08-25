@@ -171,8 +171,8 @@
 ### Task 2.5: Verify, commit, and push
 
 - [x] Run full Rust/UI/site/perf verification.
-- [ ] Commit with `feat(settings): control provider visibility and order`.
-- [ ] Push separately.
+- [x] Commit with `feat(settings): control provider visibility and order`.
+- [x] Push separately.
 
 ## Phase 3 — Manual refresh, provider health, and tray overview
 
@@ -230,9 +230,9 @@
 
 ### Task 3.5: Verify, commit, and push
 
-- [ ] Run full verification and native tray smoke.
-- [ ] Commit with `feat(refresh): expose provider health and tray actions`.
-- [ ] Push separately.
+- [x] Run full automated verification; native tray smoke remains in `docs/USER_ACTIONS.md` because the macOS session was locked.
+- [x] Commit with `feat(refresh): expose provider health and tray actions`.
+- [x] Push separately.
 
 ## Phase 4 — Time-correct pricing and controlled rebuilds
 
@@ -248,8 +248,8 @@
 - `price_for_at(model, at)` uses inclusive start and exclusive end.
 - `cost_of_at(model, at, usage)` returns `None` for unknown models or uncovered dates.
 
-- [ ] RED: test interval boundaries, overlap rejection, invalid rates/dates, unknown dates, model normalization, and fixture timestamps on both sides of a price change.
-- [ ] GREEN: pass each Claude event timestamp to pricing and retain unpriced accounting.
+- [x] RED: test interval boundaries, overlap rejection, invalid rates/dates, unknown dates, model normalization, and fixture timestamps on both sides of a price change.
+- [x] GREEN: pass each Claude event timestamp to pricing and retain unpriced accounting.
 
 ### Task 4.2: Add pricing revision migration
 
@@ -262,14 +262,14 @@
 - Provider checkpoints carry `pricing_revision`.
 - A mismatch deletes only the affected provider-instance checkpoint and rebuilds from readable logs.
 
-- [ ] RED: test old revision rebuild, matching revision resume, no double count, and failure leaving other providers intact.
-- [ ] GREEN: implement scoped checkpoint deletion and explicit rebuild health state.
+- [x] RED: test old revision rebuild, matching revision resume, no double count, and failure leaving other providers intact.
+- [x] GREEN: implement scoped checkpoint deletion and explicit rebuild health state.
 
 ### Task 4.3: Verify, commit, and push
 
-- [ ] Run real Claude fixtures and release perf budgets; record table memory/binary-size delta.
-- [ ] Commit with `fix(pricing): apply rates by event date`.
-- [ ] Push separately.
+- [x] Run Claude fixtures and release perf budgets; record table memory/binary-size delta.
+- [x] Commit with `fix(pricing): apply rates by event date`.
+- [x] Push separately.
 
 ## Phase 5 — Retention, date range, and safe export
 

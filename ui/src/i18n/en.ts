@@ -74,6 +74,8 @@ export const en = {
   },
 
   health: {
+    rebuilding: (_reason: string | null) =>
+      "Rebuilding usage with the updated price table. Partial results are not final yet.",
     stale: (reason: string | null) =>
       `Latest refresh failed. Showing the last successful reading.${reason ? ` ${reason}` : ""}`,
     error: (reason: string | null) =>

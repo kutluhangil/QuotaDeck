@@ -79,6 +79,7 @@ impl DeckState {
 #[serde(rename_all = "kebab-case")]
 pub enum HealthState {
     Healthy,
+    Rebuilding,
     Stale,
     Error,
     Disabled,
@@ -118,6 +119,15 @@ impl ProviderHealth {
         self.state = HealthState::Healthy;
         self.last_attempt_at = Some(at);
         self.last_success_at = Some(at);
+        self.consecutive_failures = 0;
+        self.last_error = None;
+        self.next_retry_at = None;
+    }
+
+    pub fn record_rebuilding(&mut self, at: DateTime<Utc>) {
+        self.state = HealthState::Rebuilding;
+        self.last_attempt_at = Some(at);
+        self.last_success_at = None;
         self.consecutive_failures = 0;
         self.last_error = None;
         self.next_retry_at = None;
@@ -1379,6 +1389,28 @@ mod tests {
         let mut error = ProviderHealth::new(ProviderId::CopilotCli);
         error.record_failure(at, "provider parser failed".into(), false);
         assert_eq!(error.state, HealthState::Error);
+    }
+
+    #[test]
+    fn rebuilding_is_explicit_until_a_full_success_or_failure() {
+        let at = Utc::now();
+        let mut health = ProviderHealth::new(ProviderId::ClaudeCode);
+        health.record_rebuilding(at);
+        assert_eq!(health.state, HealthState::Rebuilding);
+        assert_eq!(health.last_attempt_at, Some(at));
+        assert!(health.last_success_at.is_none());
+        assert!(health.last_error.is_none());
+
+        health.record_success(at + chrono::Duration::seconds(1));
+        assert_eq!(health.state, HealthState::Healthy);
+
+        health.record_rebuilding(at);
+        health.record_failure(
+            at + chrono::Duration::seconds(1),
+            "could not rebuild Claude logs".into(),
+            false,
+        );
+        assert_eq!(health.state, HealthState::Error);
     }
 
     #[test]

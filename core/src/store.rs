@@ -190,6 +190,22 @@ impl BatchedStore {
         self.read_meta(&provider_checkpoint_key(provider))
     }
 
+    /// Delete one provider's persisted checkpoint immediately and cancel a queued replacement.
+    pub fn delete_provider_checkpoint(&mut self, provider: ProviderId) -> Result<()> {
+        let key = provider_checkpoint_key(provider);
+        let txn = self.db.begin_write()?;
+        {
+            let mut meta = txn.open_table(META)?;
+            meta.remove(key.as_str())?;
+        }
+        txn.commit()?;
+
+        self.pending.retain(
+            |delta| !matches!(delta, Delta::Meta { key: pending_key, .. } if pending_key == &key),
+        );
+        Ok(())
+    }
+
     pub fn pending_len(&self) -> usize {
         self.pending.len()
     }
@@ -414,6 +430,50 @@ mod tests {
                 .load_provider_checkpoint(ProviderId::ClaudeCode)
                 .expect("load claude"),
             Some(b"claude-state".to_vec())
+        );
+    }
+
+    #[test]
+    fn deleting_one_provider_checkpoint_is_immediate_and_preserves_the_other() {
+        let path = scratch("delete-provider-checkpoint.redb");
+        let mut store = BatchedStore::open(&path)
+            .expect("open")
+            .with_limits(10_000, Duration::from_secs(3600));
+        store
+            .push_provider_checkpoint(ProviderId::Codex, b"codex-persisted".to_vec())
+            .expect("push codex");
+        store
+            .push_provider_checkpoint(ProviderId::ClaudeCode, b"claude-persisted".to_vec())
+            .expect("push claude");
+        store.flush().expect("persist both");
+
+        store
+            .push_provider_checkpoint(ProviderId::Codex, b"codex-pending".to_vec())
+            .expect("queue codex replacement");
+        store
+            .push_provider_checkpoint(ProviderId::ClaudeCode, b"claude-pending".to_vec())
+            .expect("queue claude replacement");
+        assert_eq!(store.pending_len(), 2);
+
+        store
+            .delete_provider_checkpoint(ProviderId::ClaudeCode)
+            .expect("delete claude only");
+        assert_eq!(
+            store
+                .load_provider_checkpoint(ProviderId::ClaudeCode)
+                .expect("load deleted"),
+            None,
+            "persisted checkpoint is deleted immediately"
+        );
+        assert_eq!(store.pending_len(), 1, "same-key pending write is removed");
+
+        store.flush().expect("flush surviving provider");
+        assert_eq!(
+            store
+                .load_provider_checkpoint(ProviderId::Codex)
+                .expect("load codex"),
+            Some(b"codex-pending".to_vec()),
+            "unrelated provider checkpoint survives and still advances"
         );
     }
 }

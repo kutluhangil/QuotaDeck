@@ -1,136 +1,85 @@
 {
-  "_comment": [
-    "Per-token USD prices for the models Claude Code reports. Embedded at build time; the",
-    "app makes no network requests and never refreshes this table at runtime.",
-    "",
-    "Source: LiteLLM model_prices_and_context_window.json, read 2026-07-28.",
-    "",
-    "cacheWrite5m is LiteLLM's cache_creation_input_token_cost (1.25x input).",
-    "cacheWrite1h is not carried by LiteLLM; it is Anthropic's documented 2x input rate.",
-    "Claude Code reports the two separately in usage.cache_creation and they must not be",
-    "collapsed into one bucket (docs/DISCOVERY.md §5).",
-    "",
-    "Regional Bedrock variants (us./eu.) carry a ~10% uplift that the lookup drops with the",
-    "prefix. Claude Code writes the plain id, so the uplift never applies in practice; pricing",
-    "a regional id at the base rate is a documented approximation, not a silent one.",
-    "",
-    "Prefix matching is deliberately NOT family-wide: claude-opus-4-1 is priced at 15/75 and",
-    "claude-opus-4-5 at 5/25, so an 'opus' family rate would be wrong by 3x. Lookup takes the",
-    "longest key that prefixes the model id, and an id matching no key is left unpriced rather",
-    "than guessed."
-  ],
+  "revision": 1,
   "models": {
-    "claude-opus-5": {
-      "input": 5e-6,
-      "output": 2.5e-5,
-      "cacheRead": 5e-7,
-      "cacheWrite5m": 6.25e-6,
-      "cacheWrite1h": 1e-5
-    },
-    "claude-opus-4-8": {
-      "input": 5e-6,
-      "output": 2.5e-5,
-      "cacheRead": 5e-7,
-      "cacheWrite5m": 6.25e-6,
-      "cacheWrite1h": 1e-5
-    },
-    "claude-opus-4-7": {
-      "input": 5e-6,
-      "output": 2.5e-5,
-      "cacheRead": 5e-7,
-      "cacheWrite5m": 6.25e-6,
-      "cacheWrite1h": 1e-5
-    },
-    "claude-opus-4-6": {
-      "input": 5e-6,
-      "output": 2.5e-5,
-      "cacheRead": 5e-7,
-      "cacheWrite5m": 6.25e-6,
-      "cacheWrite1h": 1e-5
-    },
-    "claude-opus-4-5": {
-      "input": 5e-6,
-      "output": 2.5e-5,
-      "cacheRead": 5e-7,
-      "cacheWrite5m": 6.25e-6,
-      "cacheWrite1h": 1e-5
-    },
-    "claude-opus-4-1": {
-      "input": 1.5e-5,
-      "output": 7.5e-5,
-      "cacheRead": 1.5e-6,
-      "cacheWrite5m": 1.875e-5,
-      "cacheWrite1h": 3e-5
-    },
-    "claude-opus-4": {
-      "input": 1.5e-5,
-      "output": 7.5e-5,
-      "cacheRead": 1.5e-6,
-      "cacheWrite5m": 1.875e-5,
-      "cacheWrite1h": 3e-5
-    },
-    "claude-fable-5": {
-      "input": 1e-5,
-      "output": 5e-5,
-      "cacheRead": 1e-6,
-      "cacheWrite5m": 1.25e-5,
-      "cacheWrite1h": 2e-5
-    },
-    "claude-sonnet-5": {
-      "input": 2e-6,
-      "output": 1e-5,
-      "cacheRead": 2e-7,
-      "cacheWrite5m": 2.5e-6,
-      "cacheWrite1h": 4e-6
-    },
-    "claude-sonnet-4-6": {
-      "input": 3e-6,
-      "output": 1.5e-5,
-      "cacheRead": 3e-7,
-      "cacheWrite5m": 3.75e-6,
-      "cacheWrite1h": 6e-6
-    },
-    "claude-sonnet-4-5": {
-      "input": 3e-6,
-      "output": 1.5e-5,
-      "cacheRead": 3e-7,
-      "cacheWrite5m": 3.75e-6,
-      "cacheWrite1h": 6e-6
-    },
-    "claude-sonnet-4": {
-      "input": 3e-6,
-      "output": 1.5e-5,
-      "cacheRead": 3e-7,
-      "cacheWrite5m": 3.75e-6,
-      "cacheWrite1h": 6e-6
-    },
-    "claude-haiku-4-5": {
-      "input": 1e-6,
-      "output": 5e-6,
-      "cacheRead": 1e-7,
-      "cacheWrite5m": 1.25e-6,
-      "cacheWrite1h": 2e-6
-    },
-    "claude-3-7-sonnet": {
-      "input": 3e-6,
-      "output": 1.5e-5,
-      "cacheRead": 3e-7,
-      "cacheWrite5m": 3.75e-6,
-      "cacheWrite1h": 6e-6
-    },
-    "claude-3-5-sonnet": {
-      "input": 3e-6,
-      "output": 1.5e-5,
-      "cacheRead": 3e-7,
-      "cacheWrite5m": 3.75e-6,
-      "cacheWrite1h": 6e-6
-    },
-    "claude-3-5-haiku": {
-      "input": 8e-7,
-      "output": 4e-6,
-      "cacheRead": 8e-8,
-      "cacheWrite5m": 1e-6,
-      "cacheWrite1h": 1.6e-6
-    }
+    "claude-opus-5": [{
+      "effectiveFrom": "2026-07-24T00:00:00Z", "effectiveUntil": null,
+      "source": "https://www.anthropic.com/news/claude-opus-5", "sourceCheckedAt": "2026-08-25",
+      "rates": { "input": 5e-6, "output": 2.5e-5, "cacheRead": 5e-7, "cacheWrite5m": 6.25e-6, "cacheWrite1h": 1e-5 }
+    }],
+    "claude-fable-5": [{
+      "effectiveFrom": "2026-06-09T00:00:00Z", "effectiveUntil": null,
+      "source": "https://www.anthropic.com/news/claude-fable-5-mythos-5", "sourceCheckedAt": "2026-08-25",
+      "rates": { "input": 1e-5, "output": 5e-5, "cacheRead": 1e-6, "cacheWrite5m": 1.25e-5, "cacheWrite1h": 2e-5 }
+    }],
+    "claude-sonnet-5": [{
+      "effectiveFrom": "2026-06-30T00:00:00Z", "effectiveUntil": null,
+      "source": "https://www.anthropic.com/news/claude-sonnet-5", "sourceCheckedAt": "2026-08-25",
+      "rates": { "input": 2e-6, "output": 1e-5, "cacheRead": 2e-7, "cacheWrite5m": 2.5e-6, "cacheWrite1h": 4e-6 }
+    }],
+    "claude-opus-4-8": [{
+      "effectiveFrom": "2026-05-28T00:00:00Z", "effectiveUntil": null,
+      "source": "https://www.anthropic.com/news/claude-opus-4-8", "sourceCheckedAt": "2026-08-25",
+      "rates": { "input": 5e-6, "output": 2.5e-5, "cacheRead": 5e-7, "cacheWrite5m": 6.25e-6, "cacheWrite1h": 1e-5 }
+    }],
+    "claude-opus-4-7": [{
+      "effectiveFrom": "2026-04-16T00:00:00Z", "effectiveUntil": null,
+      "source": "https://www.anthropic.com/news/claude-opus-4-7", "sourceCheckedAt": "2026-08-25",
+      "rates": { "input": 5e-6, "output": 2.5e-5, "cacheRead": 5e-7, "cacheWrite5m": 6.25e-6, "cacheWrite1h": 1e-5 }
+    }],
+    "claude-opus-4-6": [{
+      "effectiveFrom": "2026-02-05T00:00:00Z", "effectiveUntil": null,
+      "source": "https://www.anthropic.com/news/claude-opus-4-6", "sourceCheckedAt": "2026-08-25",
+      "rates": { "input": 5e-6, "output": 2.5e-5, "cacheRead": 5e-7, "cacheWrite5m": 6.25e-6, "cacheWrite1h": 1e-5 }
+    }],
+    "claude-sonnet-4-6": [{
+      "effectiveFrom": "2026-02-17T00:00:00Z", "effectiveUntil": null,
+      "source": "https://www.anthropic.com/news/claude-sonnet-4-6", "sourceCheckedAt": "2026-08-25",
+      "rates": { "input": 3e-6, "output": 1.5e-5, "cacheRead": 3e-7, "cacheWrite5m": 3.75e-6, "cacheWrite1h": 6e-6 }
+    }],
+    "claude-opus-4-5": [{
+      "effectiveFrom": "2025-11-24T00:00:00Z", "effectiveUntil": null,
+      "source": "https://www.anthropic.com/news/claude-opus-4-5", "sourceCheckedAt": "2026-08-25",
+      "rates": { "input": 5e-6, "output": 2.5e-5, "cacheRead": 5e-7, "cacheWrite5m": 6.25e-6, "cacheWrite1h": 1e-5 }
+    }],
+    "claude-haiku-4-5": [{
+      "effectiveFrom": "2025-10-15T00:00:00Z", "effectiveUntil": null,
+      "source": "https://www.anthropic.com/news/claude-haiku-4-5", "sourceCheckedAt": "2026-08-25",
+      "rates": { "input": 1e-6, "output": 5e-6, "cacheRead": 1e-7, "cacheWrite5m": 1.25e-6, "cacheWrite1h": 2e-6 }
+    }],
+    "claude-sonnet-4-5": [{
+      "effectiveFrom": "2025-09-29T00:00:00Z", "effectiveUntil": null,
+      "source": "https://www.anthropic.com/news/claude-sonnet-4-5", "sourceCheckedAt": "2026-08-25",
+      "rates": { "input": 3e-6, "output": 1.5e-5, "cacheRead": 3e-7, "cacheWrite5m": 3.75e-6, "cacheWrite1h": 6e-6 }
+    }],
+    "claude-opus-4-1": [{
+      "effectiveFrom": "2025-08-05T00:00:00Z", "effectiveUntil": null,
+      "source": "https://www.anthropic.com/news/claude-opus-4-1", "sourceCheckedAt": "2026-08-25",
+      "rates": { "input": 1.5e-5, "output": 7.5e-5, "cacheRead": 1.5e-6, "cacheWrite5m": 1.875e-5, "cacheWrite1h": 3e-5 }
+    }],
+    "claude-opus-4": [{
+      "effectiveFrom": "2025-05-22T00:00:00Z", "effectiveUntil": null,
+      "source": "https://www.anthropic.com/news/claude-4", "sourceCheckedAt": "2026-08-25",
+      "rates": { "input": 1.5e-5, "output": 7.5e-5, "cacheRead": 1.5e-6, "cacheWrite5m": 1.875e-5, "cacheWrite1h": 3e-5 }
+    }],
+    "claude-sonnet-4": [{
+      "effectiveFrom": "2025-05-22T00:00:00Z", "effectiveUntil": null,
+      "source": "https://www.anthropic.com/news/claude-4", "sourceCheckedAt": "2026-08-25",
+      "rates": { "input": 3e-6, "output": 1.5e-5, "cacheRead": 3e-7, "cacheWrite5m": 3.75e-6, "cacheWrite1h": 6e-6 }
+    }],
+    "claude-3-7-sonnet": [{
+      "effectiveFrom": "2025-02-24T00:00:00Z", "effectiveUntil": null,
+      "source": "https://www.anthropic.com/news/claude-3-7-sonnet", "sourceCheckedAt": "2026-08-25",
+      "rates": { "input": 3e-6, "output": 1.5e-5, "cacheRead": 3e-7, "cacheWrite5m": 3.75e-6, "cacheWrite1h": 6e-6 }
+    }],
+    "claude-3-5-sonnet": [{
+      "effectiveFrom": "2024-06-21T00:00:00Z", "effectiveUntil": null,
+      "source": "https://www.anthropic.com/news/claude-3-5-sonnet", "sourceCheckedAt": "2026-08-25",
+      "rates": { "input": 3e-6, "output": 1.5e-5, "cacheRead": 3e-7, "cacheWrite5m": 3.75e-6, "cacheWrite1h": 6e-6 }
+    }],
+    "claude-3-5-haiku": [{
+      "effectiveFrom": "2024-12-03T00:00:00Z", "effectiveUntil": null,
+      "source": "https://www.anthropic.com/news/trainium2-and-distillation", "sourceCheckedAt": "2026-08-25",
+      "rates": { "input": 8e-7, "output": 4e-6, "cacheRead": 8e-8, "cacheWrite5m": 1e-6, "cacheWrite1h": 1.6e-6 }
+    }]
   }
 }

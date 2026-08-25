@@ -80,12 +80,29 @@ pub struct ProviderEngine {
 struct ProviderCheckpoint {
     version: u32,
     provider: crate::types::ProviderId,
+    #[serde(default)]
+    pricing_revision: u64,
     cursors: Vec<FileCursor>,
     index: crate::events::EventIndexCheckpoint,
     #[serde(default)]
     read_errors: BTreeMap<PathBuf, String>,
     #[serde(default)]
     read_error_overflow: usize,
+}
+
+/// A checkpoint may be structurally invalid, or valid data produced by older pricing evidence.
+#[derive(Debug, thiserror::Error)]
+pub enum CheckpointRestoreError {
+    #[error(
+        "provider checkpoint pricing revision mismatch for {provider:?}: stored {checkpoint_revision}, current {current_revision}"
+    )]
+    PricingRevisionMismatch {
+        provider: crate::types::ProviderId,
+        checkpoint_revision: u64,
+        current_revision: u64,
+    },
+    #[error(transparent)]
+    Invalid(#[from] crate::Error),
 }
 
 impl ProviderEngine {
@@ -292,6 +309,7 @@ impl ProviderEngine {
         let checkpoint = ProviderCheckpoint {
             version: PROVIDER_CHECKPOINT_VERSION,
             provider: self.provider.id(),
+            pricing_revision: self.provider.pricing_revision(),
             cursors,
             index: self.index.checkpoint(),
             read_errors: self.read_errors.clone(),
@@ -301,22 +319,36 @@ impl ProviderEngine {
     }
 
     /// Rebuild an engine without rereading already-folded bytes.
-    pub fn restore(provider: Box<dyn Provider>, bytes: &[u8]) -> Result<Self> {
-        let checkpoint: ProviderCheckpoint = serde_json::from_slice(bytes)?;
+    pub fn restore(
+        provider: Box<dyn Provider>,
+        bytes: &[u8],
+    ) -> std::result::Result<Self, CheckpointRestoreError> {
+        let checkpoint: ProviderCheckpoint =
+            serde_json::from_slice(bytes).map_err(crate::Error::from)?;
         if checkpoint.version != 1 && checkpoint.version != PROVIDER_CHECKPOINT_VERSION {
             return Err(crate::Error::Invalid(format!(
                 "unsupported provider checkpoint version {} for {}; expected {}",
                 checkpoint.version,
                 provider.id().key(),
                 PROVIDER_CHECKPOINT_VERSION
-            )));
+            ))
+            .into());
         }
         if checkpoint.provider != provider.id() {
             return Err(crate::Error::Invalid(format!(
                 "provider checkpoint belongs to {}, not {}",
                 checkpoint.provider.key(),
                 provider.id().key()
-            )));
+            ))
+            .into());
+        }
+        let current_revision = provider.pricing_revision();
+        if checkpoint.pricing_revision != current_revision {
+            return Err(CheckpointRestoreError::PricingRevisionMismatch {
+                provider: provider.id(),
+                checkpoint_revision: checkpoint.pricing_revision,
+                current_revision,
+            });
         }
 
         let index = EventIndex::restore(checkpoint.index)?;
@@ -327,7 +359,8 @@ impl ProviderEngine {
                 return Err(crate::Error::Invalid(format!(
                     "provider checkpoint for {} contains duplicate cursor paths",
                     provider.id().key()
-                )));
+                ))
+                .into());
             }
         }
 
@@ -487,6 +520,7 @@ mod tests {
     /// Counts one token per line, so totals are trivially predictable.
     struct Counter {
         root: PathBuf,
+        pricing_revision: u64,
     }
 
     impl Provider for Counter {
@@ -495,6 +529,9 @@ mod tests {
         }
         fn display_name(&self) -> &'static str {
             "Counter"
+        }
+        fn pricing_revision(&self) -> u64 {
+            self.pricing_revision
         }
         fn discover_roots(&self) -> Vec<PathBuf> {
             vec![self.root.clone()]
@@ -551,7 +588,10 @@ mod tests {
             std::env::temp_dir().join(format!("quotadeck-engine-{}-{test}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(&root).expect("create engine test root");
-        let engine = ProviderEngine::new(Box::new(Counter { root: root.clone() }));
+        let engine = ProviderEngine::new(Box::new(Counter {
+            root: root.clone(),
+            pricing_revision: 0,
+        }));
         (engine, root)
     }
 
@@ -633,9 +673,14 @@ mod tests {
         engine.refresh(None).expect("first refresh");
 
         let bytes = engine.checkpoint().expect("checkpoint");
-        let mut restored =
-            ProviderEngine::restore(Box::new(Counter { root: root.clone() }), &bytes)
-                .expect("restore");
+        let mut restored = ProviderEngine::restore(
+            Box::new(Counter {
+                root: root.clone(),
+                pricing_revision: 0,
+            }),
+            &bytes,
+        )
+        .expect("restore");
         let unchanged = restored.refresh(None).expect("unchanged refresh");
         assert_eq!(unchanged.bytes, 0);
         assert_eq!(restored.snapshot(Utc::now()).today.input, 2);
@@ -647,6 +692,45 @@ mod tests {
     }
 
     #[test]
+    fn checkpoint_pricing_revision_mismatch_is_typed_and_legacy_defaults_to_zero() {
+        let (engine, root) = engine_for("pricing-revision");
+        let mut legacy: serde_json::Value =
+            serde_json::from_slice(&engine.checkpoint().expect("checkpoint")).expect("decode");
+        assert_eq!(legacy["pricingRevision"], 0);
+        legacy
+            .as_object_mut()
+            .expect("checkpoint object")
+            .remove("pricingRevision");
+        let legacy_bytes = serde_json::to_vec(&legacy).expect("encode legacy");
+        ProviderEngine::restore(
+            Box::new(Counter {
+                root: root.clone(),
+                pricing_revision: 0,
+            }),
+            &legacy_bytes,
+        )
+        .expect("legacy revision defaults to zero");
+
+        let error = ProviderEngine::restore(
+            Box::new(Counter {
+                root,
+                pricing_revision: 7,
+            }),
+            &legacy_bytes,
+        )
+        .err()
+        .expect("new pricing revision must rebuild");
+        assert!(matches!(
+            error,
+            CheckpointRestoreError::PricingRevisionMismatch {
+                checkpoint_revision: 0,
+                current_revision: 7,
+                ..
+            }
+        ));
+    }
+
+    #[test]
     fn checkpoint_rejects_a_provider_mismatch() {
         let (engine, root) = engine_for("mismatch");
         let mut value: serde_json::Value =
@@ -654,9 +738,15 @@ mod tests {
         value["provider"] = serde_json::Value::String("claude-code".into());
         let bytes = serde_json::to_vec(&value).expect("encode");
 
-        let error = ProviderEngine::restore(Box::new(Counter { root }), &bytes)
-            .err()
-            .expect("provider mismatch");
+        let error = ProviderEngine::restore(
+            Box::new(Counter {
+                root,
+                pricing_revision: 0,
+            }),
+            &bytes,
+        )
+        .err()
+        .expect("provider mismatch");
         assert!(error.to_string().contains("belongs to claude-code"));
     }
 
@@ -668,9 +758,15 @@ mod tests {
         value["version"] = serde_json::Value::from(PROVIDER_CHECKPOINT_VERSION + 1);
         let bytes = serde_json::to_vec(&value).expect("encode");
 
-        let error = ProviderEngine::restore(Box::new(Counter { root }), &bytes)
-            .err()
-            .expect("unsupported version");
+        let error = ProviderEngine::restore(
+            Box::new(Counter {
+                root,
+                pricing_revision: 0,
+            }),
+            &bytes,
+        )
+        .err()
+        .expect("unsupported version");
         assert!(error
             .to_string()
             .contains("unsupported provider checkpoint version"));
@@ -699,9 +795,14 @@ mod tests {
         assert_eq!(cursor.byte_offset, 14);
 
         let checkpoint = engine.checkpoint().expect("checkpoint read error");
-        let restored =
-            ProviderEngine::restore(Box::new(Counter { root: root.clone() }), &checkpoint)
-                .expect("restore read error");
+        let restored = ProviderEngine::restore(
+            Box::new(Counter {
+                root: root.clone(),
+                pricing_revision: 0,
+            }),
+            &checkpoint,
+        )
+        .expect("restore read error");
         assert!(restored
             .snapshot(Utc::now())
             .read_error

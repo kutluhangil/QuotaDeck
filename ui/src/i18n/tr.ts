@@ -54,6 +54,8 @@ export const tr: Catalogue = {
   },
 
   health: {
+    rebuilding: (_reason) =>
+      "Kullanım güncel fiyat tablosuyla yeniden oluşturuluyor. Kısmi sonuçlar henüz kesin değil.",
     stale: (reason) =>
       `Son yenileme başarısız oldu. Son başarılı ölçüm gösteriliyor.${reason ? ` ${reason}` : ""}`,
     error: (reason) =>

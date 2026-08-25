@@ -96,6 +96,9 @@ fn summary_label(state: &DeckState, provider: ProviderId, language: Language) ->
         Some(HealthState::Healthy) => percent
             .map(|value| format!("{name} — {:.0}%", value))
             .unwrap_or_else(|| format!("{name} — {}", language.tray_unavailable())),
+        Some(HealthState::Rebuilding) => {
+            format!("{name} — {}", language.tray_rebuilding())
+        }
         Some(HealthState::Stale) => percent
             .map(|value| format!("{name} — {} ({:.0}%)", language.tray_stale(), value))
             .unwrap_or_else(|| format!("{name} — {}", language.tray_stale())),
@@ -499,5 +502,18 @@ mod tests {
             .collect();
         assert!(labels.iter().any(|label| label.contains("Hata")));
         assert!(labels.iter().any(|label| label.contains("Kullanılamıyor")));
+    }
+
+    #[test]
+    fn menu_model_exposes_rebuilding_without_a_partial_percentage() {
+        let mut state = DeckState::empty();
+        state.providers = vec![snapshot(ProviderId::ClaudeCode, 42.0)];
+        state.health = vec![ProviderHealth {
+            state: HealthState::Rebuilding,
+            ..ProviderHealth::new(ProviderId::ClaudeCode)
+        }];
+
+        let label = summary_label(&state, ProviderId::ClaudeCode, Language::En);
+        assert_eq!(label, "Claude Code — Rebuilding");
     }
 }

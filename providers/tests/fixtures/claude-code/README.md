@@ -30,3 +30,4 @@ proof of what the shim does **not** write: the source payload carried `cwd`, `se
 | `synthetic_statusline_partial.jsonl` | `five_hour` absent, then `rate_limits` empty — both documented as possible before a session's first API response |
 | `synthetic_unpriced_model.jsonl` | A model id the embedded price table does not know. Its tokens count; its cost does not, and the estimate says so |
 | `synthetic_usage_without_cwd.jsonl` | A usage row carrying no `cwd`. All 9655 rows measured here carried one; a row that does not is left unattributed rather than labelled from the encoded directory name |
+| `synthetic_price_boundary.jsonl` | Claude 3.5 Haiku rows immediately before and at the verified 2024-12-03 price-reduction boundary |

@@ -1,7 +1,7 @@
 import type { Confidence, ProviderHealth, ProviderSnapshot } from "./types";
 
 export type VisibleProviderHealth = Omit<ProviderHealth, "state"> & {
-  state: "stale" | "error" | "unavailable";
+  state: "rebuilding" | "stale" | "error" | "unavailable";
 };
 
 export function visibleProviderHealth(
@@ -11,7 +11,10 @@ export function visibleProviderHealth(
   const match = health.find((entry) => entry.provider === snapshot.id);
   if (
     match === undefined ||
-    (match.state !== "stale" && match.state !== "error" && match.state !== "unavailable")
+    (match.state !== "rebuilding" &&
+      match.state !== "stale" &&
+      match.state !== "error" &&
+      match.state !== "unavailable")
   ) {
     return null;
   }

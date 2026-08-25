@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import { confidenceForHealth, visibleProviderHealth } from "./providerHealth";
+import { en } from "./i18n/en";
+import { tr } from "./i18n/tr";
 import type { ProviderHealth, ProviderSnapshot } from "./types";
 
 const snapshot: ProviderSnapshot = {
@@ -56,6 +58,13 @@ describe("provider health presentation", () => {
   it("keeps healthy and disabled operational states out of visible warnings", () => {
     expect(visibleProviderHealth(snapshot, [health("healthy")])).toBeNull();
     expect(visibleProviderHealth(snapshot, [health("disabled")])).toBeNull();
+  });
+
+  it("keeps rebuilding visible with screen-readable EN and TR copy", () => {
+    const presented = visibleProviderHealth(snapshot, [health("rebuilding")]);
+    expect(presented?.state).toBe("rebuilding");
+    expect(en.health.rebuilding(null)).toContain("Rebuilding");
+    expect(tr.health.rebuilding(null)).toContain("yeniden oluşturuluyor");
   });
 
   it("matches error health to the provider and ignores another provider", () => {

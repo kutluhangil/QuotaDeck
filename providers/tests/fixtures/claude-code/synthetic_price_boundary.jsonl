@@ -1,0 +1,2 @@
+{"type":"assistant","timestamp":"2024-12-02T23:59:59Z","requestId":"req-before","sessionId":"price-boundary","message":{"id":"msg-before","model":"claude-3-5-haiku-20241022","usage":{"input_tokens":1000000}}}
+{"type":"assistant","timestamp":"2024-12-03T00:00:00Z","requestId":"req-after","sessionId":"price-boundary","message":{"id":"msg-after","model":"claude-3-5-haiku-20241022","usage":{"input_tokens":1000000}}}

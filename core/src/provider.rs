@@ -101,6 +101,12 @@ pub trait Provider: Send + Sync {
     /// Untranslated name for logs and debug output. User-facing text is localised in the UI.
     fn display_name(&self) -> &'static str;
 
+    /// Revision of external pricing evidence folded into this provider's persisted index.
+    /// Providers whose accounting does not depend on an embedded price table keep revision 0.
+    fn pricing_revision(&self) -> u64 {
+        0
+    }
+
     /// Root directories for this tool on this machine, honouring any environment override.
     /// An empty result means the tool is not installed.
     fn discover_roots(&self) -> Vec<PathBuf>;

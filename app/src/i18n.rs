@@ -113,6 +113,13 @@ impl Language {
         }
     }
 
+    pub fn tray_rebuilding(self) -> &'static str {
+        match self {
+            Language::En => "Rebuilding",
+            Language::Tr => "Yeniden oluşturuluyor",
+        }
+    }
+
     pub fn tray_error(self) -> &'static str {
         match self {
             Language::En => "Error",

@@ -23,7 +23,7 @@ use std::time::{Duration, Instant};
 
 use chrono::Utc;
 use quotadeck_core::discovery::RootAccess;
-use quotadeck_core::engine::{ProviderEngine, DEFAULT_RETENTION_DAYS};
+use quotadeck_core::engine::{CheckpointRestoreError, ProviderEngine, DEFAULT_RETENTION_DAYS};
 use quotadeck_core::error::{Error, Result};
 use quotadeck_core::store::BatchedStore;
 use quotadeck_core::types::{PlanOption, ProviderId, ProviderSnapshot, UnavailableReason};
@@ -33,7 +33,7 @@ use tauri::{AppHandle, Emitter, Manager};
 
 use crate::alerts::{Alert, Alerts};
 use crate::deck::{
-    provider_snapshot_after_failure, Deck, DeckState, ProviderHealth, ProviderHistory,
+    provider_snapshot_after_failure, Deck, DeckState, HealthState, ProviderHealth, ProviderHistory,
     ProviderPolicyOutcome, ProviderPolicySyncRequest, RefreshReceipt, Settings, Theme, TrayMode,
 };
 use crate::i18n::Locale;
@@ -823,7 +823,13 @@ fn spawn_read_loop(app: AppHandle, deck: Deck) -> Result<ReadLoopControl> {
         .ok_or_else(|| Error::Invalid("cannot resolve the app data directory".into()))?;
     std::fs::create_dir_all(&data_dir).map_err(|error| Error::io(&data_dir, error))?;
     let mut store = BatchedStore::open(data_dir.join(STORE_FILE))?;
-    let mut engines = restore_engines(&store)?;
+    let restored = restore_engines(&mut store)?;
+    let mut engines = restored.engines;
+    if !restored.health.is_empty() {
+        let mut state = deck.state();
+        state.health = restored.health;
+        deck.set_state(state);
+    }
     let mut watched = HashSet::new();
     let (provider_policy_sync, provider_policy_sync_requested) = mpsc::channel();
     deck.register_provider_policy_sync(provider_policy_sync);
@@ -1067,17 +1073,137 @@ fn spawn_read_loop(app: AppHandle, deck: Deck) -> Result<ReadLoopControl> {
     })
 }
 
-fn restore_engines(store: &BatchedStore) -> Result<Vec<ProviderEngine>> {
-    quotadeck_providers::all()
-        .into_iter()
-        .map(|provider| {
-            let provider_id = provider.id();
-            match store.load_provider_checkpoint(provider_id)? {
-                Some(checkpoint) => ProviderEngine::restore(provider, &checkpoint),
-                None => Ok(ProviderEngine::new(provider)),
+struct RestoredEngines {
+    engines: Vec<ProviderEngine>,
+    health: Vec<ProviderHealth>,
+}
+
+struct RestoredProvider {
+    engine: ProviderEngine,
+    health: Option<ProviderHealth>,
+}
+
+fn restore_engines(store: &mut BatchedStore) -> Result<RestoredEngines> {
+    let mut replacements: HashMap<ProviderId, Box<dyn quotadeck_core::provider::Provider>> =
+        quotadeck_providers::all()
+            .into_iter()
+            .map(|provider| (provider.id(), provider))
+            .collect();
+    let mut engines = Vec::new();
+    let mut health = Vec::new();
+    let now = Utc::now();
+
+    for provider in quotadeck_providers::all() {
+        let provider_id = provider.id();
+        let replacement = replacements.remove(&provider_id).ok_or_else(|| {
+            Error::Invalid(format!(
+                "compiled provider registry did not produce a replacement instance for {:?}",
+                provider_id.key()
+            ))
+        })?;
+        let checkpoint = match store.load_provider_checkpoint(provider_id) {
+            Ok(checkpoint) => checkpoint,
+            Err(error) => {
+                let mut provider_health = ProviderHealth::new(provider_id);
+                provider_health.record_failure(
+                    now,
+                    format!(
+                        "could not load persisted checkpoint for provider {:?}: {error}",
+                        provider_id.key()
+                    ),
+                    false,
+                );
+                engines.push(ProviderEngine::new(provider));
+                health.push(provider_health);
+                continue;
             }
-        })
-        .collect()
+        };
+        let restored = restore_provider_from_checkpoint(
+            provider,
+            replacement,
+            checkpoint,
+            || store.delete_provider_checkpoint(provider_id),
+            now,
+        );
+        engines.push(restored.engine);
+        if let Some(provider_health) = restored.health {
+            health.push(provider_health);
+        }
+    }
+
+    Ok(RestoredEngines { engines, health })
+}
+
+fn restore_provider_from_checkpoint(
+    provider: Box<dyn quotadeck_core::provider::Provider>,
+    replacement: Box<dyn quotadeck_core::provider::Provider>,
+    checkpoint: Option<Vec<u8>>,
+    delete_checkpoint: impl FnOnce() -> Result<()>,
+    now: chrono::DateTime<Utc>,
+) -> RestoredProvider {
+    let provider_id = provider.id();
+    let Some(checkpoint) = checkpoint else {
+        return RestoredProvider {
+            engine: ProviderEngine::new(provider),
+            health: None,
+        };
+    };
+
+    match ProviderEngine::restore(provider, &checkpoint) {
+        Ok(engine) => RestoredProvider {
+            engine,
+            health: None,
+        },
+        Err(CheckpointRestoreError::PricingRevisionMismatch { .. }) => {
+            let mut health = ProviderHealth::new(provider_id);
+            match delete_checkpoint() {
+                Ok(()) => health.record_rebuilding(now),
+                Err(error) => health.record_failure(
+                    now,
+                    format!(
+                        "pricing changed for provider {:?}, but its stale checkpoint could not be deleted: {error}",
+                        provider_id.key()
+                    ),
+                    false,
+                ),
+            }
+            RestoredProvider {
+                engine: ProviderEngine::new(replacement),
+                health: Some(health),
+            }
+        }
+        Err(CheckpointRestoreError::Invalid(error)) => {
+            let mut health = ProviderHealth::new(provider_id);
+            health.record_failure(
+                now,
+                format!(
+                    "could not restore persisted checkpoint for provider {:?}: {error}",
+                    provider_id.key()
+                ),
+                false,
+            );
+            RestoredProvider {
+                engine: ProviderEngine::new(replacement),
+                health: Some(health),
+            }
+        }
+    }
+}
+
+fn record_successful_provider_pass(
+    health: &mut ProviderHealth,
+    at: chrono::DateTime<Utc>,
+    scanning: bool,
+    available: bool,
+    unavailable_error: String,
+) {
+    if health.state == HealthState::Rebuilding && scanning {
+        health.record_rebuilding(at);
+    } else if available {
+        health.record_success(at);
+    } else {
+        health.record_unavailable(at, unavailable_error);
+    }
 }
 
 fn refresh_interval(deck: &Deck) -> Duration {
@@ -1273,9 +1399,10 @@ fn publish(
             continue;
         }
         if !provider_health.retry_due(now, pass.manual) {
-            if let Some(snapshot) = previous_snapshots.get(&provider_id) {
-                providers.push(snapshot.clone());
-            }
+            providers.push(provider_snapshot_after_failure(
+                previous_snapshots.get(&provider_id),
+                provider_id,
+            ));
             health.push(provider_health);
             continue;
         }
@@ -1354,17 +1481,16 @@ fn publish(
                     ));
                 }
                 let snapshot = engine.snapshot(now);
-                if !snapshot.installed || snapshot.unavailable.is_some() {
-                    provider_health.record_unavailable(
-                        now,
-                        format!(
-                            "provider snapshot is unavailable: {:?}",
-                            snapshot.unavailable
-                        ),
-                    );
-                } else {
-                    provider_health.record_success(now);
-                }
+                record_successful_provider_pass(
+                    &mut provider_health,
+                    now,
+                    pass.scanning,
+                    snapshot.installed && snapshot.unavailable.is_none(),
+                    format!(
+                        "provider snapshot is unavailable: {:?}",
+                        snapshot.unavailable
+                    ),
+                );
                 providers.push(snapshot);
                 health.push(provider_health);
             }
@@ -1526,5 +1652,85 @@ mod provider_policy_tests {
             ordered_enabled_engine_ids(&settings, &engines).expect("enabled engine order"),
             vec![ProviderId::Codex]
         );
+    }
+}
+
+#[cfg(test)]
+mod checkpoint_restore_tests {
+    use super::*;
+
+    fn claude_provider() -> Box<dyn quotadeck_core::provider::Provider> {
+        quotadeck_providers::all()
+            .into_iter()
+            .find(|provider| provider.id() == ProviderId::ClaudeCode)
+            .expect("Claude Code provider is compiled")
+    }
+
+    fn checkpoint_with_revision(revision: u64) -> Vec<u8> {
+        let engine = ProviderEngine::new(claude_provider());
+        let mut checkpoint: serde_json::Value =
+            serde_json::from_slice(&engine.checkpoint().expect("checkpoint")).expect("decode");
+        checkpoint["pricingRevision"] = serde_json::Value::from(revision);
+        serde_json::to_vec(&checkpoint).expect("encode")
+    }
+
+    #[test]
+    fn pricing_mismatch_deletes_scoped_checkpoint_and_starts_rebuilding() {
+        let now = Utc::now();
+        let mut deleted = false;
+        let restored = restore_provider_from_checkpoint(
+            claude_provider(),
+            claude_provider(),
+            Some(checkpoint_with_revision(0)),
+            || {
+                deleted = true;
+                Ok(())
+            },
+            now,
+        );
+
+        assert!(deleted);
+        assert_eq!(restored.engine.provider().id(), ProviderId::ClaudeCode);
+        let health = restored.health.expect("rebuild health");
+        assert_eq!(health.state, HealthState::Rebuilding);
+        assert_eq!(health.last_attempt_at, Some(now));
+    }
+
+    #[test]
+    fn scoped_delete_failure_keeps_provider_engine_and_exposes_actionable_error() {
+        let restored = restore_provider_from_checkpoint(
+            claude_provider(),
+            claude_provider(),
+            Some(checkpoint_with_revision(0)),
+            || Err(Error::Store("injected checkpoint delete failure".into())),
+            Utc::now(),
+        );
+
+        assert_eq!(restored.engine.provider().id(), ProviderId::ClaudeCode);
+        let health = restored.health.expect("failure health");
+        assert_eq!(health.state, HealthState::Error);
+        let error = health.last_error.expect("actionable error");
+        assert!(error.contains("claude-code"), "{error}");
+        assert!(error.contains("delete"), "{error}");
+        assert!(
+            error.contains("injected checkpoint delete failure"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn bounded_rebuild_success_stays_rebuilding_until_unbounded_success() {
+        let first = Utc::now();
+        let mut health = ProviderHealth::new(ProviderId::ClaudeCode);
+        health.record_rebuilding(first);
+
+        record_successful_provider_pass(&mut health, first, true, true, String::new());
+        assert_eq!(health.state, HealthState::Rebuilding);
+        assert!(health.last_success_at.is_none());
+
+        let completed = first + chrono::Duration::seconds(1);
+        record_successful_provider_pass(&mut health, completed, false, true, String::new());
+        assert_eq!(health.state, HealthState::Healthy);
+        assert_eq!(health.last_success_at, Some(completed));
     }
 }
