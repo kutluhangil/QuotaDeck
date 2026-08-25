@@ -51,7 +51,7 @@ interface DeckStore {
   settingsAction: string | null;
   exportBusy: boolean;
   exportError: string | null;
-  exportMessage: string | null;
+  exportMessage: ExportCopyMessage | null;
   /** A shell/window command failed outside a settings transaction. */
   shellError: string | null;
   refreshBusy: boolean;
@@ -99,6 +99,14 @@ interface DeckStore {
   /** End the process. With no dock icon the tray menu was the only way out. */
   quit: () => Promise<void>;
   start: () => Promise<void>;
+}
+
+interface ExportCopyMessage {
+  format: ExportFormat;
+  rows: number;
+  clamped: boolean;
+  requestedRange: HistoryRange;
+  effectiveRange: HistoryRange;
 }
 
 const emptyDeck: DeckState = {
@@ -450,7 +458,13 @@ export const useDeck = create<DeckStore>((set, get) => ({
       await navigator.clipboard.writeText(prepared.value.text);
       set({
         exportBusy: false,
-        exportMessage: `${format.toUpperCase()} copied: ${prepared.value.rows} rows`,
+        exportMessage: {
+          format,
+          rows: prepared.value.rows,
+          clamped: prepared.value.clamped,
+          requestedRange: prepared.value.requestedRange,
+          effectiveRange: prepared.value.effectiveRange,
+        },
       });
     } catch (error) {
       set({ exportBusy: false, exportError: `copy export: ${String(error)}` });

@@ -48,7 +48,7 @@ import { ProviderHealthNotice } from "./components/ProviderHealthNotice";
 import { useDeck, useDeckState, useHistory, useLocale, useStrings } from "./store";
 import { paceFor, sortedWindows, worstWindow, type ProviderSnapshot } from "./types";
 
-const ranges: Range[] = ["day", "week", "month"];
+const ranges: Range[] = ["day", "week", "month", "quarter", "year"];
 
 /**
  * The rolling range this window reports over.
@@ -58,13 +58,21 @@ const ranges: Range[] = ["day", "week", "month"];
  * pressed states. Arrow keys move between them and only the chosen one is in the tab order,
  * which is what a radio group is expected to do.
  */
-function RangePicker({ range, onChange }: { range: Range; onChange: (next: Range) => void }) {
+function RangePicker({
+  range,
+  available,
+  onChange,
+}: {
+  range: Range;
+  available: Range[];
+  onChange: (next: Range) => void;
+}) {
   const strings = useStrings();
   const buttons = useRef<(HTMLButtonElement | null)[]>([]);
 
   function step(index: number, delta: number) {
-    const next = (index + delta + ranges.length) % ranges.length;
-    const option = ranges[next];
+    const next = (index + delta + available.length) % available.length;
+    const option = available[next];
     if (option === undefined) return;
     onChange(option);
     buttons.current[next]?.focus();
@@ -84,7 +92,7 @@ function RangePicker({ range, onChange }: { range: Range; onChange: (next: Range
 
   return (
     <div className="board__ranges" role="radiogroup" aria-label={strings.dashboard.rangeLabel}>
-      {ranges.map((option, index) => (
+      {available.map((option, index) => (
         <button
           key={option}
           ref={(element) => {
@@ -127,7 +135,7 @@ function ProviderPanel({
   const history = useHistory();
   const hours = historyFor(history, snapshot.id);
   const sum = totals(inRange(hours, historyRange));
-  const cells = dailyCells(hours, heatmapDays, nowSeconds);
+  const cells = dailyCells(inRange(hours, historyRange), heatmapDays, historyRange.to - 1);
   const models = foldBreakdown(modelsFor(history, snapshot.id), historyRange);
   const modelsDropped = modelsDroppedFor(history, snapshot.id);
   const agents = foldBreakdown(agentsFor(history, snapshot.id), historyRange);
@@ -294,7 +302,7 @@ export function Dashboard() {
   const exportMessage = useDeck((state) => state.exportMessage);
   const [range, setRange] = useState<Range>("week");
   const [nowSeconds, setNowSeconds] = useState(() => Math.floor(Date.now() / 1000));
-  const [customFrom, setCustomFrom] = useState(() => dateInputValue(new Date(Date.now() - 6 * 86_400_000)));
+  const [customFrom, setCustomFrom] = useState(() => daysBeforeToday(6));
   const [customTo, setCustomTo] = useState(() => dateInputValue(new Date()));
   const [customRange, setCustomRange] = useState(false);
 
@@ -311,12 +319,14 @@ export function Dashboard() {
   const reporting = deck.providers.filter(
     (snapshot) => snapshot.installed && snapshot.unavailable !== "not-installed",
   );
+  const availableRanges = ranges.filter((option) => RANGE_DAYS[option] <= deck.retention.effectiveDays);
+  const visibleRange = availableRanges.includes(range) ? range : "month";
   const selectedRange = customRange
     ? localDateRange(dateFromInput(customFrom), dateFromInput(customTo))
-    : rollingRange(range, nowSeconds);
+    : rollingRange(visibleRange, nowSeconds);
   const selectedDays = customRange
     ? calendarDays(customFrom, customTo)
-    : RANGE_DAYS[range];
+    : RANGE_DAYS[visibleRange];
   const heatmapDays = Math.min(90, deck.retention.effectiveDays, Math.max(1, selectedDays));
   const exportDisabled = deck.scanning || deck.retention.rebuilding || exportBusy;
   const exportRange = {
@@ -342,7 +352,8 @@ export function Dashboard() {
             {strings.footer.refresh}
           </button>
           <RangePicker
-            range={range}
+            range={visibleRange}
+            available={availableRanges}
             onChange={(next) => {
               setRange(next);
               setCustomRange(false);
@@ -417,9 +428,19 @@ export function Dashboard() {
           </p>
         )}
         {exportMessage !== null && (
-          <p className="type-caption board__notice" role="status">
-            {exportMessage}
-          </p>
+          <>
+            <p className="type-caption board__notice" role="status">
+              {strings.dashboard.copied(exportMessage.format.toUpperCase(), exportMessage.rows)}
+            </p>
+            {exportMessage.clamped && (
+              <p className="type-caption board__notice" role="status">
+                {strings.dashboard.exportClamped(
+                  exportMessage.effectiveRange.from,
+                  exportMessage.effectiveRange.to,
+                )}
+              </p>
+            )}
+          </>
         )}
         {exportDisabled && !exportBusy && (
           <p className="type-caption board__notice" role="status">
@@ -448,7 +469,7 @@ export function Dashboard() {
       </main>
 
       <footer className="board__foot type-caption">
-        <span>{customRange ? strings.dashboard.customRange : strings.dashboard.rangeSpan(RANGE_DAYS[range])}</span>
+        <span>{customRange ? strings.dashboard.customRange : strings.dashboard.rangeSpan(RANGE_DAYS[visibleRange])}</span>
         <span>{strings.dashboard.retention(deck.retention.effectiveDays)}</span>
         <span>{strings.dashboard.hourlyHistory}</span>
       </footer>
@@ -476,4 +497,10 @@ function calendarDays(from: string, to: string): number {
   const startDay = Date.UTC(start.getFullYear(), start.getMonth(), start.getDate());
   const endDay = Date.UTC(end.getFullYear(), end.getMonth(), end.getDate());
   return Math.max(1, Math.floor((endDay - startDay) / 86_400_000) + 1);
+}
+
+function daysBeforeToday(days: number): string {
+  const date = new Date();
+  date.setDate(date.getDate() - days);
+  return dateInputValue(date);
 }

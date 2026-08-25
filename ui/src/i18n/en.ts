@@ -181,7 +181,7 @@ export const en = {
     title: "Quota Deck",
     rangeLabel: "Range",
     /** Rolling, not calendar: the same window model the panel uses. */
-    range: { day: "Day", week: "Week", month: "Month" },
+    range: { day: "Day", week: "Week", month: "Month", quarter: "Quarter", year: "Year" },
     rangeSpan: (days: number) => (days === 1 ? "Last 24 hours" : `Last ${days} days`),
     rangeTokens: "Tokens",
     rangeCost: "Equivalent cost",
@@ -204,6 +204,8 @@ export const en = {
     exporting: "Preparing…",
     copied: (format: string, rows: number) => `${format} copied: ${rows} rows`,
     exportFailed: (reason: string) => `Could not export history: ${reason}`,
+    exportClamped: (from: string, to: string) =>
+      `Copied retained hourly history from ${from} to ${to}; the selected start predates what this device retains.`,
     exportUnavailable: "Export is unavailable until the current usage history is complete.",
     rebuilding: (from: number, to: number) =>
       `Keeping the complete ${from}-day history while ${to} days rebuild from local logs.`,

@@ -26,6 +26,11 @@ const HOUR = 3600;
 const DAY = 86_400;
 
 describe("inRange", () => {
+  it("defines quarter and year as exact elapsed-duration ranges", () => {
+    expect(rollingRange("quarter", NOON)).toEqual({ from: NOON - 90 * DAY, to: NOON });
+    expect(rollingRange("year", NOON)).toEqual({ from: NOON - 365 * DAY, to: NOON });
+  });
+
   it("takes a rolling window back from now, matching the panel's rolling day", () => {
     const hours = [point(NOON - 2 * DAY, 10, 1), point(NOON - HOUR, 10, 1)];
     expect(inRange(hours, rollingRange("day", NOON))).toHaveLength(1);

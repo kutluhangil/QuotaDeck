@@ -135,7 +135,7 @@ export const tr: Catalogue = {
   dashboard: {
     title: "Quota Deck",
     rangeLabel: "Aralık",
-    range: { day: "Gün", week: "Hafta", month: "Ay" },
+    range: { day: "Gün", week: "Hafta", month: "Ay", quarter: "Çeyrek", year: "Yıl" },
     rangeSpan: (days) => (days === 1 ? "Son 24 saat" : `Son ${days} gün`),
     rangeTokens: "Token",
     rangeCost: "Eşdeğer maliyet",
@@ -153,6 +153,8 @@ export const tr: Catalogue = {
     exporting: "Hazırlanıyor…",
     copied: (format, rows) => `${format} kopyalandı: ${rows} satır`,
     exportFailed: (reason) => `Geçmiş dışa aktarılamadı: ${reason}`,
+    exportClamped: (from, to) =>
+      `Kopyalanan saatlik geçmiş ${from} ile ${to} arasında; seçilen başlangıç bu cihazda tutulan geçmişten daha eski.`,
     exportUnavailable: "Geçerli kullanım geçmişi tamamlanana kadar dışa aktarma kullanılamaz.",
     rebuilding: (from, to) =>
       `${to} günlük geçmiş yerel günlüklerden yeniden oluşturulurken tam ${from} günlük geçmiş korunuyor.`,

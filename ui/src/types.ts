@@ -267,6 +267,9 @@ export interface PreparedExport {
   mimeType: string;
   suggestedFilename: string;
   rows: number;
+  requestedRange: HistoryRange;
+  effectiveRange: HistoryRange;
+  clamped: boolean;
 }
 
 export type HealthState =

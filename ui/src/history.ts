@@ -12,10 +12,16 @@
 
 import type { HistoryPoint, ProviderHistory } from "./types";
 
-export type Range = "day" | "week" | "month";
+export type Range = "day" | "week" | "month" | "quarter" | "year";
 
 /** How far back each range reaches. `month` is thirty days, not a calendar month. */
-export const RANGE_DAYS: Record<Range, number> = { day: 1, week: 7, month: 30 };
+export const RANGE_DAYS: Record<Range, number> = {
+  day: 1,
+  week: 7,
+  month: 30,
+  quarter: 90,
+  year: 365,
+};
 
 /** Days the heatmap lays out, bounded by what the engine retains. */
 export const HEATMAP_DAYS = 30;
