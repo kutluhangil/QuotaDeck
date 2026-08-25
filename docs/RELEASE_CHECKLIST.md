@@ -11,17 +11,29 @@ kabul kriterleri blueprint Ek A.
 
 ---
 
-## Kod tarafı — son doğrulama (2026-08-25)
+## Kod tarafı — komut bazlı kanıt
 
-Hepsi bu makinede koşuldu, hepsi yeşil. CI aynılarını her push'ta tekrar koşuyor.
+2026-08-25 için aşağıdaki komutların her biri yeniden çalıştırıldı:
 
-- [x] `cargo clippy --workspace --all-targets -- -D warnings` — temiz
 - [x] `cargo test --workspace` — 367 test geçti, 0 başarısız (app 83, core 198, providers 86)
-- [x] Perf bütçesi (`cargo test -p quotadeck-core --release --test perf -- --ignored`) — dördü de bütçe içinde:
-      cold parse 69 ms / 160,3 MB (500 dosya), sıcak tik 3,4 ms ve **0 byte** okuma (500 imleç),
-      bir saatlik izleme yalnızca eklenen 65 343 byte'ı okudu, tepe RSS 6,9 MB
-- [x] `ui` — `tsc --noEmit` temiz, 71 Vitest testi geçti
-- [x] `site` — strict TypeScript kontrolü temiz, 6 sayfa derlendi (EN + TR), CSP kontrolü geçti
+- [x] `npm test --prefix ui` — 71 Vitest testi geçti
+- [x] `npm run build --prefix ui` — `tsc --noEmit` temiz ve üretim paketi derlendi
+- [x] `npm --prefix ui exec tauri -- build --bundles app` — macOS `.app` paketi derlendi
+- [x] `cargo test -p quotadeck-app tray` — 3 test geçti, 0 başarısız
+- [x] `node scripts/check-appstore-config.mjs` — özel macOS API'leri kapalı, tray yalnızca Rust'tan
+      oluşturuluyor ve seçilen home grant'i salt-okunur
+- [x] `npm run check --prefix site` — Astro tanılama özeti 0 hata, 0 uyarı, 0 ipucu; altı sayfa
+      derlendi ve CSP kontrolü geçti
+
+`cargo clippy`, release perf bütçesi, sandbox ve ikon kontrolleri için 2026-08-25 tarihli yeni
+kanıt henüz yoktur; bu maddeler yeni çalıştırma kaydı olmadan kapalı sayılmaz.
+
+### Tarihsel ölçüm (2026-08-01)
+
+- `cargo clippy --workspace --all-targets -- -D warnings` temizdi.
+- Perf bütçesi (`cargo test -p quotadeck-core --release --test perf -- --ignored`) dört bütçe
+  içindeydi: cold parse 69 ms / 160,3 MB (500 dosya), sıcak tik 3,4 ms ve **0 byte** okuma
+  (500 imleç), bir saatlik izleme yalnızca eklenen 65 343 byte'ı okudu, tepe RSS 6,9 MB.
 
 Blueprint Faz 0–12 kapalı. Bu dosyanın geri kalanındaki kutuların **hiçbiri bir commit'le
 kapanmıyor**; sürüm numarası hariç, o da aşağıda kapatıldı.
