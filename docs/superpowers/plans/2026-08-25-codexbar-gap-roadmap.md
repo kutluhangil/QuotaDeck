@@ -287,9 +287,9 @@
 - Lowering prunes immediately and marks the checkpoint dirty.
 - Raising schedules a scoped rebuild from available logs and reports progress/limitations.
 
-- [ ] RED: test migration, invalid values, prune, rebuild, restore compatibility, and unavailable old logs.
-- [ ] GREEN: use the configured horizon consistently in app history and CLI export.
-- [ ] Benchmark 365-day checkpoint size, peak RSS, cold rebuild, and hourly read/write budgets before accepting it.
+- [x] RED: test migration, invalid values, prune, rebuild, restore compatibility, and unavailable old logs.
+- [x] GREEN: use the configured horizon consistently in app history and CLI export.
+- [x] Benchmark 365-day checkpoint size, peak RSS, cold rebuild, and hourly read/write budgets before accepting it.
 
 ### Task 5.2: Add retained-range filtering and copy export
 
@@ -300,15 +300,15 @@
 - Modify: `app/src/lib.rs`
 - Modify: `app/src/export.rs`
 
-- [ ] RED: test 90/365 presets, custom half-open date range, UTC/local DST edges, and empty ranges.
-- [ ] GREEN: add range controls and backend-generated JSON/CSV copied to clipboard; do not grant filesystem capability.
-- [ ] Keep unpriced tokens, dropped labels, provider health, and schema version in exports.
+- [x] RED: test 90/365 presets, custom half-open date range, UTC/local DST edges, and empty ranges.
+- [x] GREEN: add range controls and backend-generated JSON/CSV copied to clipboard; do not grant filesystem capability.
+- [ ] Keep unpriced tokens, dropped labels, provider health, and schema version in exports. (JSON schema version is Phase 6 CLI work.)
 
 ### Task 5.3: Verify, commit, and push
 
-- [ ] Run full verification plus 365-day perf and persistence checks.
-- [ ] Commit with `feat(history): add retention controls and safe exports`.
-- [ ] Push separately.
+- [x] Run full verification plus 365-day perf and persistence checks.
+- [x] Commit with `feat(history): add retention controls and safe exports`.
+- [x] Push separately.
 
 ## Phase 6 — Productize the CLI
 
