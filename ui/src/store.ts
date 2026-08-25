@@ -3,12 +3,15 @@ import { create } from "zustand";
 import { demoDeck, demoHistory, demoPlans, demoStatusline } from "./demo";
 import { catalogueFor, languageFor, type Catalogue } from "./i18n";
 import { hostPlatform } from "./platform";
+import { applyProviderPolicy, catalogueForPolicy, providerPolicySettings } from "./providerPolicy";
 import type {
   AccessState,
   DeckState,
   Locale,
   ProviderHistory,
+  ProviderDescriptor,
   ProviderId,
+  ProviderPolicyOutcome,
   ProviderPlans,
   Settings,
   StartupState,
@@ -30,6 +33,7 @@ interface DeckStore {
   settings: Settings;
   /** Tiers each provider declared, fetched once. Empty until the shell answers. */
   plans: ProviderPlans[];
+  providerCatalogue: ProviderDescriptor[];
   statusline: StatuslineState | null;
   /** Set when an install or revert failed, so the panel can say what went wrong. */
   statuslineError: string | null;
@@ -62,6 +66,8 @@ interface DeckStore {
   forgetAccess: () => Promise<void>;
   setPlan: (provider: ProviderId, planId: string | null) => void;
   toggleThreshold: (provider: ProviderId, threshold: number) => void;
+  setProviderEnabled: (provider: ProviderId, enabled: boolean) => Promise<void>;
+  moveProvider: (provider: ProviderId, direction: -1 | 1) => Promise<void>;
   /** `null` lifts the mute; otherwise the number of minutes to stay quiet for. */
   setMute: (minutes: number | null) => void;
   installStatusline: () => Promise<void>;
@@ -89,8 +95,11 @@ export const useDeck = create<DeckStore>((set, get) => ({
     alerts: {},
     mutedUntil: null,
     demo: false,
+    disabledProviders: [],
+    providerOrder: ["claude-code", "codex", "copilot-cli"],
   },
   plans: [],
+  providerCatalogue: [],
   statusline: null,
   statuslineError: null,
   statuslineAction: null,
@@ -187,6 +196,113 @@ export const useDeck = create<DeckStore>((set, get) => ({
     void call<Settings>("set_alert_thresholds", { provider, thresholds: next }).then((outcome) => {
       if (outcome.ok) set({ settings: outcome.value, settingsAction: null });
       else set({ settingsError: outcome.error, settingsAction: null });
+    });
+  },
+
+  setProviderEnabled: async (provider, enabled) => {
+    if (get().settingsAction !== null) return;
+    const previous = get().settings;
+    const disabledProviders = enabled
+      ? previous.disabledProviders.filter((id) => id !== provider)
+      : [...previous.disabledProviders.filter((id) => id !== provider), provider];
+    const optimistic = providerPolicySettings(
+      previous,
+      disabledProviders,
+      previous.providerOrder,
+    );
+    const previousCatalogue = get().providerCatalogue;
+    const previousDeck = get().deck;
+    const previousHistory = get().history;
+    set({
+      settings: optimistic,
+      providerCatalogue: catalogueForPolicy(previousCatalogue, optimistic),
+      deck: {
+        ...previousDeck,
+        providers: previousDeck.providers.filter((snapshot) => enabled || snapshot.id !== provider),
+      },
+      history: previousHistory.filter((entry) => enabled || entry.id !== provider),
+      settingsError: null,
+      settingsAction: "provider-policy",
+    });
+    if (!inShell) {
+      set({ settingsAction: null });
+      return;
+    }
+    const outcome = await applyProviderPolicy(previous, optimistic, async (pending) => {
+      const saved = await call<ProviderPolicyOutcome>("set_provider_policy", {
+        disabledProviders: pending.disabledProviders,
+        providerOrder: pending.providerOrder,
+      });
+      if (!saved.ok) throw new Error(saved.error);
+      return saved.value;
+    });
+    set({
+      settings: outcome.settings,
+      providerCatalogue:
+        outcome.persisted
+          ? catalogueForPolicy(previousCatalogue, outcome.settings)
+          : previousCatalogue,
+      deck: outcome.persisted ? get().deck : previousDeck,
+      history: outcome.persisted ? get().history : previousHistory,
+      settingsError: outcome.error,
+      settingsAction: null,
+    });
+  },
+
+  moveProvider: async (provider, direction) => {
+    if (get().settingsAction !== null) return;
+    const previous = get().settings;
+    const from = previous.providerOrder.indexOf(provider);
+    const to = from + direction;
+    if (from < 0 || to < 0 || to >= previous.providerOrder.length) return;
+    const providerOrder = [...previous.providerOrder];
+    [providerOrder[from], providerOrder[to]] = [providerOrder[to]!, providerOrder[from]!];
+    const optimistic = providerPolicySettings(
+      previous,
+      previous.disabledProviders,
+      providerOrder,
+    );
+    const previousCatalogue = get().providerCatalogue;
+    const previousDeck = get().deck;
+    const previousHistory = get().history;
+    const positions = new Map(providerOrder.map((id, index) => [id, index]));
+    set({
+      settings: optimistic,
+      providerCatalogue: catalogueForPolicy(previousCatalogue, optimistic),
+      deck: {
+        ...previousDeck,
+        providers: [...previousDeck.providers].sort(
+          (left, right) => (positions.get(left.id) ?? 0) - (positions.get(right.id) ?? 0),
+        ),
+      },
+      history: [...previousHistory].sort(
+        (left, right) => (positions.get(left.id) ?? 0) - (positions.get(right.id) ?? 0),
+      ),
+      settingsError: null,
+      settingsAction: "provider-policy",
+    });
+    if (!inShell) {
+      set({ settingsAction: null });
+      return;
+    }
+    const outcome = await applyProviderPolicy(previous, optimistic, async (pending) => {
+      const saved = await call<ProviderPolicyOutcome>("set_provider_policy", {
+        disabledProviders: pending.disabledProviders,
+        providerOrder: pending.providerOrder,
+      });
+      if (!saved.ok) throw new Error(saved.error);
+      return saved.value;
+    });
+    set({
+      settings: outcome.settings,
+      providerCatalogue:
+        outcome.persisted
+          ? catalogueForPolicy(previousCatalogue, outcome.settings)
+          : previousCatalogue,
+      deck: outcome.persisted ? get().deck : previousDeck,
+      history: outcome.persisted ? get().history : previousHistory,
+      settingsError: outcome.error,
+      settingsAction: null,
     });
   },
 
@@ -311,6 +427,11 @@ export const useDeck = create<DeckStore>((set, get) => ({
         deck: demoDeck(),
         history: demoHistory(),
         plans: demoPlans(),
+        providerCatalogue: [
+          { id: "claude-code", displayName: "Claude Code", supportsMeasured: true, enabled: true },
+          { id: "codex", displayName: "Codex", supportsMeasured: true, enabled: true },
+          { id: "copilot-cli", displayName: "Copilot CLI", supportsMeasured: false, enabled: true },
+        ],
         statusline: demoStatusline(),
         // A browser has nothing to grant, and leaving this null would hold the panel on a
         // screen asking for a permission that does not exist here.
@@ -335,10 +456,11 @@ export const useDeck = create<DeckStore>((set, get) => ({
         .catch((error) => reportShellError("refresh usage history", error));
     });
 
-    const [deck, history, settings, plans, access, startup] = await Promise.all([
+    const [deck, history, settings, providerCatalogue, plans, access, startup] = await Promise.all([
       invoke<DeckState>("current_state"),
       invoke<ProviderHistory[]>("usage_history"),
       invoke<Settings>("current_settings"),
+      invoke<ProviderDescriptor[]>("provider_catalogue"),
       invoke<ProviderPlans[]>("provider_plans"),
       invoke<AccessState>("access_state"),
       call<StartupState>("startup_state", {}),
@@ -348,6 +470,7 @@ export const useDeck = create<DeckStore>((set, get) => ({
       deck,
       history,
       settings,
+      providerCatalogue,
       plans,
       statusline: statusline.ok ? statusline.value : unavailableStatusline(),
       statuslineError: statusline.ok ? null : statusline.error,

@@ -853,6 +853,51 @@
   gap: var(--step-2);
 }
 
+.settings__providers {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--step-1);
+}
+
+.settings__provider {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--step-2);
+  min-block-size: 36px;
+  padding: var(--step-1) var(--step-2);
+  border: var(--hairline) solid var(--rule);
+  border-radius: var(--radius);
+}
+
+.settings__provider-toggle,
+.settings__provider-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--step-2);
+}
+
+.settings__move {
+  inline-size: 30px;
+  block-size: 30px;
+  border: var(--hairline) solid var(--rule);
+  border-radius: var(--radius);
+  color: var(--ink-secondary);
+}
+
+.settings__move:hover:not(:disabled) {
+  color: var(--ink-primary);
+  border-color: var(--ink-tertiary);
+  background: var(--surface-raised);
+}
+
+.settings__move:disabled {
+  opacity: 0.4;
+}
+
 /*
  * The before/after of someone else's config file. Shown in full — a truncated command is a
  * change the user cannot actually inspect before agreeing to it.

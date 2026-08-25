@@ -1,6 +1,9 @@
+import { useRef } from "react";
+
 import { formatClock } from "../format";
 import type { Catalogue } from "../i18n";
 import { hostPlatform } from "../platform";
+import { focusDirectionAfterMove } from "../providerPolicy";
 import { useDeck, useLocale, useStrings } from "../store";
 import { DEFAULT_THRESHOLDS, thresholdsFor } from "../types";
 import type { Locale, ProviderId, ProviderPlans, Settings, TrayMode } from "../types";
@@ -42,6 +45,76 @@ function locales(strings: Catalogue): { locale: Locale; label: string }[] {
     { locale: "en", label: strings.settings.languageEnglish },
     { locale: "tr", label: strings.settings.languageTurkish },
   ];
+}
+
+function ProviderGroup() {
+  const strings = useStrings();
+  const catalogue = useDeck((state) => state.providerCatalogue);
+  const busy = useDeck((state) => state.settingsAction !== null);
+  const setProviderEnabled = useDeck((state) => state.setProviderEnabled);
+  const moveProvider = useDeck((state) => state.moveProvider);
+  const moveButtons = useRef(new Map<string, HTMLButtonElement>());
+
+  async function move(provider: ProviderId, direction: -1 | 1) {
+    await moveProvider(provider, direction);
+    window.requestAnimationFrame(() => {
+      const current = useDeck.getState().providerCatalogue;
+      const index = current.findIndex((entry) => entry.id === provider);
+      const target = focusDirectionAfterMove(index, current.length, direction);
+      if (target !== null) moveButtons.current.get(`${provider}:${target}`)?.focus();
+    });
+  }
+
+  return (
+    <fieldset className="settings__group" disabled={busy}>
+      <legend className="type-label settings__legend">{strings.settings.providersTitle}</legend>
+      <p className="type-caption settings__hint">{strings.settings.providersHint}</p>
+      <ol className="settings__providers">
+        {catalogue.map((provider, index) => (
+          <li key={provider.id} className="settings__provider">
+            <label className="settings__provider-toggle">
+              <input
+                type="checkbox"
+                role="switch"
+                aria-label={strings.settings.providerEnabled(provider.displayName)}
+                checked={provider.enabled}
+                onChange={(event) => void setProviderEnabled(provider.id, event.target.checked)}
+              />
+              <span className="type-body" aria-hidden="true">{provider.displayName}</span>
+            </label>
+            <span className="settings__provider-actions">
+              <button
+                type="button"
+                className="settings__move"
+                disabled={index === 0}
+                aria-label={strings.settings.providerUp(provider.displayName)}
+                ref={(node) => {
+                  if (node === null) moveButtons.current.delete(`${provider.id}:-1`);
+                  else moveButtons.current.set(`${provider.id}:-1`, node);
+                }}
+                onClick={() => void move(provider.id, -1)}
+              >
+                ↑
+              </button>
+              <button
+                type="button"
+                className="settings__move"
+                disabled={index === catalogue.length - 1}
+                aria-label={strings.settings.providerDown(provider.displayName)}
+                ref={(node) => {
+                  if (node === null) moveButtons.current.delete(`${provider.id}:1`);
+                  else moveButtons.current.set(`${provider.id}:1`, node);
+                }}
+                onClick={() => void move(provider.id, 1)}
+              >
+                ↓
+              </button>
+            </span>
+          </li>
+        ))}
+      </ol>
+    </fieldset>
+  );
 }
 
 /**
@@ -390,6 +463,7 @@ export function SettingsView({ now }: { now: number }) {
       </fieldset>
 
       {/* Above the plans: a tier picked against a folder we cannot read produces nothing. */}
+      <ProviderGroup />
       <AccessGroup />
       <DemoGroup />
 

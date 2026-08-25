@@ -76,6 +76,43 @@ enum Format {
     Csv,
 }
 
+fn explicit_provider(
+    settings: &Settings,
+    key: &str,
+    command: &str,
+) -> Result<Box<dyn quotadeck_core::provider::Provider>, String> {
+    let provider =
+        quotadeck_providers::by_key(key).ok_or_else(|| format!("unknown provider: {key}"))?;
+    if !settings.is_provider_enabled(provider.id()) {
+        return Err(format!(
+            "provider {key:?} is disabled in settings; enable it before using {command}"
+        ));
+    }
+    Ok(provider)
+}
+
+fn selected_providers(
+    settings: &Settings,
+    only: Option<&str>,
+) -> Result<Vec<Box<dyn quotadeck_core::provider::Provider>>, String> {
+    if let Some(key) = only {
+        explicit_provider(settings, key, "--provider")?;
+    }
+    let ordered = settings
+        .ordered_provider_ids(&quotadeck_providers::ids())
+        .map_err(|error| format!("provider settings are invalid: {error}"))?;
+    let providers = ordered
+        .into_iter()
+        .filter(|id| settings.is_provider_enabled(*id))
+        .filter(|id| only.is_none_or(|key| key == id.key()))
+        .filter_map(quotadeck_providers::by_id)
+        .collect::<Vec<_>>();
+    if providers.is_empty() {
+        return Err("every compiled provider is disabled in settings".into());
+    }
+    Ok(providers)
+}
+
 /// Read every provider this machine has and write the result to stdout.
 ///
 /// The exit status is the deck's worst reading, so a shell can branch on the quota without
@@ -124,20 +161,13 @@ fn export(args: &[String]) -> ExitCode {
         }
     };
 
-    let mut providers = Vec::new();
-    for provider in quotadeck_providers::all() {
-        if only.is_some_and(|key| key != provider.id().key()) {
-            continue;
+    let providers = match selected_providers(&settings, only) {
+        Ok(providers) => providers,
+        Err(error) => {
+            eprintln!("{error}");
+            return ExitCode::FAILURE;
         }
-        providers.push(provider);
-    }
-    if providers.is_empty() {
-        match only {
-            Some(key) => eprintln!("unknown provider: {key}"),
-            None => eprintln!("no provider is compiled into this build"),
-        }
-        return ExitCode::FAILURE;
-    }
+    };
 
     let now = Utc::now();
     let history_from = now - Duration::days(DEFAULT_RETENTION_DAYS);
@@ -240,9 +270,19 @@ fn export(args: &[String]) -> ExitCode {
 /// at, and a unit test can only assert geometry. This prints what the buffer actually
 /// contains, which is the only way to see whether the item reads as anything at 44x16.
 fn tray_preview(key: &str) -> ExitCode {
-    let Some(provider) = quotadeck_providers::by_key(key) else {
-        eprintln!("unknown provider: {key}");
-        return ExitCode::FAILURE;
+    let settings = match Settings::load() {
+        Ok(settings) => settings,
+        Err(error) => {
+            eprintln!("settings could not be read: {error}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let provider = match explicit_provider(&settings, key, "tray") {
+        Ok(provider) => provider,
+        Err(error) => {
+            eprintln!("{error}");
+            return ExitCode::FAILURE;
+        }
     };
 
     let mut engine = ProviderEngine::new(provider);
@@ -324,7 +364,17 @@ fn paths() -> ExitCode {
     );
     println!("data           {}", show(quotadeck_core::paths::data_dir()));
 
-    for provider in quotadeck_providers::all() {
+    let settings = match Settings::load() {
+        Ok(settings) => settings,
+        Err(error) => {
+            eprintln!("settings could not be read: {error}");
+            return ExitCode::FAILURE;
+        }
+    };
+    for provider in quotadeck_providers::all()
+        .into_iter()
+        .filter(|provider| settings.is_provider_enabled(provider.id()))
+    {
         for root in provider.discover_roots() {
             let state = match access(&root) {
                 RootAccess::Readable => "readable",
@@ -343,7 +393,32 @@ fn paths() -> ExitCode {
 }
 
 fn list() -> ExitCode {
-    for provider in quotadeck_providers::all() {
+    let settings = match Settings::load() {
+        Ok(settings) => settings,
+        Err(error) => {
+            eprintln!("settings could not be read: {error}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let ordered = match settings.ordered_provider_ids(&quotadeck_providers::ids()) {
+        Ok(ordered) => ordered,
+        Err(error) => {
+            eprintln!("provider settings are invalid: {error}");
+            return ExitCode::FAILURE;
+        }
+    };
+    for id in ordered {
+        let Some(provider) = quotadeck_providers::by_id(id) else {
+            eprintln!(
+                "compiled provider registry has no implementation for key {:?}",
+                id.key()
+            );
+            return ExitCode::FAILURE;
+        };
+        if !settings.is_provider_enabled(id) {
+            println!("{:<14} {:<9} disabled", id.key(), "disabled");
+            continue;
+        }
         let roots = provider.discover_roots();
         let status = if roots.is_empty() {
             "not installed".to_string()
@@ -442,9 +517,19 @@ fn statusline_preview() -> ExitCode {
 }
 
 fn debug_provider(key: &str, plan_id: Option<String>) -> ExitCode {
-    let Some(provider) = quotadeck_providers::by_key(key) else {
-        eprintln!("unknown provider: {key}");
-        return ExitCode::FAILURE;
+    let settings = match Settings::load() {
+        Ok(settings) => settings,
+        Err(error) => {
+            eprintln!("settings could not be read: {error}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let provider = match explicit_provider(&settings, key, "debug") {
+        Ok(provider) => provider,
+        Err(error) => {
+            eprintln!("{error}");
+            return ExitCode::FAILURE;
+        }
     };
 
     let roots = provider.discover_roots();
@@ -688,5 +773,47 @@ fn format_duration(seconds: u64) -> String {
         format!("{hours}h {minutes}m")
     } else {
         format!("{minutes}m")
+    }
+}
+
+#[cfg(test)]
+mod provider_policy_tests {
+    use super::*;
+
+    #[test]
+    fn explicit_cli_selection_rejects_a_disabled_provider_actionably() {
+        let settings = Settings {
+            disabled_providers: ["codex".to_string()].into_iter().collect(),
+            ..Settings::default()
+        };
+
+        let error = match explicit_provider(&settings, "codex", "--provider") {
+            Ok(_) => panic!("disabled provider must not be selected"),
+            Err(error) => error,
+        };
+        assert!(error.contains("codex"));
+        assert!(error.contains("disabled in settings"));
+        assert!(error.contains("--provider"));
+    }
+
+    #[test]
+    fn default_cli_selection_uses_enabled_providers_in_configured_order() {
+        let settings = Settings {
+            disabled_providers: ["claude-code".to_string()].into_iter().collect(),
+            provider_order: vec!["copilot-cli".into(), "codex".into(), "claude-code".into()],
+            ..Settings::default()
+        };
+
+        let selected = selected_providers(&settings, None).expect("enabled providers");
+        assert_eq!(
+            selected
+                .iter()
+                .map(|provider| provider.id())
+                .collect::<Vec<_>>(),
+            vec![
+                quotadeck_core::types::ProviderId::CopilotCli,
+                quotadeck_core::types::ProviderId::Codex
+            ]
+        );
     }
 }

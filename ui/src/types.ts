@@ -14,19 +14,6 @@ export const PROVIDER_IDS = [
   "claude-code",
   "codex",
   "copilot-cli",
-  "kimi",
-  "gemini-cli",
-  "qwen",
-  "opencode",
-  "amp",
-  "droid",
-  "codebuff",
-  "hermes",
-  "pi-agent",
-  "goose",
-  "kilo",
-  "openclaw",
-  "antigravity",
 ] as const;
 
 export type ProviderId = (typeof PROVIDER_IDS)[number];
@@ -299,6 +286,20 @@ export interface Settings {
    * asked for is indistinguishable from a wrong reading.
    */
   demo: boolean;
+  disabledProviders: ProviderId[];
+  providerOrder: ProviderId[];
+}
+
+export interface ProviderDescriptor {
+  id: ProviderId;
+  displayName: string;
+  supportsMeasured: boolean;
+  enabled: boolean;
+}
+
+export interface ProviderPolicyOutcome {
+  settings: Settings;
+  warning: string | null;
 }
 
 /** Mirrors `DEFAULT_THRESHOLDS` in `app/src/deck.rs`. */

@@ -14,7 +14,7 @@ pub mod statusline;
 pub mod statusline_helper;
 pub mod tray;
 
-use std::collections::HashSet;
+use std::collections::{BTreeSet, HashSet};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
@@ -32,7 +32,10 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager};
 
 use crate::alerts::{Alert, Alerts};
-use crate::deck::{Deck, DeckState, ProviderHistory, Settings, Theme, TrayMode};
+use crate::deck::{
+    Deck, DeckState, ProviderHistory, ProviderPolicyOutcome, ProviderPolicySyncRequest, Settings,
+    Theme, TrayMode,
+};
 use crate::i18n::Locale;
 use crate::sandbox::AccessState;
 use crate::statusline::StatuslineState;
@@ -126,6 +129,7 @@ pub fn run() -> Result<()> {
         .invoke_handler(tauri::generate_handler![
             current_state,
             current_settings,
+            provider_catalogue,
             provider_plans,
             usage_history,
             open_dashboard,
@@ -138,6 +142,7 @@ pub fn run() -> Result<()> {
             set_theme,
             set_locale,
             set_demo,
+            set_provider_policy,
             set_plan,
             set_alert_thresholds,
             set_mute,
@@ -222,6 +227,43 @@ fn current_settings(deck: tauri::State<'_, Deck>) -> Settings {
     deck.settings()
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderDescriptor {
+    pub id: ProviderId,
+    pub display_name: &'static str,
+    pub supports_measured: bool,
+    pub enabled: bool,
+}
+
+fn provider_catalogue_for(settings: &Settings) -> Result<Vec<ProviderDescriptor>> {
+    let ordered = settings.ordered_provider_ids(&quotadeck_providers::ids())?;
+    ordered
+        .into_iter()
+        .map(|id| {
+            let provider = quotadeck_providers::by_id(id).ok_or_else(|| {
+                Error::Invalid(format!(
+                    "compiled provider registry has no implementation for key {:?}",
+                    id.key()
+                ))
+            })?;
+            Ok(ProviderDescriptor {
+                id,
+                display_name: provider.display_name(),
+                supports_measured: provider.supports_measured(),
+                enabled: settings.is_provider_enabled(id),
+            })
+        })
+        .collect()
+}
+
+#[tauri::command]
+fn provider_catalogue(
+    deck: tauri::State<'_, Deck>,
+) -> std::result::Result<Vec<ProviderDescriptor>, String> {
+    provider_catalogue_for(&deck.settings()).map_err(|error| error.to_string())
+}
+
 /// Subscription tiers, as each provider declares them.
 ///
 /// The panel renders this list rather than a hardcoded one, so adding a tier to a provider is
@@ -262,6 +304,16 @@ fn set_alert_thresholds(
 ) -> std::result::Result<Settings, String> {
     deck.set_alert_thresholds(provider, thresholds)
         .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn set_provider_policy(
+    deck: tauri::State<'_, Deck>,
+    disabled_providers: BTreeSet<String>,
+    provider_order: Vec<String>,
+) -> std::result::Result<ProviderPolicyOutcome, String> {
+    deck.set_provider_policy(disabled_providers, provider_order)
+        .map_err(|error| error.to_string())
 }
 
 /// Silence notifications for `minutes`, or lift the silence with `None`.
@@ -765,17 +817,21 @@ fn spawn_read_loop(app: AppHandle, deck: Deck) -> Result<ReadLoopControl> {
     let mut store = BatchedStore::open(data_dir.join(STORE_FILE))?;
     let mut engines = restore_engines(&store)?;
     let mut watched = HashSet::new();
+    let (provider_policy_sync, provider_policy_sync_requested) = mpsc::channel();
+    deck.register_provider_policy_sync(provider_policy_sync);
     let mut watcher = match DebouncedWatcher::new(DEFAULT_DEBOUNCE) {
-        Ok(mut watcher) => match sync_watches(&mut watcher, &mut watched, &engines) {
-            Ok(()) => Some(watcher),
-            Err(error) => {
-                eprintln!(
+        Ok(mut watcher) => {
+            match sync_watches_for_current_policy(&deck, &mut watcher, &mut watched, &engines) {
+                Ok(()) => Some(watcher),
+                Err(error) => {
+                    eprintln!(
                     "quotadeck: initial filesystem watches failed; timer polling will be used: {error}"
                 );
-                watched.clear();
-                None
+                    watched.clear();
+                    None
+                }
             }
-        },
+        }
         Err(error) => {
             eprintln!(
                 "quotadeck: filesystem watcher could not start; timer polling will be used: {error}"
@@ -791,9 +847,10 @@ fn spawn_read_loop(app: AppHandle, deck: Deck) -> Result<ReadLoopControl> {
         .name("quotadeck-read".into())
         .spawn(move || {
             let mut alerts = Alerts::new();
+            let initial_observed_revision = deck.provider_policy_revision();
 
             // First pass: newest files only, so the panel fills quickly.
-            if let Err(error) = publish(
+            let initial_outcome = publish(
                 &app,
                 &deck,
                 &mut engines,
@@ -804,15 +861,36 @@ fn spawn_read_loop(app: AppHandle, deck: Deck) -> Result<ReadLoopControl> {
                     scanning: true,
                     cancelled: &read_cancelled,
                 },
-            ) {
-                eprintln!("quotadeck: initial read pass failed: {error}");
-            }
+            );
+            // Keep the revision the pass actually used. Reading the current revision after the
+            // initial publish/sync would swallow a policy change that landed while it ran.
+            let (mut observed_policy_revision, mut refresh_immediately) = match initial_outcome {
+                Ok(PublishOutcome::Committed(revision) | PublishOutcome::Cancelled(revision)) => {
+                    (revision, false)
+                }
+                Ok(PublishOutcome::StalePolicy(revision)) => (revision, true),
+                Err(error) => {
+                    eprintln!("quotadeck: initial read pass failed: {error}");
+                    (initial_observed_revision, false)
+                }
+            };
             if let Some(active) = watcher.as_mut() {
-                if let Err(error) = sync_watches(active, &mut watched, &engines) {
+                if let Err(error) =
+                    sync_watches_for_current_policy(&deck, active, &mut watched, &engines)
+                {
                     eprintln!("quotadeck: filesystem watcher setup failed: {error}");
                     watcher = None;
                     watched.clear();
                 }
+            }
+            if apply_provider_policy_sync_requests(
+                &provider_policy_sync_requested,
+                &deck,
+                &mut watcher,
+                &mut watched,
+                &engines,
+            ) {
+                refresh_immediately = true;
             }
 
             let mut next_refresh = Instant::now() + refresh_interval(&deck);
@@ -823,31 +901,64 @@ fn spawn_read_loop(app: AppHandle, deck: Deck) -> Result<ReadLoopControl> {
                     Err(mpsc::TryRecvError::Empty) => {}
                 }
 
-                let timeout = next_refresh
-                    .saturating_duration_since(Instant::now())
-                    .min(STOP_POLL);
-                let changed = match watcher.as_ref() {
-                    Some(active) => match active.next_batch(timeout) {
-                        Ok(batch) => batch.is_some(),
-                        Err(error) => {
-                            eprintln!(
-                                "quotadeck: filesystem watcher failed; timer polling continues: {error}"
-                            );
-                            watcher = None;
-                            watched.clear();
-                            false
-                        }
-                    },
-                    None => {
-                        thread::sleep(timeout);
-                        false
-                    }
-                };
-                if !changed && Instant::now() < next_refresh {
-                    continue;
+                if apply_provider_policy_sync_requests(
+                    &provider_policy_sync_requested,
+                    &deck,
+                    &mut watcher,
+                    &mut watched,
+                    &engines,
+                ) {
+                    refresh_immediately = true;
                 }
 
-                if let Err(error) = publish(
+                let changed = if refresh_immediately {
+                    // A stale pass committed nothing. Re-run against the new policy without
+                    // spending even the normal one-second stop-poll interval in the watcher.
+                    false
+                } else {
+                    let timeout = next_refresh
+                        .saturating_duration_since(Instant::now())
+                        .min(STOP_POLL);
+                    match watcher.as_ref() {
+                        Some(active) => match active.next_batch(timeout) {
+                            Ok(batch) => batch.is_some(),
+                            Err(error) => {
+                                eprintln!(
+                                    "quotadeck: filesystem watcher failed; timer polling continues: {error}"
+                                );
+                                watcher = None;
+                                watched.clear();
+                                false
+                            }
+                        },
+                        None => {
+                            thread::sleep(timeout);
+                            false
+                        }
+                    }
+                };
+                if apply_provider_policy_sync_requests(
+                    &provider_policy_sync_requested,
+                    &deck,
+                    &mut watcher,
+                    &mut watched,
+                    &engines,
+                ) {
+                    refresh_immediately = true;
+                }
+                let policy_revision = deck.provider_policy_revision();
+                let policy_changed = policy_revision != observed_policy_revision;
+                if !changed
+                    && !policy_changed
+                    && !refresh_immediately
+                    && Instant::now() < next_refresh
+                {
+                    continue;
+                }
+                refresh_immediately = false;
+
+                let attempted_policy_revision = policy_revision;
+                match publish(
                     &app,
                     &deck,
                     &mut engines,
@@ -859,12 +970,28 @@ fn spawn_read_loop(app: AppHandle, deck: Deck) -> Result<ReadLoopControl> {
                         cancelled: &read_cancelled,
                     },
                 ) {
-                    eprintln!("quotadeck: read pass failed; retrying on the next tick: {error}");
+                    Ok(PublishOutcome::Committed(revision)
+                    | PublishOutcome::Cancelled(revision)) => {
+                        observed_policy_revision = revision;
+                    }
+                    Ok(PublishOutcome::StalePolicy(revision)) => {
+                        observed_policy_revision = revision;
+                        refresh_immediately = true;
+                    }
+                    Err(error) => {
+                        observed_policy_revision = attempted_policy_revision;
+                        eprintln!("quotadeck: read pass failed; retrying on the next tick: {error}");
+                    }
                 }
                 if watcher.is_none() {
                     match DebouncedWatcher::new(DEFAULT_DEBOUNCE) {
                         Ok(mut replacement) => {
-                            match sync_watches(&mut replacement, &mut watched, &engines) {
+                            match sync_watches_for_current_policy(
+                                &deck,
+                                &mut replacement,
+                                &mut watched,
+                                &engines,
+                            ) {
                                 Ok(()) => watcher = Some(replacement),
                                 Err(error) => {
                                     eprintln!(
@@ -879,13 +1006,24 @@ fn spawn_read_loop(app: AppHandle, deck: Deck) -> Result<ReadLoopControl> {
                         ),
                     }
                 } else if let Some(active) = watcher.as_mut() {
-                    if let Err(error) = sync_watches(active, &mut watched, &engines) {
+                    if let Err(error) =
+                        sync_watches_for_current_policy(&deck, active, &mut watched, &engines)
+                    {
                         eprintln!(
                             "quotadeck: filesystem watcher update failed; timer polling continues: {error}"
                         );
                         watcher = None;
                         watched.clear();
                     }
+                }
+                if apply_provider_policy_sync_requests(
+                    &provider_policy_sync_requested,
+                    &deck,
+                    &mut watcher,
+                    &mut watched,
+                    &engines,
+                ) {
+                    refresh_immediately = true;
                 }
                 next_refresh = Instant::now() + refresh_interval(&deck);
             }
@@ -927,9 +1065,11 @@ fn sync_watches(
     watcher: &mut DebouncedWatcher,
     watched: &mut HashSet<PathBuf>,
     engines: &[ProviderEngine],
+    settings: &Settings,
 ) -> Result<()> {
     let desired: HashSet<PathBuf> = engines
         .iter()
+        .filter(|engine| settings.is_provider_enabled(engine.provider().id()))
         .flat_map(ProviderEngine::watch_directories)
         .collect();
 
@@ -943,10 +1083,100 @@ fn sync_watches(
     Ok(())
 }
 
+fn sync_watches_for_current_policy(
+    deck: &Deck,
+    watcher: &mut DebouncedWatcher,
+    watched: &mut HashSet<PathBuf>,
+    engines: &[ProviderEngine],
+) -> Result<()> {
+    deck.with_provider_policy(|settings, _revision| {
+        sync_watches(watcher, watched, engines, settings)
+    })
+}
+
+fn apply_provider_policy_sync_requests(
+    requested: &mpsc::Receiver<ProviderPolicySyncRequest>,
+    deck: &Deck,
+    watcher: &mut Option<DebouncedWatcher>,
+    watched: &mut HashSet<PathBuf>,
+    engines: &[ProviderEngine],
+) -> bool {
+    let mut handled = false;
+    loop {
+        let request = match requested.try_recv() {
+            Ok(request) => request,
+            Err(mpsc::TryRecvError::Empty | mpsc::TryRecvError::Disconnected) => break,
+        };
+        handled = true;
+
+        let synced_revision = deck.with_provider_policy(|settings, revision| {
+            match watcher.as_mut() {
+                Some(active) => {
+                    if let Err(error) = sync_watches(active, watched, engines, settings) {
+                        eprintln!(
+                            "quotadeck: provider policy watcher sync failed; timer polling continues: {error}"
+                        );
+                        *watcher = None;
+                        watched.clear();
+                    }
+                }
+                None => watched.clear(),
+            }
+            Ok(revision)
+        });
+
+        let completion = match synced_revision {
+            Ok(revision) if revision >= request.revision => Ok(()),
+            Ok(revision) => Err(Error::Invalid(format!(
+                "filesystem watcher applied provider policy revision {revision}, expected at least {}",
+                request.revision
+            ))),
+            Err(error) => {
+                if watcher.is_some() {
+                    eprintln!(
+                        "quotadeck: provider policy watcher sync failed; timer polling continues: {error}"
+                    );
+                    *watcher = None;
+                    watched.clear();
+                }
+                Err(error)
+            }
+        };
+        if let Err(error) = request.complete.send(completion) {
+            eprintln!(
+                "quotadeck: provider policy watcher sync acknowledgement could not be delivered: {error}"
+            );
+        }
+    }
+    handled
+}
+
+fn ordered_enabled_engine_ids(
+    settings: &Settings,
+    engines: &[ProviderEngine],
+) -> Result<Vec<ProviderId>> {
+    let available: HashSet<ProviderId> = engines
+        .iter()
+        .map(|engine| engine.provider().id())
+        .collect();
+    Ok(settings
+        .ordered_provider_ids(&quotadeck_providers::ids())?
+        .into_iter()
+        .filter(|id| settings.is_provider_enabled(*id) && available.contains(id))
+        .collect())
+}
+
 struct ReadPass<'a> {
     max_files: Option<usize>,
     scanning: bool,
     cancelled: &'a AtomicBool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PublishOutcome {
+    Committed(u64),
+    StalePolicy(u64),
+    Cancelled(u64),
 }
 
 fn publish(
@@ -956,14 +1186,27 @@ fn publish(
     alerts: &mut Alerts,
     store: &mut BatchedStore,
     pass: ReadPass<'_>,
-) -> Result<()> {
+) -> Result<PublishOutcome> {
     let now = Utc::now();
-    let settings = deck.settings();
+    let (settings, policy_revision) = deck.provider_policy_snapshot();
     let mut providers = Vec::with_capacity(engines.len());
     let mut history = Vec::with_capacity(engines.len());
+    let mut checkpoints = Vec::new();
+    let mut diagnostics = Vec::new();
     let history_from = now - chrono::Duration::days(DEFAULT_RETENTION_DAYS);
 
-    for engine in engines.iter_mut() {
+    let enabled = ordered_enabled_engine_ids(&settings, engines)?;
+    for provider_id in enabled {
+        let engine_index = engines
+            .iter()
+            .position(|engine| engine.provider().id() == provider_id)
+            .ok_or_else(|| {
+                Error::Invalid(format!(
+                    "read loop has no engine for compiled provider key {:?}",
+                    provider_id.key()
+                ))
+            })?;
+        let engine = &mut engines[engine_index];
         // Picked up every tick, so a plan chosen in the panel shows on the next refresh
         // without re-reading a byte of log.
         engine.set_config(settings.config_for(engine.provider().id()));
@@ -993,12 +1236,10 @@ fn publish(
             Ok(report) => {
                 engine.prune(now);
                 if engine.checkpoint_dirty() {
-                    let checkpoint = engine.checkpoint()?;
-                    store.push_provider_checkpoint(engine.provider().id(), checkpoint)?;
-                    engine.mark_checkpoint_queued();
+                    checkpoints.push((engine_index, engine.provider().id(), engine.checkpoint()?));
                 }
                 if report.cancelled {
-                    return Ok(());
+                    return Ok(PublishOutcome::Cancelled(policy_revision));
                 }
                 history.push(ProviderHistory {
                     id: engine.provider().id(),
@@ -1015,7 +1256,7 @@ fn publish(
                     agents_dropped: engine.index().agents().labels_dropped(),
                 });
                 if report.parse_errors > 0 {
-                    eprintln!(
+                    diagnostics.push(format!(
                         "quotadeck: {} skipped {} malformed completed record(s): {}",
                         engine.provider().id().key(),
                         report.parse_errors,
@@ -1023,17 +1264,17 @@ fn publish(
                             .first_parse_error
                             .as_deref()
                             .unwrap_or("provider parser returned no error detail")
-                    );
+                    ));
                 }
                 providers.push(engine.snapshot(now));
             }
             Err(e) => {
                 // A provider that cannot be read says so; it does not silently vanish from
                 // the list, and it does not take the other providers down with it.
-                eprintln!(
+                diagnostics.push(format!(
                     "quotadeck: {} could not be read: {e}",
                     engine.provider().id().key()
-                );
+                ));
                 providers.push(ProviderSnapshot::unavailable(
                     engine.provider().id(),
                     UnavailableReason::ReadError,
@@ -1047,28 +1288,57 @@ fn publish(
         updated_at: now,
         scanning: pass.scanning,
     };
-    deck.set_history(history);
-    deck.set_state(state.clone());
-    let mut failures = Vec::new();
-    if let Err(error) = app.emit(STATE_EVENT, &state) {
-        failures.push(format!("could not emit {STATE_EVENT}: {error}"));
-    }
-
-    for alert in alerts.evaluate(&state, &settings, now) {
-        raise(app, &alert);
-    }
-    if store.should_flush() {
-        if let Err(error) = store.flush() {
-            failures.push(format!("could not flush usage persistence: {error}"));
+    let committed = deck.with_current_provider_policy(policy_revision, || {
+        for (engine_index, provider_id, checkpoint) in checkpoints {
+            store.push_provider_checkpoint(provider_id, checkpoint)?;
+            let engine = engines.get_mut(engine_index)
+                .ok_or_else(|| {
+                    Error::Invalid(format!(
+                        "read loop engine index {engine_index} disappeared before checkpointing provider key {:?}",
+                        provider_id.key(),
+                    ))
+                })?;
+            if engine.provider().id() != provider_id {
+                return Err(Error::Invalid(format!(
+                    "read loop engine index {engine_index} changed from provider key {:?} before checkpoint commit",
+                    provider_id.key(),
+                )));
+            }
+            engine.mark_checkpoint_queued();
         }
-    }
-    if let Err(error) = tray::refresh(app, &state, settings) {
-        failures.push(format!("tray refresh failed: {error}"));
-    }
-    if !failures.is_empty() {
-        return Err(Error::Invalid(failures.join("; ")));
-    }
-    Ok(())
+        for diagnostic in diagnostics {
+            eprintln!("{diagnostic}");
+        }
+
+        deck.set_history(history);
+        deck.set_state(state.clone());
+        let mut failures = Vec::new();
+        if let Err(error) = app.emit(STATE_EVENT, &state) {
+            failures.push(format!("could not emit {STATE_EVENT}: {error}"));
+        }
+
+        for alert in alerts.evaluate(&state, &settings, now) {
+            raise(app, &alert);
+        }
+        if store.should_flush() {
+            if let Err(error) = store.flush() {
+                failures.push(format!("could not flush usage persistence: {error}"));
+            }
+        }
+        if let Err(error) = tray::refresh(app, &state, settings) {
+            failures.push(format!("tray refresh failed: {error}"));
+        }
+        if !failures.is_empty() {
+            return Err(Error::Invalid(failures.join("; ")));
+        }
+        Ok(())
+    })?;
+
+    Ok(if committed.is_some() {
+        PublishOutcome::Committed(policy_revision)
+    } else {
+        PublishOutcome::StalePolicy(policy_revision)
+    })
 }
 
 /// Show one notification.
@@ -1089,6 +1359,55 @@ fn raise(app: &AppHandle, alert: &Alert) {
         eprintln!(
             "quotadeck: could not raise the {} notification: {e}",
             alert.provider.key()
+        );
+    }
+}
+
+#[cfg(test)]
+mod provider_policy_tests {
+    use std::collections::BTreeSet;
+
+    use super::*;
+
+    #[test]
+    fn catalogue_is_exactly_the_compiled_registry_in_configured_order() {
+        let settings = Settings {
+            provider_order: vec!["copilot-cli".into(), "claude-code".into(), "codex".into()],
+            disabled_providers: ["codex".to_string()].into_iter().collect(),
+            ..Settings::default()
+        };
+
+        let catalogue = provider_catalogue_for(&settings).expect("provider catalogue");
+        assert_eq!(
+            catalogue.iter().map(|entry| entry.id).collect::<Vec<_>>(),
+            vec![
+                ProviderId::CopilotCli,
+                ProviderId::ClaudeCode,
+                ProviderId::Codex
+            ]
+        );
+        assert_eq!(catalogue.len(), quotadeck_providers::all().len());
+        assert!(!catalogue[2].enabled);
+        assert_eq!(catalogue[0].display_name, "Copilot CLI");
+        assert!(!catalogue[0].supports_measured);
+        assert!(catalogue[1].supports_measured);
+    }
+
+    #[test]
+    fn disabled_providers_are_omitted_from_backend_passes() {
+        let settings = Settings {
+            provider_order: vec!["codex".into(), "claude-code".into(), "copilot-cli".into()],
+            disabled_providers: BTreeSet::from(["claude-code".into(), "copilot-cli".into()]),
+            ..Settings::default()
+        };
+        let engines = quotadeck_providers::all()
+            .into_iter()
+            .map(ProviderEngine::new)
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            ordered_enabled_engine_ids(&settings, &engines).expect("enabled engine order"),
+            vec![ProviderId::Codex]
         );
     }
 }

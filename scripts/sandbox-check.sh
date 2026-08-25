@@ -39,6 +39,7 @@ APP="${STAGE}/QuotaDeckCheck.app"
 EXEC="${APP}/Contents/MacOS/QuotaDeckCheck"
 HELPER_APP="${STAGE}/QuotaDeckHelper.app"
 HELPER_EXEC="${HELPER_APP}/Contents/MacOS/QuotaDeckHelper"
+LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
 
 launch_sandboxed() {
   local app="$1"
@@ -50,10 +51,14 @@ launch_sandboxed() {
   : > "${stdout_path}"
   : > "${stderr_path}"
 
+  # STAGE is deleted and recreated on every run. Force LaunchServices to replace the stale
+  # path registration before `open` asks it to resolve the new executable at that same path.
+  "${LSREGISTER}" -f "${app}"
+
   if [[ "${stdin_path}" == "/dev/null" ]]; then
-    open -W -n -g -o "${stdout_path}" --stderr "${stderr_path}" "${app}" --args "$@"
+    open -F -W -n -g -o "${stdout_path}" --stderr "${stderr_path}" "${app}" --args "$@"
   else
-    open -W -n -g -i "${stdin_path}" -o "${stdout_path}" --stderr "${stderr_path}" \
+    open -F -W -n -g -i "${stdin_path}" -o "${stdout_path}" --stderr "${stderr_path}" \
       "${app}" --args "$@"
   fi
 }

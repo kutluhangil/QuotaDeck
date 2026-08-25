@@ -1,9 +1,9 @@
 //! Shared state between the read loop, the tray and the panel.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{mpsc, Arc, Mutex};
 
 use chrono::{DateTime, Utc};
 use quotadeck_core::atomic_write::atomic_write;
@@ -13,7 +13,7 @@ use quotadeck_core::history::HistoryPoint;
 use quotadeck_core::paths;
 use quotadeck_core::provider::ProviderConfig;
 use quotadeck_core::types::{ProviderId, ProviderSnapshot, QuotaWindow};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::i18n::Locale;
 use crate::sandbox::{self, AccessState, ScopedAccess};
@@ -118,8 +118,8 @@ pub enum Theme {
     Light,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", default)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Settings {
     pub tray_mode: TrayMode,
     pub theme: Theme,
@@ -149,6 +149,10 @@ pub struct Settings {
     /// before they buy it, and on a machine with no supported tool the real answer is an empty
     /// panel. Off by default — a sample shown without being asked for is a lie.
     pub demo: bool,
+    /// Provider keys that stay out of every backend pass until explicitly re-enabled.
+    pub disabled_providers: BTreeSet<String>,
+    /// Provider keys in the user's preferred presentation and processing order.
+    pub provider_order: Vec<String>,
 }
 
 /// Thresholds a provider raises at unless the user changed them (blueprint §9, Phase 7).
@@ -164,11 +168,116 @@ impl Default for Settings {
             alerts: BTreeMap::new(),
             muted_until: None,
             demo: false,
+            disabled_providers: BTreeSet::new(),
+            provider_order: quotadeck_providers::ids()
+                .into_iter()
+                .map(|id| id.key().to_string())
+                .collect(),
         }
     }
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+struct SettingsDocument {
+    tray_mode: TrayMode,
+    theme: Theme,
+    locale: Locale,
+    plans: BTreeMap<String, String>,
+    alerts: BTreeMap<String, Vec<u8>>,
+    muted_until: Option<DateTime<Utc>>,
+    demo: bool,
+    disabled_providers: BTreeSet<String>,
+    provider_order: Vec<String>,
+}
+
+impl Default for SettingsDocument {
+    fn default() -> Self {
+        let settings = Settings::default();
+        SettingsDocument {
+            tray_mode: settings.tray_mode,
+            theme: settings.theme,
+            locale: settings.locale,
+            plans: settings.plans,
+            alerts: settings.alerts,
+            muted_until: settings.muted_until,
+            demo: settings.demo,
+            disabled_providers: settings.disabled_providers,
+            provider_order: settings.provider_order,
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for Settings {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        use serde::de::Error as _;
+
+        let document = SettingsDocument::deserialize(deserializer)?;
+        let mut settings = Settings {
+            tray_mode: document.tray_mode,
+            theme: document.theme,
+            locale: document.locale,
+            plans: document.plans,
+            alerts: document.alerts,
+            muted_until: document.muted_until,
+            demo: document.demo,
+            disabled_providers: document.disabled_providers,
+            provider_order: document.provider_order,
+        };
+        let ordered = settings
+            .ordered_provider_ids(&quotadeck_providers::ids())
+            .map_err(D::Error::custom)?;
+        settings.provider_order = ordered.into_iter().map(|id| id.key().to_string()).collect();
+        Ok(settings)
+    }
+}
+
 impl Settings {
+    pub fn is_provider_enabled(&self, id: ProviderId) -> bool {
+        !self.disabled_providers.contains(id.key())
+    }
+
+    /// Resolve the saved policy against this build's registry.
+    ///
+    /// A saved partial order is valid: providers compiled by a later release are appended in
+    /// registry order. Unknown and duplicate keys are rejected with the persisted JSON path.
+    pub fn ordered_provider_ids(&self, registry: &[ProviderId]) -> Result<Vec<ProviderId>> {
+        let known: BTreeMap<&str, ProviderId> = registry.iter().map(|id| (id.key(), *id)).collect();
+
+        for key in &self.disabled_providers {
+            if !known.contains_key(key.as_str()) {
+                return Err(Error::Invalid(format!(
+                    "settings.disabledProviders contains unknown provider key {key:?}"
+                )));
+            }
+        }
+
+        let mut seen = BTreeSet::new();
+        let mut ordered = Vec::with_capacity(registry.len());
+        for key in &self.provider_order {
+            let Some(id) = known.get(key.as_str()).copied() else {
+                return Err(Error::Invalid(format!(
+                    "settings.providerOrder contains unknown provider key {key:?}"
+                )));
+            };
+            if !seen.insert(key.as_str()) {
+                return Err(Error::Invalid(format!(
+                    "settings.providerOrder contains duplicate provider key {key:?}"
+                )));
+            }
+            ordered.push(id);
+        }
+        for id in registry {
+            if seen.insert(id.key()) {
+                ordered.push(*id);
+            }
+        }
+        Ok(ordered)
+    }
+
     pub fn config_for(&self, id: ProviderId) -> ProviderConfig {
         ProviderConfig {
             plan_id: self.plans.get(id.key()).cloned(),
@@ -226,6 +335,7 @@ impl Settings {
     /// variables, so they remain safe when the workspace test runner executes in parallel.
     pub fn save_to(&self, path: impl AsRef<std::path::Path>) -> Result<()> {
         let path = path.as_ref();
+        self.ordered_provider_ids(&quotadeck_providers::ids())?;
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).map_err(|e| Error::io(parent, e))?;
         }
@@ -245,6 +355,18 @@ struct Access {
     error: Option<String>,
 }
 
+pub(crate) struct ProviderPolicySyncRequest {
+    pub revision: u64,
+    pub complete: mpsc::Sender<Result<()>>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderPolicyOutcome {
+    pub settings: Settings,
+    pub warning: Option<String>,
+}
+
 /// Handle shared by the read loop, the tray and the command handlers.
 #[derive(Clone)]
 pub struct Deck {
@@ -256,6 +378,9 @@ pub struct Deck {
     /// True while a modal is on screen. The popover dismisses itself on blur, and an open
     /// panel steals focus — without this, asking for the folder closes the window that asked.
     modal_open: Arc<AtomicBool>,
+    provider_policy_revision: Arc<AtomicU64>,
+    provider_policy_commit: Arc<Mutex<()>>,
+    provider_policy_sync: Arc<Mutex<Option<mpsc::Sender<ProviderPolicySyncRequest>>>>,
 }
 
 impl Deck {
@@ -267,6 +392,9 @@ impl Deck {
             access: Arc::new(Mutex::new(Access::default())),
             panel_open: Arc::new(AtomicBool::new(false)),
             modal_open: Arc::new(AtomicBool::new(false)),
+            provider_policy_revision: Arc::new(AtomicU64::new(0)),
+            provider_policy_commit: Arc::new(Mutex::new(())),
+            provider_policy_sync: Arc::new(Mutex::new(None)),
         })
     }
 
@@ -366,6 +494,123 @@ impl Deck {
         self.update_settings(|settings| settings.demo = demo)
     }
 
+    pub fn set_provider_policy(
+        &self,
+        disabled_providers: BTreeSet<String>,
+        provider_order: Vec<String>,
+    ) -> Result<ProviderPolicyOutcome> {
+        self.set_provider_policy_and_sync_with(disabled_providers, provider_order, Settings::save)
+    }
+
+    fn set_provider_policy_and_sync_with(
+        &self,
+        disabled_providers: BTreeSet<String>,
+        provider_order: Vec<String>,
+        save: impl FnOnce(&Settings) -> Result<()>,
+    ) -> Result<ProviderPolicyOutcome> {
+        let revision = {
+            let _commit = match self.provider_policy_commit.lock() {
+                Ok(guard) => guard,
+                Err(poisoned) => poisoned.into_inner(),
+            };
+            let next = self.set_provider_policy_with(disabled_providers, provider_order, save)?;
+            self.apply_provider_policy_to_cached_data(&next)?;
+            self.provider_policy_revision
+                .fetch_add(1, Ordering::Release)
+                + 1
+        };
+
+        let warning = self
+            .wait_for_provider_policy_sync(revision)
+            .err()
+            .map(|error| {
+                let warning = error.to_string();
+                eprintln!("quotadeck: {warning}");
+                warning
+            });
+        Ok(ProviderPolicyOutcome {
+            settings: self.settings(),
+            warning,
+        })
+    }
+
+    fn wait_for_provider_policy_sync(&self, revision: u64) -> Result<()> {
+        let sync = match self.provider_policy_sync.lock() {
+            Ok(guard) => guard.clone(),
+            Err(poisoned) => poisoned.into_inner().clone(),
+        };
+        let Some(sync) = sync else {
+            return Ok(());
+        };
+
+        let (complete, completed) = mpsc::channel();
+        sync.send(ProviderPolicySyncRequest { revision, complete })
+            .map_err(|error| {
+                Error::Invalid(format!(
+                    "provider policy revision {revision} was saved, but the filesystem watcher sync request could not be delivered: {error}"
+                ))
+            })?;
+        completed.recv().map_err(|error| {
+            Error::Invalid(format!(
+                "provider policy revision {revision} was saved, but the filesystem watcher sync did not complete: {error}"
+            ))
+        })?
+    }
+
+    pub(crate) fn register_provider_policy_sync(
+        &self,
+        sync: mpsc::Sender<ProviderPolicySyncRequest>,
+    ) {
+        match self.provider_policy_sync.lock() {
+            Ok(mut guard) => *guard = Some(sync),
+            Err(poisoned) => *poisoned.into_inner() = Some(sync),
+        }
+    }
+
+    fn apply_provider_policy_to_cached_data(&self, settings: &Settings) -> Result<()> {
+        let order = settings.ordered_provider_ids(&quotadeck_providers::ids())?;
+        let positions: BTreeMap<ProviderId, usize> = order
+            .into_iter()
+            .enumerate()
+            .map(|(position, id)| (id, position))
+            .collect();
+
+        let mut state = self.state();
+        state
+            .providers
+            .retain(|snapshot| settings.is_provider_enabled(snapshot.id));
+        state
+            .providers
+            .sort_by_key(|snapshot| positions.get(&snapshot.id).copied().unwrap_or(usize::MAX));
+        self.set_state(state);
+
+        let mut history = self.history();
+        history.retain(|entry| settings.is_provider_enabled(entry.id));
+        history.sort_by_key(|entry| positions.get(&entry.id).copied().unwrap_or(usize::MAX));
+        self.set_history(history);
+        Ok(())
+    }
+
+    fn set_provider_policy_with(
+        &self,
+        disabled_providers: BTreeSet<String>,
+        provider_order: Vec<String>,
+        save: impl FnOnce(&Settings) -> Result<()>,
+    ) -> Result<Settings> {
+        let registry = quotadeck_providers::ids();
+        self.update_settings_result_with(
+            move |settings| {
+                settings.disabled_providers = disabled_providers;
+                settings.provider_order = provider_order;
+                let ordered = settings.ordered_provider_ids(&registry)?;
+                settings.provider_order =
+                    ordered.into_iter().map(|id| id.key().to_string()).collect();
+                Ok(())
+            },
+            save,
+        )
+    }
+
     /// Record the tier the user picked for one provider, or clear it.
     pub fn set_plan(&self, provider: ProviderId, plan_id: Option<String>) -> Result<Settings> {
         self.update_settings(|settings| match plan_id {
@@ -417,6 +662,22 @@ impl Deck {
         Ok(next)
     }
 
+    fn update_settings_result_with(
+        &self,
+        apply: impl FnOnce(&mut Settings) -> Result<()>,
+        save: impl FnOnce(&Settings) -> Result<()>,
+    ) -> Result<Settings> {
+        let mut guard = match self.settings.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        let mut next = guard.clone();
+        apply(&mut next)?;
+        save(&next)?;
+        *guard = next.clone();
+        Ok(next)
+    }
+
     pub fn panel_open(&self) -> bool {
         self.panel_open.load(Ordering::Relaxed)
     }
@@ -427,6 +688,48 @@ impl Deck {
 
     pub fn modal_open(&self) -> bool {
         self.modal_open.load(Ordering::Relaxed)
+    }
+
+    pub fn provider_policy_revision(&self) -> u64 {
+        self.provider_policy_revision.load(Ordering::Acquire)
+    }
+
+    /// A settings snapshot and revision taken under the same commit gate.
+    pub fn provider_policy_snapshot(&self) -> (Settings, u64) {
+        let _commit = match self.provider_policy_commit.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        (self.settings(), self.provider_policy_revision())
+    }
+
+    /// Run a complete consumer-side policy update while policy setters are excluded.
+    pub fn with_provider_policy<T>(
+        &self,
+        apply: impl FnOnce(&Settings, u64) -> Result<T>,
+    ) -> Result<T> {
+        let _policy = match self.provider_policy_commit.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        let settings = self.settings();
+        apply(&settings, self.provider_policy_revision())
+    }
+
+    /// Commit pass results only while the provider policy that produced them is still current.
+    pub fn with_current_provider_policy<T>(
+        &self,
+        started_revision: u64,
+        commit: impl FnOnce() -> Result<T>,
+    ) -> Result<Option<T>> {
+        let _policy = match self.provider_policy_commit.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        if self.provider_policy_revision() != started_revision {
+            return Ok(None);
+        }
+        commit().map(Some)
     }
 
     pub fn set_modal_open(&self, open: bool) {
@@ -549,6 +852,293 @@ mod tests {
             .config_for(ProviderId::ClaudeCode)
             .plan_id
             .is_none());
+        assert!(settings.disabled_providers.is_empty());
+        assert_eq!(
+            settings.provider_order,
+            vec!["claude-code", "codex", "copilot-cli"]
+        );
+    }
+
+    #[test]
+    fn legacy_settings_enable_every_compiled_provider_in_registry_order() {
+        let stored: Settings = serde_json::from_str(r#"{"trayMode":"strip","theme":"light"}"#)
+            .expect("an older settings file");
+
+        assert!(stored.disabled_providers.is_empty());
+        assert_eq!(
+            stored
+                .ordered_provider_ids(&quotadeck_providers::ids())
+                .expect("legacy provider order"),
+            quotadeck_providers::ids()
+        );
+    }
+
+    #[test]
+    fn partial_provider_order_appends_new_compiled_providers_in_registry_order() {
+        let stored: Settings = serde_json::from_str(
+            r#"{"providerOrder":["codex"],"disabledProviders":["claude-code"]}"#,
+        )
+        .expect("partial settings");
+
+        assert!(!stored.is_provider_enabled(ProviderId::ClaudeCode));
+        assert_eq!(
+            stored
+                .ordered_provider_ids(&quotadeck_providers::ids())
+                .expect("partial provider order"),
+            vec![
+                ProviderId::Codex,
+                ProviderId::ClaudeCode,
+                ProviderId::CopilotCli
+            ]
+        );
+    }
+
+    #[test]
+    fn duplicate_provider_order_is_rejected_with_the_setting_path_and_key() {
+        let error = serde_json::from_str::<Settings>(r#"{"providerOrder":["codex","codex"]}"#)
+            .expect_err("duplicate provider order must fail");
+        let message = error.to_string();
+        assert!(message.contains("providerOrder"));
+        assert!(message.contains("codex"));
+    }
+
+    #[test]
+    fn unknown_provider_policy_keys_are_rejected_with_the_setting_path_and_key() {
+        let order_error =
+            serde_json::from_str::<Settings>(r#"{"providerOrder":["planned-provider"]}"#)
+                .expect_err("unknown ordered provider must fail");
+        assert!(order_error.to_string().contains("providerOrder"));
+        assert!(order_error.to_string().contains("planned-provider"));
+
+        let disabled_error =
+            serde_json::from_str::<Settings>(r#"{"disabledProviders":["planned-provider"]}"#)
+                .expect_err("unknown disabled provider must fail");
+        assert!(disabled_error.to_string().contains("disabledProviders"));
+        assert!(disabled_error.to_string().contains("planned-provider"));
+    }
+
+    #[test]
+    fn failed_provider_policy_save_rolls_back_the_in_memory_snapshot() {
+        let deck = Deck::new().expect("create deck");
+        let before = deck.settings();
+
+        let result = deck.set_provider_policy_and_sync_with(
+            ["codex".to_string()].into_iter().collect(),
+            vec!["copilot-cli".into(), "claude-code".into(), "codex".into()],
+            |_| {
+                Err(Error::Invalid(
+                    "simulated provider policy write failure".into(),
+                ))
+            },
+        );
+
+        assert!(result.is_err());
+        assert_eq!(deck.settings(), before);
+    }
+
+    #[test]
+    fn cached_state_and_history_drop_disabled_providers_and_follow_saved_order() {
+        let deck = Deck::new().expect("create deck");
+        let mut claude = snapshot(&[70.0]);
+        claude.id = ProviderId::ClaudeCode;
+        let codex = snapshot(&[40.0]);
+        deck.set_state(DeckState {
+            providers: vec![claude, codex],
+            updated_at: Utc::now(),
+            scanning: false,
+        });
+        deck.set_history(vec![
+            ProviderHistory {
+                id: ProviderId::ClaudeCode,
+                hours: Vec::new(),
+                models: Vec::new(),
+                models_dropped: 0,
+                projects: Vec::new(),
+                projects_dropped: 0,
+                agents: Vec::new(),
+                agents_dropped: 0,
+            },
+            ProviderHistory {
+                id: ProviderId::Codex,
+                hours: Vec::new(),
+                models: Vec::new(),
+                models_dropped: 0,
+                projects: Vec::new(),
+                projects_dropped: 0,
+                agents: Vec::new(),
+                agents_dropped: 0,
+            },
+        ]);
+        let settings = Settings {
+            disabled_providers: ["claude-code".to_string()].into_iter().collect(),
+            provider_order: vec!["codex".into(), "claude-code".into(), "copilot-cli".into()],
+            ..Settings::default()
+        };
+
+        deck.apply_provider_policy_to_cached_data(&settings)
+            .expect("apply provider policy");
+
+        assert_eq!(
+            deck.state()
+                .providers
+                .iter()
+                .map(|provider| provider.id)
+                .collect::<Vec<_>>(),
+            vec![ProviderId::Codex]
+        );
+        assert_eq!(
+            deck.history()
+                .iter()
+                .map(|provider| provider.id)
+                .collect::<Vec<_>>(),
+            vec![ProviderId::Codex]
+        );
+        assert_eq!(
+            deck.state().headline().map(|(provider, _)| provider.id),
+            Some(ProviderId::Codex)
+        );
+    }
+
+    #[test]
+    fn provider_policy_commit_gate_rejects_a_stale_pass() {
+        let deck = Deck::new().expect("create deck");
+        let started_revision = deck.provider_policy_revision();
+        let committed = std::cell::Cell::new(false);
+
+        deck.provider_policy_revision
+            .fetch_add(1, Ordering::Release);
+        let outcome = deck
+            .with_current_provider_policy(started_revision, || {
+                committed.set(true);
+                Ok(())
+            })
+            .expect("check provider policy revision");
+
+        assert!(outcome.is_none());
+        assert!(!committed.get());
+    }
+
+    #[test]
+    fn provider_policy_setter_waits_for_watcher_reconciliation_without_deadlock() {
+        let deck = Deck::new().expect("create deck");
+        let (requests, requested) = std::sync::mpsc::channel();
+        deck.register_provider_policy_sync(requests);
+
+        let watched = Arc::new(Mutex::new(BTreeSet::from([
+            "claude-code".to_string(),
+            "codex".to_string(),
+        ])));
+        let synced_watched = watched.clone();
+        let sync_deck = deck.clone();
+        let sync_thread = std::thread::spawn(move || {
+            let request = requested.recv().expect("provider policy sync request");
+            sync_deck
+                .with_provider_policy(|settings, revision| {
+                    assert!(revision >= request.revision);
+                    let mut watched = synced_watched.lock().expect("watched roots lock");
+                    watched.retain(|provider| !settings.disabled_providers.contains(provider));
+                    Ok(())
+                })
+                .expect("reconcile watched roots");
+            request
+                .complete
+                .send(Ok(()))
+                .expect("acknowledge provider policy sync");
+        });
+
+        let setter_deck = deck.clone();
+        let (completed, completion) = std::sync::mpsc::channel();
+        let setter_thread = std::thread::spawn(move || {
+            let result = setter_deck.set_provider_policy_and_sync_with(
+                ["claude-code".to_string()].into_iter().collect(),
+                vec!["codex".into(), "claude-code".into(), "copilot-cli".into()],
+                |_| Ok(()),
+            );
+            completed.send(result).expect("report setter completion");
+        });
+
+        let outcome = completion
+            .recv_timeout(std::time::Duration::from_secs(2))
+            .expect("policy setter must not deadlock behind watcher sync")
+            .expect("save provider policy");
+        assert!(!outcome.settings.is_provider_enabled(ProviderId::ClaudeCode));
+        assert!(outcome.warning.is_none());
+        assert_eq!(
+            *watched.lock().expect("watched roots lock"),
+            BTreeSet::from(["codex".to_string()]),
+            "the setter must not return while a disabled provider remains watched"
+        );
+
+        setter_thread.join().expect("setter thread");
+        sync_thread.join().expect("sync thread");
+    }
+
+    #[test]
+    fn provider_policy_change_is_blocked_while_watcher_sync_holds_the_policy_gate() {
+        let deck = Deck::new().expect("create deck");
+        let sync_deck = deck.clone();
+        let (entered, sync_started) = std::sync::mpsc::channel();
+        let (release, released) = std::sync::mpsc::channel();
+        let sync_thread = std::thread::spawn(move || {
+            sync_deck
+                .with_provider_policy(|_settings, _revision| {
+                    entered.send(()).expect("report sync start");
+                    released.recv().expect("release watcher sync");
+                    Ok(())
+                })
+                .expect("watcher sync");
+        });
+        sync_started.recv().expect("watcher sync start");
+
+        let setter_deck = deck.clone();
+        let (completed, completion) = std::sync::mpsc::channel();
+        let setter_thread = std::thread::spawn(move || {
+            let result = setter_deck.set_provider_policy_and_sync_with(
+                ["claude-code".to_string()].into_iter().collect(),
+                vec!["codex".into(), "claude-code".into(), "copilot-cli".into()],
+                |_| Ok(()),
+            );
+            completed.send(result).expect("report setter completion");
+        });
+
+        assert!(matches!(
+            completion.recv_timeout(std::time::Duration::from_millis(100)),
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout)
+        ));
+        release.send(()).expect("release watcher sync");
+        completion
+            .recv_timeout(std::time::Duration::from_secs(2))
+            .expect("policy setter must complete after watcher sync releases the gate")
+            .expect("save provider policy");
+
+        setter_thread.join().expect("setter thread");
+        sync_thread.join().expect("sync thread");
+    }
+
+    #[test]
+    fn watcher_sync_delivery_failure_returns_the_saved_policy_with_a_warning() {
+        let deck = Deck::new().expect("create deck");
+        let (requests, requested) = std::sync::mpsc::channel();
+        deck.register_provider_policy_sync(requests);
+        drop(requested);
+
+        let outcome = deck
+            .set_provider_policy_and_sync_with(
+                ["claude-code".to_string()].into_iter().collect(),
+                vec!["codex".into(), "claude-code".into(), "copilot-cli".into()],
+                |_| Ok(()),
+            )
+            .expect("a post-save watcher failure must be a warning");
+
+        assert!(!outcome.settings.is_provider_enabled(ProviderId::ClaudeCode));
+        assert_eq!(outcome.settings, deck.settings());
+        assert!(
+            outcome
+                .warning
+                .as_deref()
+                .is_some_and(|warning| warning.contains("could not be delivered")),
+            "the warning must explain why watcher reconciliation failed"
+        );
     }
 
     #[test]
@@ -566,7 +1156,7 @@ mod tests {
         let json = serde_json::to_string(&settings).expect("serialise settings");
         assert_eq!(
             json,
-            r#"{"trayMode":"compact","theme":"dark","locale":"system","plans":{"claude-code":"max-20x"},"alerts":{"codex":[85,95]},"mutedUntil":null,"demo":false}"#
+            r#"{"trayMode":"compact","theme":"dark","locale":"system","plans":{"claude-code":"max-20x"},"alerts":{"codex":[85,95]},"mutedUntil":null,"demo":false,"disabledProviders":[],"providerOrder":["claude-code","codex","copilot-cli"]}"#
         );
     }
 

@@ -2,6 +2,10 @@
 
 ## 2026-08-25
 
+- Release: force-register each recreated sandbox probe bundle with LaunchServices before a fresh launch, eliminating stale executable lookups in repeated verification runs.
+- Providers: return saved provider policy as authoritative with a visible watcher-sync warning instead of rolling the UI back after post-persist failures.
+- Providers: serialized filesystem-watch reconciliation with provider-policy commits and made policy setters wait until disabled roots are no longer watched.
+- Providers: added atomic enable/order settings backed by the compiled registry, stopped disabled tools at scan/watch/state/alert/tray/export boundaries, and added keyboard-accessible controls with optimistic-save rollback.
 - Release: removed the duplicate declarative tray icon so `app/src/tray.rs` is the sole owner, added a tray guard across every release override and an Astro semantic check, and refreshed release evidence while retaining unresolved account, runtime, accessibility, soak, price, and domain gates.
 - Release: launch the ad-hoc App Sandbox integration probe through macOS LaunchServices so current macOS completes secinit while preserving observable stdin, stdout, and stderr assertions.
 

@@ -41,17 +41,17 @@
 - Create: `docs/superpowers/plans/2026-08-25-codexbar-gap-roadmap.md`
 - Create: `docs/USER_ACTIONS.md`
 
-- [ ] Record implementation phases, privacy boundaries, verification commands, commit boundaries, and evidence gates in this plan.
-- [ ] Put only account-, hardware-, human-perception-, or real-fixture-dependent work in `docs/USER_ACTIONS.md`.
-- [ ] Confirm `git status --short --branch` is clean before implementation.
-- [ ] Commit with `docs: record the CodexBar gap roadmap` and push separately.
+- [x] Record implementation phases, privacy boundaries, verification commands, commit boundaries, and evidence gates in this plan.
+- [x] Put only account-, hardware-, human-perception-, or real-fixture-dependent work in `docs/USER_ACTIONS.md`.
+- [x] Confirm `git status --short --branch` is clean before implementation.
+- [x] Commit with `docs: record the CodexBar gap roadmap` and push separately.
 
 ### Task 0.2: Record a reproducible baseline
 
-- [ ] Run `cargo test --workspace`; expected baseline: 367 passed, 0 failed, 4 perf tests and 6 real-log tests ignored.
-- [ ] Run `npm test --prefix ui -- --run`; expected baseline: 71 passed.
-- [ ] Run `npm run build --prefix ui` and `npm run check --prefix site`; both must exit 0.
-- [ ] Record Node/npm compatibility warnings as environment notes, not false test failures.
+- [x] Run `cargo test --workspace`; expected baseline: 367 passed, 0 failed, 4 perf tests and 6 real-log tests ignored.
+- [x] Run `npm test --prefix ui -- --run`; expected baseline: 71 passed.
+- [x] Run `npm run build --prefix ui` and `npm run check --prefix site`; both must exit 0.
+- [x] Record Node/npm compatibility warnings as environment notes, not false test failures.
 
 ## Phase 1 — Release and native correctness first
 
@@ -66,9 +66,9 @@
 - The only owner of tray creation is `app/src/tray.rs::install`.
 - The configuration regression check rejects any future declarative `app.trayIcon` block.
 
-- [ ] RED: extend `scripts/check-appstore-config.mjs` to require `base.app?.trayIcon === undefined`; run it and verify it fails because the block exists.
-- [ ] GREEN: remove `app.trayIcon` from `app/tauri.conf.json` and rerun the check.
-- [ ] Run `cargo test -p quotadeck-app tray`, `node scripts/check-appstore-config.mjs`, and `npm run build --prefix ui`.
+- [x] RED: extend `scripts/check-appstore-config.mjs` to require `base.app?.trayIcon === undefined`; run it and verify it fails because the block exists.
+- [x] GREEN: remove `app.trayIcon` from `app/tauri.conf.json` and rerun the check.
+- [x] Run `cargo test -p quotadeck-app tray`, `node scripts/check-appstore-config.mjs`, and `npm run build --prefix ui`.
 
 ### Task 1.2: Add the missing Astro semantic gate
 
@@ -77,9 +77,9 @@
 - Modify: `site/package-lock.json`
 - Modify: `CHANGELOG.md`
 
-- [ ] Install `@astrojs/check` as a local dev dependency; do not install globally.
-- [ ] Change `site`'s `check` script to `ASTRO_TELEMETRY_DISABLED=1 astro check && npm run build`.
-- [ ] Run `npm run check --prefix site` and confirm the Astro diagnostic summary reports 0 errors.
+- [x] Install `@astrojs/check` as a local dev dependency; do not install globally.
+- [x] Change `site`'s `check` script to `ASTRO_TELEMETRY_DISABLED=1 astro check && npm run build`.
+- [x] Run `npm run check --prefix site` and confirm the Astro diagnostic summary reports 0 errors.
 
 ### Task 1.3: Update release truth and automated guards
 
@@ -88,27 +88,27 @@
 - Modify: `docs/STORE.md`
 - Modify: `CHANGELOG.md`
 
-- [ ] Replace stale 285/47 counts with fresh verified counts.
-- [ ] Remove the stale claim that runaway-agent detection is missing.
-- [ ] Remove or qualify any statement implying the App Store bundle ships the CLI.
-- [ ] Keep signing, TestFlight, VoiceOver, 72-hour soak, Windows runtime, Linux runtime, price, and domain unresolved until evidence exists.
+- [x] Replace stale 285/47 counts with fresh verified counts.
+- [x] Remove the stale claim that runaway-agent detection is missing.
+- [x] Remove or qualify any statement implying the App Store bundle ships the CLI.
+- [x] Keep signing, TestFlight, VoiceOver, 72-hour soak, Windows runtime, Linux runtime, price, and domain unresolved until evidence exists.
 
 ### Task 1.4: Exercise the real macOS application
 
 **Files:**
 - Modify only if runtime evidence reveals a reproducible defect.
 
-- [ ] Build the release app with `npm --prefix ui exec tauri -- build --bundles app`.
+- [x] Build the release app with `npm --prefix ui exec tauri -- build --bundles app`.
 - [ ] Launch the generated `.app`; verify exactly one tray item appears.
 - [ ] Exercise tray toggle, panel focus/dismissal, settings, dashboard, manual refresh when available, and statusline preview/manual sandbox flow.
-- [ ] Inspect process output for actionable errors and add a failing regression test before any runtime fix.
-- [ ] Run `codesign --verify --deep --strict --verbose=2` and entitlement/private-framework checks; report signing-material blockers honestly.
+- [x] Inspect process output for actionable errors and add a failing regression test before any runtime fix.
+- [x] Run `codesign --verify --deep --strict --verbose=2` and entitlement/private-framework checks; report signing-material blockers honestly.
 
 ### Task 1.5: Verify, commit, and push
 
-- [ ] Run format, clippy, workspace tests, UI tests/build, site check, App Store config check, icon check, sandbox check, and release perf budgets.
-- [ ] Commit with `fix(release): verify the native tray and site gates`.
-- [ ] Push in a separate command.
+- [x] Run format, clippy, workspace tests, UI tests/build, site check, App Store config check, icon check, sandbox check, and release perf budgets.
+- [x] Commit with `fix(release): verify the native tray and site gates`.
+- [x] Push in a separate command.
 
 ## Phase 2 — Provider controls
 
@@ -125,9 +125,9 @@
 - `Settings::is_provider_enabled(ProviderId) -> bool`.
 - `Settings::ordered_provider_ids(&[ProviderId]) -> Result<Vec<ProviderId>>` rejects duplicates and unknown keys with actionable paths/keys.
 
-- [ ] RED: add tests for legacy settings migration, default all-enabled registry order, partial order appending new compiled providers, duplicate keys, unknown keys, and failed-save rollback.
-- [ ] GREEN: implement the settings fields, validation helpers, and atomic setters.
-- [ ] Mirror the exact serialized shape in TypeScript.
+- [x] RED: add tests for legacy settings migration, default all-enabled registry order, partial order appending new compiled providers, duplicate keys, unknown keys, and failed-save rollback.
+- [x] GREEN: implement the settings fields, validation helpers, and atomic setters.
+- [x] Mirror the exact serialized shape in TypeScript.
 
 ### Task 2.2: Expose only the compiled provider catalogue
 
@@ -140,8 +140,8 @@
 - `ProviderDescriptor { id, displayName, supportsMeasured, enabled }`.
 - Tauri command `provider_catalogue() -> Result<Vec<ProviderDescriptor>, String>` returns compiled providers in configured order.
 
-- [ ] RED: test that the catalogue contains exactly the registered providers and never the frontend-only planned IDs.
-- [ ] GREEN: add the command and typed store state.
+- [x] RED: test that the catalogue contains exactly the registered providers and never the frontend-only planned IDs.
+- [x] GREEN: add the command and typed store state.
 
 ### Task 2.3: Stop disabled providers at the backend boundary
 
@@ -149,10 +149,10 @@
 - Modify: `app/src/lib.rs`
 - Modify: `app/src/bin/debug.rs` or its Phase 6 successor
 
-- [ ] RED: add deterministic tests showing disabled providers are not refreshed, watched, emitted, alerted, exported, or selected for tray headline.
-- [ ] GREEN: filter `publish` and `sync_watches` using the current settings; order state/history by `providerOrder` on every pass.
-- [ ] Explicit `--provider` against a disabled provider returns an actionable error unless `--include-disabled` is supplied.
-- [ ] Re-enabling wakes the read loop and resumes from the existing checkpoint without double counting.
+- [x] RED: add deterministic tests showing disabled providers are not refreshed, watched, emitted, alerted, exported, or selected for tray headline.
+- [x] GREEN: filter `publish` and `sync_watches` using the current settings; order state/history by `providerOrder` on every pass.
+- [x] Explicit `--provider` against a disabled provider returns an actionable error unless `--include-disabled` is supplied.
+- [x] Re-enabling wakes the read loop and resumes from the existing checkpoint without double counting.
 
 ### Task 2.4: Build keyboard-accessible provider settings
 
@@ -163,14 +163,14 @@
 - Modify: `ui/src/i18n/tr.ts`
 - Modify: `ui/src/styles/panel.css`
 
-- [ ] Add enable switches and Up/Down buttons; do not make drag-and-drop the only ordering mechanism.
-- [ ] Disable movement at list boundaries and preserve visible focus.
-- [ ] Surface backend validation/save failures through the existing settings error area.
-- [ ] Run catalogue parity tests, TypeScript, Vitest, and production build.
+- [x] Add enable switches and Up/Down buttons; do not make drag-and-drop the only ordering mechanism.
+- [x] Disable movement at list boundaries and preserve visible focus.
+- [x] Surface backend validation/save failures through the existing settings error area.
+- [x] Run catalogue parity tests, TypeScript, Vitest, and production build.
 
 ### Task 2.5: Verify, commit, and push
 
-- [ ] Run full Rust/UI/site/perf verification.
+- [x] Run full Rust/UI/site/perf verification.
 - [ ] Commit with `feat(settings): control provider visibility and order`.
 - [ ] Push separately.
 

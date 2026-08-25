@@ -170,6 +170,10 @@ export const tr: Catalogue = {
       body: "Quota Deck, kodlama araçlarının zaten yazdığı oturum günlüklerini okur. Claude Code, Codex ya da desteklenen başka bir aracı kur; burada görünsün.",
       action: "Desteklenen araçlar",
     },
+    providersDisabled: {
+      title: "Tüm araçlar gizli",
+      body: "Yerel günlükleri yeniden okumak için Ayarlar'da en az bir aracı etkinleştir.",
+    },
     noPermission: {
       title: "Klasör erişimi gerekiyor",
       body: "Quota Deck'in ev klasöründeki oturum günlüklerini okuması gerekiyor. Bunu bir kez verirsin ve hiçbir şey bu cihazdan çıkmaz.",
@@ -191,19 +195,6 @@ export const tr: Catalogue = {
     "claude-code": "Claude Code",
     codex: "Codex",
     "copilot-cli": "Copilot CLI",
-    kimi: "Kimi",
-    "gemini-cli": "Gemini CLI",
-    qwen: "Qwen Code",
-    opencode: "OpenCode",
-    amp: "Amp",
-    droid: "Droid",
-    codebuff: "Codebuff",
-    hermes: "Hermes",
-    "pi-agent": "pi-agent",
-    goose: "Goose",
-    kilo: "Kilo",
-    openclaw: "OpenClaw",
-    antigravity: "Antigravity",
   },
 
   settings: {
@@ -221,6 +212,11 @@ export const tr: Catalogue = {
     themeLight: "Açık",
     back: "Bitti",
     settingsFailed: (reason) => `Ayarlar kaydedilemedi: ${reason}`,
+    providersTitle: "Araçlar",
+    providersHint: "Devre dışı araçlar okunmaz, izlenmez, uyarı üretmez ve dışa aktarılmaz.",
+    providerEnabled: (provider) => `${provider} günlüklerini oku`,
+    providerUp: (provider) => `${provider} aracını yukarı taşı`,
+    providerDown: (provider) => `${provider} aracını aşağı taşı`,
 
     languageTitle: "Dil",
     languageSystem: "Sistemle aynı",

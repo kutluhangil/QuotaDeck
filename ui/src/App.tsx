@@ -82,6 +82,7 @@ export function App() {
   const quit = useDeck((state) => state.quit);
   const start = useDeck((state) => state.start);
   const shellError = useDeck((state) => state.shellError);
+  const providerCatalogue = useDeck((state) => state.providerCatalogue);
   const [now, setNow] = useState(() => Date.now());
   const bodyRef = useRef<HTMLElement>(null);
 
@@ -153,6 +154,8 @@ export function App() {
    * that fixes all of them at once.
    */
   const needsAccess = access !== null && access.required && !access.granted;
+  const allProvidersDisabled =
+    providerCatalogue.length > 0 && providerCatalogue.every((provider) => !provider.enabled);
 
   return (
     <div className="panel">
@@ -201,6 +204,13 @@ export function App() {
                one honest thing left to offer, and it says on the tin that it is a sample. */
             secondaryAction={strings.empty.demoAction}
             onSecondaryAction={() => setDemo(true)}
+          />
+        ) : allProvidersDisabled ? (
+          <EmptyState
+            title={strings.empty.providersDisabled.title}
+            body={strings.empty.providersDisabled.body}
+            action={strings.header.settings}
+            onAction={() => setView("settings")}
           />
         ) : deck.providers.length === 0 ? (
           deck.scanning ? (

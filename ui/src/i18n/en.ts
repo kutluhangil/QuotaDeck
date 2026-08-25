@@ -246,6 +246,10 @@ export const en = {
       body: "Quota Deck reads the session logs that coding tools already write. Install Claude Code, Codex or another supported tool and it will appear here.",
       action: "See supported tools",
     },
+    providersDisabled: {
+      title: "All tools are hidden",
+      body: "Enable at least one tool in Settings to resume local log reading.",
+    },
     noPermission: {
       title: "Folder access needed",
       body: "Quota Deck needs to read the session logs in your home folder. You grant this once, and nothing ever leaves this device.",
@@ -274,19 +278,6 @@ export const en = {
     "claude-code": "Claude Code",
     codex: "Codex",
     "copilot-cli": "Copilot CLI",
-    kimi: "Kimi",
-    "gemini-cli": "Gemini CLI",
-    qwen: "Qwen Code",
-    opencode: "OpenCode",
-    amp: "Amp",
-    droid: "Droid",
-    codebuff: "Codebuff",
-    hermes: "Hermes",
-    "pi-agent": "pi-agent",
-    goose: "Goose",
-    kilo: "Kilo",
-    openclaw: "OpenClaw",
-    antigravity: "Antigravity",
   } satisfies Record<ProviderId, string>,
 
   settings: {
@@ -304,6 +295,11 @@ export const en = {
     themeLight: "Light",
     back: "Done",
     settingsFailed: (reason: string) => `Could not save settings: ${reason}`,
+    providersTitle: "Tools",
+    providersHint: "Disabled tools are not read, watched, alerted on or exported.",
+    providerEnabled: (provider: string) => `Read ${provider}`,
+    providerUp: (provider: string) => `Move ${provider} up`,
+    providerDown: (provider: string) => `Move ${provider} down`,
 
     languageTitle: "Language",
     languageSystem: "Match system",

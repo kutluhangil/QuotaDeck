@@ -19,6 +19,11 @@ pub fn all() -> Vec<Box<dyn Provider>> {
     ]
 }
 
+/// Stable ids in registry order, without constructing provider-specific UI policy elsewhere.
+pub fn ids() -> Vec<ProviderId> {
+    all().into_iter().map(|provider| provider.id()).collect()
+}
+
 /// Providers whose root directories exist on this machine.
 pub fn installed() -> Vec<Box<dyn Provider>> {
     all()
@@ -47,6 +52,14 @@ mod tests {
     fn registered_providers_have_distinct_ids() {
         let ids: HashSet<ProviderId> = all().iter().map(|provider| provider.id()).collect();
         assert_eq!(ids.len(), all().len());
+        assert_eq!(
+            super::ids(),
+            vec![
+                ProviderId::ClaudeCode,
+                ProviderId::Codex,
+                ProviderId::CopilotCli
+            ]
+        );
     }
 
     #[test]
