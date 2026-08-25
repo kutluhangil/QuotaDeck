@@ -25,6 +25,10 @@ requireConfig(
   "base windows must not require macOS private transparency APIs",
 );
 requireConfig(
+  base.app?.trayIcon === undefined,
+  "the base config must not declare app.trayIcon; app/src/tray.rs owns tray creation",
+);
+requireConfig(
   override.app?.macOSPrivateApi === false,
   "app.macOSPrivateApi must be false in the App Store override",
 );

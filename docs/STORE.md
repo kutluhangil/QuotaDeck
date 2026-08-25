@@ -169,9 +169,10 @@ No provider logos in any of them (§1).
 ## 9. Exit codes
 
 `quotadeck-debug export` writes to stdout and reports the deck's worst reading through its exit
-status, so a shell can branch on the quota without parsing anything. The listing may promise
-this: it is a local read of files the user already has, and it adds no capability the sandbox
-entitlements do not already cover.
+status, so a shell can branch on the quota without parsing anything. It is a developer/debug
+executable and is not included in the Mac App Store `.app` or `.pkg`; do not promise it in the
+store listing. It is a local read of files the user already has, and it adds no capability the
+sandbox entitlements do not already cover.
 
 | Code | Meaning |
 |---|---|

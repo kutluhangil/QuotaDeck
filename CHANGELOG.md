@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-08-25
+
+- Release: removed the duplicate declarative tray icon so `app/src/tray.rs` is the sole owner, added an App Store guard and Astro semantic check, and refreshed release evidence while retaining unresolved account, runtime, accessibility, soak, price, and domain gates.
+
 ## 2026-08-05
 
 - Dashboard: added the model breakdown — what the selected range was actually spent on, per provider. The totals above it said how much; nothing said what for, even though the app has priced every record by model since Phase 5 and then dropped the model on the floor when folding to the hour. An Opus output token and a Haiku cache read differ by fifty times at published rates, so "1.2M tokens" was a number the user could not act on.

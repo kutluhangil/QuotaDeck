@@ -11,18 +11,17 @@ kabul kriterleri blueprint Ek A.
 
 ---
 
-## Kod tarafı — son doğrulama (2026-08-01)
+## Kod tarafı — son doğrulama (2026-08-25)
 
 Hepsi bu makinede koşuldu, hepsi yeşil. CI aynılarını her push'ta tekrar koşuyor.
 
 - [x] `cargo clippy --workspace --all-targets -- -D warnings` — temiz
-- [x] `cargo test --workspace` — 285 test geçti, 0 başarısız
+- [x] `cargo test --workspace` — 367 test geçti, 0 başarısız (app 83, core 198, providers 86)
 - [x] Perf bütçesi (`cargo test -p quotadeck-core --release --test perf -- --ignored`) — dördü de bütçe içinde:
       cold parse 69 ms / 160,3 MB (500 dosya), sıcak tik 3,4 ms ve **0 byte** okuma (500 imleç),
       bir saatlik izleme yalnızca eklenen 65 343 byte'ı okudu, tepe RSS 6,9 MB
-- [x] `ui` — `tsc --noEmit` temiz, 47 vitest geçti
+- [x] `ui` — `tsc --noEmit` temiz, 71 Vitest testi geçti
 - [x] `site` — strict TypeScript kontrolü temiz, 6 sayfa derlendi (EN + TR), CSP kontrolü geçti
-- [x] Çalışma ağacı temiz, `main` üzerinde
 
 Blueprint Faz 0–12 kapalı. Bu dosyanın geri kalanındaki kutuların **hiçbiri bir commit'le
 kapanmıyor**; sürüm numarası hariç, o da aşağıda kapatıldı.
@@ -288,7 +287,8 @@ ps -o rss=,comm= -p $(pgrep -f "Quota Deck")
       doğrulamadan sağlayıcı yazmıyoruz, çünkü tahmine dayalı bir ayrıştırıcı sessizce yanlış
       sayı üretir. Bir aracı kurup birkaç oturum çalıştırırsan o sağlayıcıyı yazabilirim.
 - [ ] **DE / ES yerelleştirme.** Altyapı hazır; katalog eklemek bir dosya. Talep gelirse.
-- [ ] **Kaçak ajan tespiti** (blueprint §6.3). v1.1 için ayrılmış, farklılaştırıcı olabilir.
+- [x] **Kaçak ajan tespiti** uygulandı; normal çalışma, alt ajan ve workflow ajan harcamasını
+      ayrı gösterir ve kullanıcının kendi geçmişine göre anormal saatlik harcamayı bildirir.
 
 ---
 
