@@ -23,7 +23,7 @@ use std::time::{Duration, Instant};
 
 use chrono::Utc;
 use quotadeck_core::discovery::RootAccess;
-use quotadeck_core::engine::{CheckpointRestoreError, ProviderEngine, DEFAULT_RETENTION_DAYS};
+use quotadeck_core::engine::{CheckpointRestoreError, ProviderEngine, RestoreForRetention};
 use quotadeck_core::error::{Error, Result};
 use quotadeck_core::store::BatchedStore;
 use quotadeck_core::types::{PlanOption, ProviderId, ProviderSnapshot, UnavailableReason};
@@ -34,7 +34,8 @@ use tauri::{AppHandle, Emitter, Manager};
 use crate::alerts::{Alert, Alerts};
 use crate::deck::{
     provider_snapshot_after_failure, Deck, DeckState, HealthState, ProviderHealth, ProviderHistory,
-    ProviderPolicyOutcome, ProviderPolicySyncRequest, RefreshReceipt, Settings, Theme, TrayMode,
+    ProviderPolicyOutcome, ProviderPolicySyncRequest, RefreshReceipt, RetentionChangeRequest,
+    RetentionDays, RetentionState, Settings, Theme, TrayMode,
 };
 use crate::i18n::Locale;
 use crate::sandbox::AccessState;
@@ -133,6 +134,7 @@ pub fn run() -> Result<()> {
             provider_catalogue,
             provider_plans,
             usage_history,
+            prepare_usage_export,
             open_dashboard,
             hide_panel,
             quit_app,
@@ -143,6 +145,7 @@ pub fn run() -> Result<()> {
             set_theme,
             set_locale,
             set_demo,
+            set_retention_days,
             set_provider_policy,
             set_plan,
             set_alert_thresholds,
@@ -322,6 +325,15 @@ fn set_provider_policy(
         .map_err(|error| error.to_string())
 }
 
+#[tauri::command]
+fn set_retention_days(
+    deck: tauri::State<'_, Deck>,
+    retention_days: RetentionDays,
+) -> std::result::Result<Settings, String> {
+    deck.set_retention_days(retention_days)
+        .map_err(|error| error.to_string())
+}
+
 /// Silence notifications for `minutes`, or lift the silence with `None`.
 ///
 /// A duration rather than an instant, and computed by the panel: "until the end of today" is a
@@ -343,6 +355,15 @@ fn set_mute(
 #[tauri::command]
 fn usage_history(deck: tauri::State<'_, Deck>) -> Vec<ProviderHistory> {
     deck.history()
+}
+
+#[tauri::command]
+fn prepare_usage_export(
+    deck: tauri::State<'_, Deck>,
+    request: export::ExportRequest,
+) -> std::result::Result<export::PreparedExport, String> {
+    let (state, history) = deck.export_snapshot();
+    export::prepare(&state, &history, &request).map_err(|error| error.to_string())
 }
 
 /// Show the dashboard, creating it on first use.
@@ -806,6 +827,244 @@ struct ReadLoopControl {
     thread: JoinHandle<()>,
 }
 
+struct ManagedEngine {
+    engine: ProviderEngine,
+    retention_rebuild: Option<RetentionRebuild>,
+}
+
+struct RetentionRebuild {
+    from_days: u16,
+    to_days: u16,
+}
+
+impl std::ops::Deref for ManagedEngine {
+    type Target = ProviderEngine;
+
+    fn deref(&self) -> &Self::Target {
+        &self.engine
+    }
+}
+
+impl std::ops::DerefMut for ManagedEngine {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.engine
+    }
+}
+
+#[cfg(test)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CheckpointPersistence {
+    Unchanged,
+    Queued,
+    HeldForFullRetentionPass,
+    RetentionCommitted { from_days: u16, to_days: u16 },
+}
+
+#[cfg(test)]
+fn persist_managed_checkpoint(
+    store: &mut BatchedStore,
+    managed: &mut ManagedEngine,
+    completed_full_pass: bool,
+) -> Result<CheckpointPersistence> {
+    if managed.retention_rebuild.is_some() && !completed_full_pass {
+        return Ok(CheckpointPersistence::HeldForFullRetentionPass);
+    }
+
+    if let Some(rebuild) = managed.retention_rebuild.as_mut() {
+        let provider_id = managed.engine.provider().id();
+        let checkpoint = managed.engine.checkpoint()?;
+        store.push_provider_checkpoint(provider_id, checkpoint)?;
+        store.flush()?;
+        managed.engine.mark_checkpoint_queued();
+        let committed = CheckpointPersistence::RetentionCommitted {
+            from_days: rebuild.from_days,
+            to_days: rebuild.to_days,
+        };
+        managed.retention_rebuild = None;
+        return Ok(committed);
+    }
+
+    if managed.engine.checkpoint_dirty() {
+        let provider_id = managed.engine.provider().id();
+        store.push_provider_checkpoint(provider_id, managed.engine.checkpoint()?)?;
+        managed.engine.mark_checkpoint_queued();
+        return Ok(CheckpointPersistence::Queued);
+    }
+    Ok(CheckpointPersistence::Unchanged)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RetentionTransition {
+    Unchanged,
+    RebuildStarted,
+    Shortened,
+}
+
+fn apply_retention_change(
+    deck: &Deck,
+    engines: &mut Vec<ManagedEngine>,
+    store: &mut BatchedStore,
+    requested: RetentionDays,
+    now: chrono::DateTime<Utc>,
+) -> Result<RetentionTransition> {
+    let previous_state = deck.state();
+    let effective =
+        RetentionDays::try_from(previous_state.retention.effective_days).map_err(Error::Invalid)?;
+    if requested == effective {
+        let mut state = previous_state;
+        state.retention.requested_days = requested.into();
+        state.retention.error = None;
+        deck.set_state(state);
+        return Ok(RetentionTransition::Unchanged);
+    }
+
+    let settings = deck.settings();
+    if requested.days() > effective.days() {
+        let mut replacements: HashMap<ProviderId, Box<dyn quotadeck_core::provider::Provider>> =
+            quotadeck_providers::all()
+                .into_iter()
+                .map(|provider| (provider.id(), provider))
+                .collect();
+        let mut next = Vec::with_capacity(engines.len());
+        for managed in engines.iter() {
+            let provider_id = managed.provider().id();
+            let provider = replacements.remove(&provider_id).ok_or_else(|| {
+                Error::Invalid(format!(
+                    "compiled provider registry has no replacement for retention change provider {:?}",
+                    provider_id.key()
+                ))
+            })?;
+            next.push(ManagedEngine {
+                engine: ProviderEngine::with_retention(provider, requested.duration()),
+                retention_rebuild: settings.is_provider_enabled(provider_id).then_some(
+                    RetentionRebuild {
+                        from_days: effective.into(),
+                        to_days: requested.into(),
+                    },
+                ),
+            });
+        }
+        *engines = next;
+        let mut state = previous_state;
+        state.updated_at = now;
+        state.scanning = true;
+        state.retention = RetentionState {
+            requested_days: requested.into(),
+            effective_days: effective.into(),
+            rebuilding: true,
+            error: None,
+        };
+        deck.set_state(state);
+        return Ok(RetentionTransition::RebuildStarted);
+    }
+
+    let mut replacements: HashMap<ProviderId, Box<dyn quotadeck_core::provider::Provider>> =
+        quotadeck_providers::all()
+            .into_iter()
+            .map(|provider| (provider.id(), provider))
+            .collect();
+    let mut shortened = Vec::with_capacity(engines.len());
+    let mut staged = Vec::with_capacity(engines.len());
+    for managed in engines.iter() {
+        let provider_id = managed.provider().id();
+        let provider = replacements.remove(&provider_id).ok_or_else(|| {
+            Error::Invalid(format!(
+                "compiled provider registry has no replacement for retention change provider {:?}",
+                provider_id.key()
+            ))
+        })?;
+        let bytes = managed.checkpoint()?;
+        let outcome = ProviderEngine::restore_for_retention(
+            provider,
+            &bytes,
+            requested.duration(),
+            now,
+        )
+        .map_err(|error| match error {
+            CheckpointRestoreError::Invalid(error) => error,
+            mismatch @ CheckpointRestoreError::PricingRevisionMismatch { .. } => {
+                Error::Invalid(format!(
+                    "retention decrease encountered an unexpected pricing checkpoint mismatch for provider {:?}: {mismatch}",
+                    provider_id.key()
+                ))
+            }
+        })?;
+        let RestoreForRetention::Ready(engine) = outcome else {
+            return Err(Error::Invalid(format!(
+                "retention decrease from {} to {} days unexpectedly requested a rebuild for provider {:?}",
+                effective.days(),
+                requested.days(),
+                provider_id.key()
+            )));
+        };
+        staged.push((provider_id, engine.checkpoint()?));
+        shortened.push(ManagedEngine {
+            engine: *engine,
+            retention_rebuild: None,
+        });
+    }
+    for (provider, checkpoint) in &staged {
+        store.stage_provider_checkpoint(*provider, checkpoint.clone())?;
+    }
+    if let Err(error) = store.flush() {
+        for (provider, _) in &staged {
+            store.cancel_staged_provider_checkpoint(*provider);
+        }
+        return Err(Error::Invalid(format!(
+            "retention decrease to {} days could not flush replacement checkpoints: {error}",
+            requested.days()
+        )));
+    }
+    for managed in &mut shortened {
+        managed.mark_checkpoint_queued();
+    }
+    *engines = shortened;
+
+    let cutoff = (now - requested.duration()).timestamp();
+    let mut history = deck.history();
+    for provider in &mut history {
+        provider.hours.retain(|point| point.start >= cutoff);
+        provider.models.retain(|point| point.start >= cutoff);
+        provider.projects.retain(|point| point.start >= cutoff);
+        provider.agents.retain(|point| point.start >= cutoff);
+    }
+    let mut state = previous_state;
+    state.updated_at = now;
+    state.retention = RetentionState {
+        requested_days: requested.into(),
+        effective_days: requested.into(),
+        rebuilding: false,
+        error: None,
+    };
+    deck.set_published_view(history, state);
+    Ok(RetentionTransition::Shortened)
+}
+
+fn apply_retention_requests(
+    requested: &mpsc::Receiver<RetentionChangeRequest>,
+    deck: &Deck,
+    engines: &mut Vec<ManagedEngine>,
+    store: &mut BatchedStore,
+) -> bool {
+    let mut rebuild_started = false;
+    loop {
+        let request = match requested.try_recv() {
+            Ok(request) => request,
+            Err(mpsc::TryRecvError::Empty | mpsc::TryRecvError::Disconnected) => break,
+        };
+        let outcome = apply_retention_change(deck, engines, store, request.retention, Utc::now());
+        if matches!(outcome, Ok(RetentionTransition::RebuildStarted)) {
+            rebuild_started = true;
+        }
+        if let Err(error) = request.complete.send(outcome.map(|_| ())) {
+            eprintln!(
+                "quotadeck: retention change acknowledgement could not be delivered: {error}"
+            );
+        }
+    }
+    rebuild_started
+}
+
 impl ReadLoopControl {
     fn shutdown(self) {
         self.cancelled.store(true, Ordering::Release);
@@ -823,18 +1082,20 @@ fn spawn_read_loop(app: AppHandle, deck: Deck) -> Result<ReadLoopControl> {
         .ok_or_else(|| Error::Invalid("cannot resolve the app data directory".into()))?;
     std::fs::create_dir_all(&data_dir).map_err(|error| Error::io(&data_dir, error))?;
     let mut store = BatchedStore::open(data_dir.join(STORE_FILE))?;
-    let restored = restore_engines(&mut store)?;
+    let requested_retention = deck.settings().retention_days;
+    let restored = restore_engines(&mut store, requested_retention)?;
     let mut engines = restored.engines;
-    if !restored.health.is_empty() {
-        let mut state = deck.state();
-        state.health = restored.health;
-        deck.set_state(state);
-    }
+    let mut state = deck.state();
+    state.health = restored.health;
+    state.retention = restored.retention;
+    deck.set_state(state);
     let mut watched = HashSet::new();
     let (provider_policy_sync, provider_policy_sync_requested) = mpsc::channel();
     deck.register_provider_policy_sync(provider_policy_sync);
     let (refresh_signal, refresh_requested) = mpsc::channel();
     deck.register_refresh_control(refresh_signal);
+    let (retention_signal, retention_requested) = mpsc::channel();
+    deck.register_retention_control(retention_signal);
     let mut watcher = match DebouncedWatcher::new(DEFAULT_DEBOUNCE) {
         Ok(mut watcher) => {
             match sync_watches_for_current_policy(&deck, &mut watcher, &mut watched, &engines) {
@@ -884,7 +1145,7 @@ fn spawn_read_loop(app: AppHandle, deck: Deck) -> Result<ReadLoopControl> {
             // initial publish/sync would swallow a policy change that landed while it ran.
             let (mut observed_policy_revision, mut refresh_immediately) = match initial_outcome {
                 Ok(PublishOutcome::Committed(revision) | PublishOutcome::Cancelled(revision)) => {
-                    (revision, false)
+                    (revision, true)
                 }
                 Ok(PublishOutcome::StalePolicy(revision)) => (revision, true),
                 Err(error) => {
@@ -912,6 +1173,7 @@ fn spawn_read_loop(app: AppHandle, deck: Deck) -> Result<ReadLoopControl> {
             }
 
             let mut next_refresh = Instant::now() + refresh_interval(&deck);
+            let mut bounded_retention_pass = false;
 
             loop {
                 match stopped.try_recv() {
@@ -926,6 +1188,15 @@ fn spawn_read_loop(app: AppHandle, deck: Deck) -> Result<ReadLoopControl> {
                     &mut watched,
                     &engines,
                 ) {
+                    refresh_immediately = true;
+                }
+                if apply_retention_requests(
+                    &retention_requested,
+                    &deck,
+                    &mut engines,
+                    &mut store,
+                ) {
+                    bounded_retention_pass = true;
                     refresh_immediately = true;
                 }
                 while refresh_requested.try_recv().is_ok() {
@@ -967,6 +1238,15 @@ fn spawn_read_loop(app: AppHandle, deck: Deck) -> Result<ReadLoopControl> {
                 ) {
                     refresh_immediately = true;
                 }
+                if apply_retention_requests(
+                    &retention_requested,
+                    &deck,
+                    &mut engines,
+                    &mut store,
+                ) {
+                    bounded_retention_pass = true;
+                    refresh_immediately = true;
+                }
                 let policy_revision = deck.provider_policy_revision();
                 let policy_changed = policy_revision != observed_policy_revision;
                 let requested_generation = deck.requested_refresh_generation();
@@ -986,6 +1266,8 @@ fn spawn_read_loop(app: AppHandle, deck: Deck) -> Result<ReadLoopControl> {
                 }
 
                 let attempted_policy_revision = policy_revision;
+                let bounded_pass = bounded_retention_pass;
+                bounded_retention_pass = false;
                 match publish(
                     &app,
                     &deck,
@@ -993,8 +1275,8 @@ fn spawn_read_loop(app: AppHandle, deck: Deck) -> Result<ReadLoopControl> {
                     &mut alerts,
                     &mut store,
                     ReadPass {
-                        max_files: None,
-                        scanning: false,
+                        max_files: bounded_pass.then_some(FIRST_PASS_FILES),
+                        scanning: bounded_pass,
                         manual,
                         refresh_generation: requested_generation,
                         cancelled: &read_cancelled,
@@ -1003,6 +1285,9 @@ fn spawn_read_loop(app: AppHandle, deck: Deck) -> Result<ReadLoopControl> {
                     Ok(PublishOutcome::Committed(revision)
                     | PublishOutcome::Cancelled(revision)) => {
                         observed_policy_revision = revision;
+                        if bounded_pass {
+                            refresh_immediately = true;
+                        }
                     }
                     Ok(PublishOutcome::StalePolicy(revision)) => {
                         observed_policy_revision = revision;
@@ -1014,6 +1299,9 @@ fn spawn_read_loop(app: AppHandle, deck: Deck) -> Result<ReadLoopControl> {
                             mark_refresh_failed(&app, &deck, requested_generation, &error);
                         }
                         eprintln!("quotadeck: read pass failed; retrying on the next tick: {error}");
+                        if bounded_pass {
+                            refresh_immediately = true;
+                        }
                     }
                 }
                 if watcher.is_none() {
@@ -1074,16 +1362,18 @@ fn spawn_read_loop(app: AppHandle, deck: Deck) -> Result<ReadLoopControl> {
 }
 
 struct RestoredEngines {
-    engines: Vec<ProviderEngine>,
+    engines: Vec<ManagedEngine>,
     health: Vec<ProviderHealth>,
+    retention: RetentionState,
 }
 
 struct RestoredProvider {
     engine: ProviderEngine,
     health: Option<ProviderHealth>,
+    retention_rebuild: Option<RetentionRebuild>,
 }
 
-fn restore_engines(store: &mut BatchedStore) -> Result<RestoredEngines> {
+fn restore_engines(store: &mut BatchedStore, requested: RetentionDays) -> Result<RestoredEngines> {
     let mut replacements: HashMap<ProviderId, Box<dyn quotadeck_core::provider::Provider>> =
         quotadeck_providers::all()
             .into_iter()
@@ -1113,7 +1403,10 @@ fn restore_engines(store: &mut BatchedStore) -> Result<RestoredEngines> {
                     ),
                     false,
                 );
-                engines.push(ProviderEngine::new(provider));
+                engines.push(ManagedEngine {
+                    engine: ProviderEngine::with_retention(provider, requested.duration()),
+                    retention_rebuild: None,
+                });
                 health.push(provider_health);
                 continue;
             }
@@ -1124,14 +1417,37 @@ fn restore_engines(store: &mut BatchedStore) -> Result<RestoredEngines> {
             checkpoint,
             || store.delete_provider_checkpoint(provider_id),
             now,
+            requested,
         );
-        engines.push(restored.engine);
+        engines.push(ManagedEngine {
+            engine: restored.engine,
+            retention_rebuild: restored.retention_rebuild,
+        });
         if let Some(provider_health) = restored.health {
             health.push(provider_health);
         }
     }
 
-    Ok(RestoredEngines { engines, health })
+    let effective_days = engines
+        .iter()
+        .filter_map(|managed| {
+            managed
+                .retention_rebuild
+                .as_ref()
+                .map(|rebuild| rebuild.from_days)
+        })
+        .min()
+        .unwrap_or_else(|| u16::from(requested));
+    Ok(RestoredEngines {
+        engines,
+        health,
+        retention: RetentionState {
+            requested_days: requested.into(),
+            effective_days,
+            rebuilding: effective_days != u16::from(requested),
+            error: None,
+        },
+    })
 }
 
 fn restore_provider_from_checkpoint(
@@ -1140,20 +1456,38 @@ fn restore_provider_from_checkpoint(
     checkpoint: Option<Vec<u8>>,
     delete_checkpoint: impl FnOnce() -> Result<()>,
     now: chrono::DateTime<Utc>,
+    requested: RetentionDays,
 ) -> RestoredProvider {
     let provider_id = provider.id();
     let Some(checkpoint) = checkpoint else {
         return RestoredProvider {
-            engine: ProviderEngine::new(provider),
+            engine: ProviderEngine::with_retention(provider, requested.duration()),
             health: None,
+            retention_rebuild: None,
         };
     };
 
-    match ProviderEngine::restore(provider, &checkpoint) {
-        Ok(engine) => RestoredProvider {
-            engine,
+    match ProviderEngine::restore_for_retention(provider, &checkpoint, requested.duration(), now) {
+        Ok(RestoreForRetention::Ready(engine)) => RestoredProvider {
+            engine: *engine,
             health: None,
+            retention_rebuild: None,
         },
+        Ok(RestoreForRetention::RebuildRequired {
+            provider,
+            previous_retention,
+        }) => {
+            let mut health = ProviderHealth::new(provider_id);
+            health.record_rebuilding(now);
+            RestoredProvider {
+                engine: ProviderEngine::with_retention(provider, requested.duration()),
+                health: Some(health),
+                retention_rebuild: Some(RetentionRebuild {
+                    from_days: previous_retention.num_days() as u16,
+                    to_days: requested.into(),
+                }),
+            }
+        }
         Err(CheckpointRestoreError::PricingRevisionMismatch { .. }) => {
             let mut health = ProviderHealth::new(provider_id);
             match delete_checkpoint() {
@@ -1168,8 +1502,9 @@ fn restore_provider_from_checkpoint(
                 ),
             }
             RestoredProvider {
-                engine: ProviderEngine::new(replacement),
+                engine: ProviderEngine::with_retention(replacement, requested.duration()),
                 health: Some(health),
+                retention_rebuild: None,
             }
         }
         Err(CheckpointRestoreError::Invalid(error)) => {
@@ -1183,8 +1518,9 @@ fn restore_provider_from_checkpoint(
                 false,
             );
             RestoredProvider {
-                engine: ProviderEngine::new(replacement),
+                engine: ProviderEngine::with_retention(replacement, requested.duration()),
                 health: Some(health),
+                retention_rebuild: None,
             }
         }
     }
@@ -1240,13 +1576,13 @@ fn mark_refresh_failed(app: &AppHandle, deck: &Deck, generation: u64, error: &Er
 fn sync_watches(
     watcher: &mut DebouncedWatcher,
     watched: &mut HashSet<PathBuf>,
-    engines: &[ProviderEngine],
+    engines: &[ManagedEngine],
     settings: &Settings,
 ) -> Result<()> {
     let desired: HashSet<PathBuf> = engines
         .iter()
-        .filter(|engine| settings.is_provider_enabled(engine.provider().id()))
-        .flat_map(ProviderEngine::watch_directories)
+        .filter(|managed| settings.is_provider_enabled(managed.engine.provider().id()))
+        .flat_map(|managed| managed.engine.watch_directories())
         .collect();
 
     for directory in desired.difference(watched) {
@@ -1263,7 +1599,7 @@ fn sync_watches_for_current_policy(
     deck: &Deck,
     watcher: &mut DebouncedWatcher,
     watched: &mut HashSet<PathBuf>,
-    engines: &[ProviderEngine],
+    engines: &[ManagedEngine],
 ) -> Result<()> {
     deck.with_provider_policy(|settings, _revision| {
         sync_watches(watcher, watched, engines, settings)
@@ -1275,7 +1611,7 @@ fn apply_provider_policy_sync_requests(
     deck: &Deck,
     watcher: &mut Option<DebouncedWatcher>,
     watched: &mut HashSet<PathBuf>,
-    engines: &[ProviderEngine],
+    engines: &[ManagedEngine],
 ) -> bool {
     let mut handled = false;
     loop {
@@ -1358,10 +1694,43 @@ enum PublishOutcome {
     Cancelled(u64),
 }
 
+enum PendingCheckpoint {
+    Normal {
+        engine_index: usize,
+        provider: ProviderId,
+        bytes: Vec<u8>,
+    },
+    RetentionReplacement {
+        engine_index: usize,
+        provider: ProviderId,
+        bytes: Vec<u8>,
+    },
+}
+
+fn checked_managed_engine(
+    engines: &mut [ManagedEngine],
+    engine_index: usize,
+    provider: ProviderId,
+) -> Result<&mut ManagedEngine> {
+    let engine = engines.get_mut(engine_index).ok_or_else(|| {
+        Error::Invalid(format!(
+            "read loop engine index {engine_index} disappeared before checkpointing provider key {:?}",
+            provider.key()
+        ))
+    })?;
+    if engine.provider().id() != provider {
+        return Err(Error::Invalid(format!(
+            "read loop engine index {engine_index} changed from provider key {:?} before checkpoint commit",
+            provider.key()
+        )));
+    }
+    Ok(engine)
+}
+
 fn publish(
     app: &AppHandle,
     deck: &Deck,
-    engines: &mut [ProviderEngine],
+    engines: &mut [ManagedEngine],
     alerts: &mut Alerts,
     store: &mut BatchedStore,
     pass: ReadPass<'_>,
@@ -1385,7 +1754,8 @@ fn publish(
     let mut history = Vec::with_capacity(engines.len());
     let mut checkpoints = Vec::new();
     let mut diagnostics = Vec::new();
-    let history_from = now - chrono::Duration::days(DEFAULT_RETENTION_DAYS);
+    let mut retention_errors = Vec::new();
+    let history_from = now - settings.retention_days.duration();
 
     let ordered = settings.ordered_provider_ids(&quotadeck_providers::ids())?;
     for provider_id in ordered {
@@ -1418,7 +1788,8 @@ fn publish(
         let engine = &mut engines[engine_index];
         // Picked up every tick, so a plan chosen in the panel shows on the next refresh
         // without re-reading a byte of log.
-        engine.set_config(settings.config_for(engine.provider().id()));
+        let engine_provider_id = engine.provider().id();
+        engine.set_config(settings.config_for(engine_provider_id));
 
         match engine.access() {
             RootAccess::Readable => {}
@@ -1428,6 +1799,12 @@ fn publish(
                     UnavailableReason::NotInstalled,
                 ));
                 provider_health.record_unavailable(now, "provider is not installed".into());
+                if engine.retention_rebuild.is_some() {
+                    retention_errors.push(format!(
+                        "{} retention rebuild cannot continue because the provider is not installed",
+                        provider_id.key()
+                    ));
+                }
                 health.push(provider_health);
                 continue;
             }
@@ -1440,6 +1817,12 @@ fn publish(
                 ));
                 provider_health
                     .record_unavailable(now, "provider directory is not readable".into());
+                if engine.retention_rebuild.is_some() {
+                    retention_errors.push(format!(
+                        "{} retention rebuild cannot continue because its log directory is not readable",
+                        provider_id.key()
+                    ));
+                }
                 health.push(provider_health);
                 continue;
             }
@@ -1449,11 +1832,23 @@ fn publish(
         {
             Ok(report) => {
                 engine.prune(now);
-                if engine.checkpoint_dirty() {
-                    checkpoints.push((engine_index, engine.provider().id(), engine.checkpoint()?));
-                }
                 if report.cancelled {
                     return Ok(PublishOutcome::Cancelled(policy_revision));
+                }
+                if engine.retention_rebuild.is_some() {
+                    if pass.max_files.is_none() {
+                        checkpoints.push(PendingCheckpoint::RetentionReplacement {
+                            engine_index,
+                            provider: engine.provider().id(),
+                            bytes: engine.checkpoint()?,
+                        });
+                    }
+                } else if engine.checkpoint_dirty() {
+                    checkpoints.push(PendingCheckpoint::Normal {
+                        engine_index,
+                        provider: engine.provider().id(),
+                        bytes: engine.checkpoint()?,
+                    });
                 }
                 history.push(ProviderHistory {
                     id: engine.provider().id(),
@@ -1484,7 +1879,7 @@ fn publish(
                 record_successful_provider_pass(
                     &mut provider_health,
                     now,
-                    pass.scanning,
+                    pass.scanning || engine.retention_rebuild.is_some(),
                     snapshot.installed && snapshot.unavailable.is_none(),
                     format!(
                         "provider snapshot is unavailable: {:?}",
@@ -1502,6 +1897,12 @@ fn publish(
                     engine.provider().id().key()
                 ));
                 let error = e.to_string();
+                if engine.retention_rebuild.is_some() {
+                    retention_errors.push(format!(
+                        "{} retention rebuild failed: {error}",
+                        provider_id.key()
+                    ));
+                }
                 let previous_snapshot = previous_snapshots.get(&provider_id);
                 provider_health.record_failure(
                     now,
@@ -1517,10 +1918,13 @@ fn publish(
         }
     }
 
-    let state = DeckState {
+    let rebuilding = engines
+        .iter()
+        .any(|managed| managed.retention_rebuild.is_some());
+    let mut state = DeckState {
         providers,
         updated_at: now,
-        scanning: pass.scanning,
+        scanning: pass.scanning || rebuilding,
         health,
         refreshing: false,
         refresh_generation: if pass.manual {
@@ -1530,31 +1934,80 @@ fn publish(
             previous_refresh_generation
         },
         refresh_error: None,
+        retention: RetentionState {
+            requested_days: settings.retention_days.into(),
+            effective_days: previous.retention.effective_days,
+            rebuilding,
+            error: retention_errors.into_iter().next(),
+        },
     };
     let committed = deck.with_current_provider_policy(policy_revision, || {
-        for (engine_index, provider_id, checkpoint) in checkpoints {
-            store.push_provider_checkpoint(provider_id, checkpoint)?;
-            let engine = engines.get_mut(engine_index)
-                .ok_or_else(|| {
-                    Error::Invalid(format!(
-                        "read loop engine index {engine_index} disappeared before checkpointing provider key {:?}",
-                        provider_id.key(),
-                    ))
-                })?;
-            if engine.provider().id() != provider_id {
+        let mut retention_commits = Vec::new();
+        let mut committed_retention_days = None;
+        for checkpoint in checkpoints {
+            match checkpoint {
+                PendingCheckpoint::Normal {
+                    engine_index,
+                    provider,
+                    bytes,
+                } => {
+                    store.push_provider_checkpoint(provider, bytes)?;
+                    let engine = checked_managed_engine(engines, engine_index, provider)?;
+                    engine.mark_checkpoint_queued();
+                }
+                PendingCheckpoint::RetentionReplacement {
+                    engine_index,
+                    provider,
+                    bytes,
+                } => {
+                    store.stage_provider_checkpoint(provider, bytes)?;
+                    retention_commits.push((engine_index, provider));
+                }
+            }
+        }
+        if !retention_commits.is_empty() {
+            if let Err(error) = store.flush() {
+                for (_, provider) in &retention_commits {
+                    store.cancel_staged_provider_checkpoint(*provider);
+                }
                 return Err(Error::Invalid(format!(
-                    "read loop engine index {engine_index} changed from provider key {:?} before checkpoint commit",
-                    provider_id.key(),
+                    "retention rebuild checkpoints could not be flushed: {error}"
                 )));
             }
-            engine.mark_checkpoint_queued();
+            for (engine_index, provider) in retention_commits {
+                let engine = checked_managed_engine(engines, engine_index, provider)?;
+                engine.mark_checkpoint_queued();
+                let rebuild = engine.retention_rebuild.take().ok_or_else(|| {
+                    Error::Invalid(format!(
+                        "read loop provider {:?} lost its retention rebuild state before checkpoint commit",
+                        provider.key()
+                    ))
+                })?;
+                committed_retention_days = Some(rebuild.to_days);
+                if let Some(provider_health) = state
+                    .health
+                    .iter_mut()
+                    .find(|health| health.provider == provider)
+                {
+                    provider_health.record_success(now);
+                }
+            }
+            if engines
+                .iter()
+                .all(|managed| managed.retention_rebuild.is_none())
+            {
+                state.retention.effective_days = committed_retention_days
+                    .unwrap_or_else(|| settings.retention_days.into());
+                state.retention.rebuilding = false;
+                state.retention.error = None;
+                state.scanning = pass.scanning;
+            }
         }
         for diagnostic in diagnostics {
             eprintln!("{diagnostic}");
         }
 
-        deck.set_history(history);
-        deck.set_state(state.clone());
+        deck.set_published_view(history, state.clone());
         let mut failures = Vec::new();
         if let Err(error) = app.emit(STATE_EVENT, &state) {
             failures.push(format!("could not emit {STATE_EVENT}: {error}"));
@@ -1659,6 +2112,17 @@ mod provider_policy_tests {
 mod checkpoint_restore_tests {
     use super::*;
 
+    fn scratch(name: &str) -> PathBuf {
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("system time")
+            .as_nanos();
+        std::env::temp_dir().join(format!(
+            "quotadeck-retention-{name}-{}-{unique}.redb",
+            std::process::id()
+        ))
+    }
+
     fn claude_provider() -> Box<dyn quotadeck_core::provider::Provider> {
         quotadeck_providers::all()
             .into_iter()
@@ -1687,6 +2151,7 @@ mod checkpoint_restore_tests {
                 Ok(())
             },
             now,
+            RetentionDays::Days32,
         );
 
         assert!(deleted);
@@ -1704,6 +2169,7 @@ mod checkpoint_restore_tests {
             Some(checkpoint_with_revision(0)),
             || Err(Error::Store("injected checkpoint delete failure".into())),
             Utc::now(),
+            RetentionDays::Days32,
         );
 
         assert_eq!(restored.engine.provider().id(), ProviderId::ClaudeCode);
@@ -1732,5 +2198,64 @@ mod checkpoint_restore_tests {
         record_successful_provider_pass(&mut health, completed, false, true, String::new());
         assert_eq!(health.state, HealthState::Healthy);
         assert_eq!(health.last_success_at, Some(completed));
+    }
+
+    #[test]
+    fn retention_growth_keeps_old_checkpoint_until_full_rebuild_flushes() {
+        let path = scratch("checkpoint-order");
+        let mut store = BatchedStore::open(&path).expect("open store");
+        let old = ProviderEngine::with_retention(claude_provider(), chrono::Duration::days(32))
+            .checkpoint()
+            .expect("old checkpoint");
+        store
+            .push_provider_checkpoint(ProviderId::ClaudeCode, old.clone())
+            .expect("queue old checkpoint");
+        store.flush().expect("flush old checkpoint");
+
+        let mut managed = ManagedEngine {
+            engine: ProviderEngine::with_retention(claude_provider(), chrono::Duration::days(90)),
+            retention_rebuild: Some(RetentionRebuild {
+                from_days: 32,
+                to_days: 90,
+            }),
+        };
+
+        assert_eq!(
+            persist_managed_checkpoint(&mut store, &mut managed, false)
+                .expect("hold partial checkpoint"),
+            CheckpointPersistence::HeldForFullRetentionPass
+        );
+        assert_eq!(
+            store
+                .load_provider_checkpoint(ProviderId::ClaudeCode)
+                .expect("load old checkpoint"),
+            Some(old),
+            "a bounded pass must not replace the last complete checkpoint"
+        );
+
+        assert_eq!(
+            persist_managed_checkpoint(&mut store, &mut managed, true)
+                .expect("commit full checkpoint"),
+            CheckpointPersistence::RetentionCommitted {
+                from_days: 32,
+                to_days: 90,
+            }
+        );
+        assert!(managed.retention_rebuild.is_none());
+        let saved = store
+            .load_provider_checkpoint(ProviderId::ClaudeCode)
+            .expect("load full checkpoint")
+            .expect("full checkpoint exists");
+        let restored = ProviderEngine::restore_for_retention(
+            claude_provider(),
+            &saved,
+            chrono::Duration::days(90),
+            Utc::now(),
+        )
+        .expect("restore replacement checkpoint");
+        assert!(matches!(
+            restored,
+            quotadeck_core::engine::RestoreForRetention::Ready(_)
+        ));
     }
 }

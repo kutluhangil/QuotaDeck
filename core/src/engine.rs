@@ -105,6 +105,14 @@ pub enum CheckpointRestoreError {
     Invalid(#[from] crate::Error),
 }
 
+pub enum RestoreForRetention {
+    Ready(Box<ProviderEngine>),
+    RebuildRequired {
+        provider: Box<dyn Provider>,
+        previous_retention: ChronoDuration,
+    },
+}
+
 impl ProviderEngine {
     pub fn new(provider: Box<dyn Provider>) -> Self {
         Self::with_retention(provider, ChronoDuration::days(DEFAULT_RETENTION_DAYS))
@@ -272,6 +280,20 @@ impl ProviderEngine {
         }
     }
 
+    pub fn retention(&self) -> ChronoDuration {
+        self.index.retention()
+    }
+
+    pub fn set_retention(&mut self, retention: ChronoDuration, now: DateTime<Utc>) -> Result<bool> {
+        let changed = self.index.retention() != retention;
+        self.index.set_retention(retention)?;
+        let pruned = self.index.prune(now);
+        if changed || pruned {
+            self.checkpoint_dirty = true;
+        }
+        Ok(changed || pruned)
+    }
+
     pub fn snapshot(&self, now: DateTime<Utc>) -> ProviderSnapshot {
         let mut snapshot = self.provider.build_snapshot(&self.index, now, &self.config);
         let mut messages: Vec<_> = self.read_errors.values().take(3).cloned().collect();
@@ -376,6 +398,34 @@ impl ProviderEngine {
             read_errors: checkpoint.read_errors,
             read_error_overflow: checkpoint.read_error_overflow,
         })
+    }
+
+    pub fn restore_for_retention(
+        provider: Box<dyn Provider>,
+        bytes: &[u8],
+        requested: ChronoDuration,
+        now: DateTime<Utc>,
+    ) -> std::result::Result<RestoreForRetention, CheckpointRestoreError> {
+        if requested <= ChronoDuration::zero() {
+            return Err(crate::Error::Invalid(format!(
+                "provider retention must be positive, received {} seconds",
+                requested.num_seconds()
+            ))
+            .into());
+        }
+
+        let mut restored = Self::restore(provider, bytes)?;
+        let previous_retention = restored.retention();
+        if previous_retention < requested {
+            return Ok(RestoreForRetention::RebuildRequired {
+                provider: restored.provider,
+                previous_retention,
+            });
+        }
+        if previous_retention > requested {
+            restored.set_retention(requested, now)?;
+        }
+        Ok(RestoreForRetention::Ready(Box::new(restored)))
     }
 
     /// Call only after the current checkpoint was accepted by the persistence queue.
@@ -689,6 +739,113 @@ mod tests {
         let appended = restored.refresh(None).expect("appended refresh");
         assert_eq!(appended.lines, 1);
         assert_eq!(restored.snapshot(Utc::now()).today.input, 3);
+    }
+
+    #[test]
+    fn retention_aware_restore_resumes_equal_retention_without_double_counting() {
+        let (mut engine, root) = engine_for("retention-equal");
+        let path = root.join("a.jsonl");
+        append(&path, "one\ntwo\n");
+        engine.refresh(None).expect("first refresh");
+        let bytes = engine.checkpoint().expect("checkpoint");
+
+        let outcome = ProviderEngine::restore_for_retention(
+            Box::new(Counter {
+                root: root.clone(),
+                pricing_revision: 0,
+            }),
+            &bytes,
+            ChronoDuration::days(DEFAULT_RETENTION_DAYS),
+            Utc::now(),
+        )
+        .expect("restore equal retention");
+        let RestoreForRetention::Ready(mut restored) = outcome else {
+            panic!("equal retention must resume the checkpoint");
+        };
+
+        assert_eq!(restored.retention(), ChronoDuration::days(32));
+        assert_eq!(restored.refresh(None).expect("unchanged refresh").bytes, 0);
+        assert_eq!(restored.snapshot(Utc::now()).today.input, 2);
+    }
+
+    #[test]
+    fn retention_aware_restore_shortens_prunes_and_preserves_cursors() {
+        let (mut engine, root) = engine_for("retention-shorten");
+        engine
+            .set_retention(ChronoDuration::days(90), Utc::now())
+            .expect("set initial retention");
+        let path = root.join("a.jsonl");
+        append(&path, "cursor\n");
+        engine.refresh(None).expect("establish cursor");
+
+        let now = Utc::now();
+        engine.index.ingest(ParsedEvent::Usage(UsageEvent {
+            at: now - ChronoDuration::days(60),
+            session: "old".into(),
+            dedup: Some(crate::events::DedupKey::new("old", "request")),
+            model: None,
+            project: None,
+            origin: AgentOrigin::Main,
+            tokens: TokenRollup {
+                input: 50,
+                ..Default::default()
+            },
+            requests: 0.0,
+            cost: crate::types::Cost::Unpriced,
+            accounting: Accounting::Incremental,
+        }));
+        let bytes = engine.checkpoint().expect("90-day checkpoint");
+
+        let outcome = ProviderEngine::restore_for_retention(
+            Box::new(Counter {
+                root,
+                pricing_revision: 0,
+            }),
+            &bytes,
+            ChronoDuration::days(32),
+            now,
+        )
+        .expect("shorter retention restores in place");
+        let RestoreForRetention::Ready(restored) = outcome else {
+            panic!("shortening must not rebuild");
+        };
+
+        assert_eq!(restored.retention(), ChronoDuration::days(32));
+        assert_eq!(restored.cursor_count(), 1);
+        assert!(restored.checkpoint_dirty());
+        assert_eq!(restored.snapshot(now).today.input, 1);
+    }
+
+    #[test]
+    fn retention_aware_restore_requires_fresh_engine_without_old_cursors_on_growth() {
+        let (mut engine, root) = engine_for("retention-grow");
+        let path = root.join("a.jsonl");
+        append(&path, "one\n");
+        engine.refresh(None).expect("establish cursor");
+        let bytes = engine.checkpoint().expect("32-day checkpoint");
+
+        let outcome = ProviderEngine::restore_for_retention(
+            Box::new(Counter {
+                root,
+                pricing_revision: 0,
+            }),
+            &bytes,
+            ChronoDuration::days(90),
+            Utc::now(),
+        )
+        .expect("growth returns a rebuild outcome");
+        let RestoreForRetention::RebuildRequired {
+            provider,
+            previous_retention,
+        } = outcome
+        else {
+            panic!("growing retention must rebuild from logs");
+        };
+        assert_eq!(previous_retention, ChronoDuration::days(32));
+
+        let rebuilt = ProviderEngine::with_retention(provider, ChronoDuration::days(90));
+        assert_eq!(rebuilt.cursor_count(), 0);
+        assert_eq!(rebuilt.retention(), ChronoDuration::days(90));
     }
 
     #[test]

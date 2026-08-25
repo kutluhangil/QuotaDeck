@@ -262,6 +262,21 @@ impl EventIndex {
         }
     }
 
+    pub fn retention(&self) -> ChronoDuration {
+        self.retention
+    }
+
+    pub fn set_retention(&mut self, retention: ChronoDuration) -> Result<()> {
+        if retention <= ChronoDuration::zero() {
+            return Err(Error::Invalid(format!(
+                "event index retention must be positive, received {} seconds",
+                retention.num_seconds()
+            )));
+        }
+        self.retention = retention;
+        Ok(())
+    }
+
     /// Fold one event in. Returns `false` when the event was a duplicate and was skipped.
     pub fn ingest(&mut self, event: ParsedEvent) -> bool {
         match event {
@@ -648,6 +663,40 @@ mod tests {
 
     fn index() -> EventIndex {
         EventIndex::new(ChronoDuration::days(7))
+    }
+
+    #[test]
+    fn retention_rejects_non_positive_values_and_prunes_after_shortening() {
+        let now = ts(1_785_700_000);
+        let mut index = EventIndex::new(ChronoDuration::days(90));
+        index.ingest(ParsedEvent::Usage(usage(
+            (now - ChronoDuration::days(60)).timestamp(),
+            "expired_after_shorten",
+            10,
+        )));
+        index.ingest(ParsedEvent::Usage(usage(
+            (now - ChronoDuration::days(10)).timestamp(),
+            "retained_after_shorten",
+            20,
+        )));
+
+        assert_eq!(index.retention(), ChronoDuration::days(90));
+        let zero = index
+            .set_retention(ChronoDuration::zero())
+            .expect_err("zero retention must be rejected");
+        assert!(zero.to_string().contains("0"));
+        assert_eq!(index.retention(), ChronoDuration::days(90));
+
+        index
+            .set_retention(ChronoDuration::days(32))
+            .expect("supported positive retention");
+        assert!(index.prune(now));
+        assert_eq!(index.retention(), ChronoDuration::days(32));
+        assert_eq!(
+            index.rolling(now, ChronoDuration::days(90)).input,
+            20,
+            "the newly expired bucket must be pruned"
+        );
     }
 
     fn usage(at: i64, id: &str, input: u64) -> UsageEvent {

@@ -186,6 +186,38 @@ impl BatchedStore {
         })
     }
 
+    /// Stage a complete provider checkpoint without allowing the normal age/count thresholds
+    /// to flush it before a multi-provider transition is ready to commit.
+    pub fn stage_provider_checkpoint(
+        &mut self,
+        provider: ProviderId,
+        checkpoint: Vec<u8>,
+    ) -> Result<()> {
+        let key = provider_checkpoint_key(provider);
+        if let Some(Delta::Meta {
+            value: pending_value,
+            ..
+        }) = self.pending.iter_mut().find(
+            |pending| matches!(pending, Delta::Meta { key: pending_key, .. } if pending_key == &key),
+        ) {
+            *pending_value = checkpoint;
+        } else {
+            self.pending.push(Delta::Meta {
+                key,
+                value: checkpoint,
+            });
+        }
+        Ok(())
+    }
+
+    /// Cancel only a queued replacement. The last committed checkpoint remains untouched.
+    pub fn cancel_staged_provider_checkpoint(&mut self, provider: ProviderId) {
+        let key = provider_checkpoint_key(provider);
+        self.pending.retain(
+            |delta| !matches!(delta, Delta::Meta { key: pending_key, .. } if pending_key == &key),
+        );
+    }
+
     pub fn load_provider_checkpoint(&self, provider: ProviderId) -> Result<Option<Vec<u8>>> {
         self.read_meta(&provider_checkpoint_key(provider))
     }
@@ -430,6 +462,32 @@ mod tests {
                 .load_provider_checkpoint(ProviderId::ClaudeCode)
                 .expect("load claude"),
             Some(b"claude-state".to_vec())
+        );
+    }
+
+    #[test]
+    fn a_staged_provider_checkpoint_is_invisible_until_flush_and_can_be_cancelled() {
+        let path = scratch("staged-provider.redb");
+        let mut store = BatchedStore::open(&path).expect("open");
+        store
+            .stage_provider_checkpoint(ProviderId::ClaudeCode, b"replacement".to_vec())
+            .expect("stage checkpoint");
+        assert_eq!(store.pending_len(), 1);
+        assert_eq!(
+            store
+                .load_provider_checkpoint(ProviderId::ClaudeCode)
+                .expect("load before flush"),
+            None
+        );
+
+        store.cancel_staged_provider_checkpoint(ProviderId::ClaudeCode);
+        assert_eq!(store.pending_len(), 0);
+        store.flush().expect("empty flush");
+        assert_eq!(
+            store
+                .load_provider_checkpoint(ProviderId::ClaudeCode)
+                .expect("load after cancel"),
+            None
         );
     }
 

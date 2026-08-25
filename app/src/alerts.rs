@@ -302,6 +302,7 @@ mod tests {
             refreshing: false,
             refresh_generation: 0,
             refresh_error: None,
+            retention: Default::default(),
         }
     }
 

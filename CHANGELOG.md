@@ -2,6 +2,7 @@
 
 ## 2026-08-25
 
+- History: added retention-aware checkpoint transitions, crash-safe staged rebuild persistence, and one typed backend export request shared by the local CLI.
 - Pricing: apply official Anthropic rates by event date, version price-dependent checkpoints, and rebuild only providers whose pricing revision changed.
 - Alerts: added reliable projected-exhaustion notifications with health gating, reset-aware re-arming, mute/first-pass silence, and same-window threshold coalescing.
 - Tray: added ordered local provider summaries plus Dashboard and single-flight Refresh actions, rebuilding the native menu only when its pure model changes.

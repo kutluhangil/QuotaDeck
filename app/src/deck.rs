@@ -30,6 +30,7 @@ pub struct DeckState {
     pub refreshing: bool,
     pub refresh_generation: u64,
     pub refresh_error: Option<String>,
+    pub retention: RetentionState,
 }
 
 impl DeckState {
@@ -42,6 +43,7 @@ impl DeckState {
             refreshing: false,
             refresh_generation: 0,
             refresh_error: None,
+            retention: RetentionState::default(),
         }
     }
 
@@ -72,6 +74,26 @@ impl DeckState {
                     _ => Some(candidate),
                 },
             )
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RetentionState {
+    pub requested_days: u16,
+    pub effective_days: u16,
+    pub rebuilding: bool,
+    pub error: Option<String>,
+}
+
+impl Default for RetentionState {
+    fn default() -> Self {
+        RetentionState {
+            requested_days: 32,
+            effective_days: 32,
+            rebuilding: false,
+            error: None,
+        }
     }
 }
 
@@ -223,6 +245,50 @@ pub enum Theme {
     Light,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(try_from = "u16", into = "u16")]
+pub enum RetentionDays {
+    #[default]
+    Days32,
+    Days90,
+    Days365,
+}
+
+impl RetentionDays {
+    pub const fn days(self) -> i64 {
+        match self {
+            RetentionDays::Days32 => 32,
+            RetentionDays::Days90 => 90,
+            RetentionDays::Days365 => 365,
+        }
+    }
+
+    pub fn duration(self) -> chrono::Duration {
+        chrono::Duration::days(self.days())
+    }
+}
+
+impl TryFrom<u16> for RetentionDays {
+    type Error = String;
+
+    fn try_from(value: u16) -> std::result::Result<Self, Self::Error> {
+        match value {
+            32 => Ok(RetentionDays::Days32),
+            90 => Ok(RetentionDays::Days90),
+            365 => Ok(RetentionDays::Days365),
+            _ => Err(format!(
+                "settings.retentionDays must be one of 32, 90, or 365; received {value}"
+            )),
+        }
+    }
+}
+
+impl From<RetentionDays> for u16 {
+    fn from(value: RetentionDays) -> Self {
+        value.days() as u16
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Settings {
@@ -258,6 +324,7 @@ pub struct Settings {
     pub disabled_providers: BTreeSet<String>,
     /// Provider keys in the user's preferred presentation and processing order.
     pub provider_order: Vec<String>,
+    pub retention_days: RetentionDays,
 }
 
 /// Thresholds a provider raises at unless the user changed them (blueprint §9, Phase 7).
@@ -278,6 +345,7 @@ impl Default for Settings {
                 .into_iter()
                 .map(|id| id.key().to_string())
                 .collect(),
+            retention_days: RetentionDays::Days32,
         }
     }
 }
@@ -294,6 +362,7 @@ struct SettingsDocument {
     demo: bool,
     disabled_providers: BTreeSet<String>,
     provider_order: Vec<String>,
+    retention_days: RetentionDays,
 }
 
 impl Default for SettingsDocument {
@@ -309,6 +378,7 @@ impl Default for SettingsDocument {
             demo: settings.demo,
             disabled_providers: settings.disabled_providers,
             provider_order: settings.provider_order,
+            retention_days: settings.retention_days,
         }
     }
 }
@@ -331,6 +401,7 @@ impl<'de> Deserialize<'de> for Settings {
             demo: document.demo,
             disabled_providers: document.disabled_providers,
             provider_order: document.provider_order,
+            retention_days: document.retention_days,
         };
         let ordered = settings
             .ordered_provider_ids(&quotadeck_providers::ids())
@@ -338,6 +409,12 @@ impl<'de> Deserialize<'de> for Settings {
         settings.provider_order = ordered.into_iter().map(|id| id.key().to_string()).collect();
         Ok(settings)
     }
+}
+
+#[derive(Debug)]
+pub(crate) struct RetentionChangeRequest {
+    pub retention: RetentionDays,
+    pub complete: mpsc::Sender<Result<()>>,
 }
 
 impl Settings {
@@ -504,6 +581,7 @@ fn publish_refresh_generation(
 pub struct Deck {
     state: Arc<Mutex<DeckState>>,
     history: Arc<Mutex<Vec<ProviderHistory>>>,
+    view_commit: Arc<Mutex<()>>,
     settings: Arc<Mutex<Settings>>,
     access: Arc<Mutex<Access>>,
     panel_open: Arc<AtomicBool>,
@@ -516,6 +594,8 @@ pub struct Deck {
     refresh_control: Arc<Mutex<Option<mpsc::Sender<()>>>>,
     next_refresh_request: Arc<AtomicU64>,
     requested_refresh_generation: Arc<AtomicU64>,
+    retention_commit: Arc<Mutex<()>>,
+    retention_control: Arc<Mutex<Option<mpsc::Sender<RetentionChangeRequest>>>>,
 }
 
 impl Deck {
@@ -523,6 +603,7 @@ impl Deck {
         Ok(Deck {
             state: Arc::new(Mutex::new(DeckState::empty())),
             history: Arc::new(Mutex::new(Vec::new())),
+            view_commit: Arc::new(Mutex::new(())),
             settings: Arc::new(Mutex::new(Settings::load()?)),
             access: Arc::new(Mutex::new(Access::default())),
             panel_open: Arc::new(AtomicBool::new(false)),
@@ -533,6 +614,8 @@ impl Deck {
             refresh_control: Arc::new(Mutex::new(None)),
             next_refresh_request: Arc::new(AtomicU64::new(0)),
             requested_refresh_generation: Arc::new(AtomicU64::new(0)),
+            retention_commit: Arc::new(Mutex::new(())),
+            retention_control: Arc::new(Mutex::new(None)),
         })
     }
 
@@ -564,6 +647,13 @@ impl Deck {
 
     pub(crate) fn requested_refresh_generation(&self) -> u64 {
         self.requested_refresh_generation.load(Ordering::Acquire)
+    }
+
+    pub(crate) fn register_retention_control(&self, control: mpsc::Sender<RetentionChangeRequest>) {
+        match self.retention_control.lock() {
+            Ok(mut slot) => *slot = Some(control),
+            Err(poisoned) => *poisoned.into_inner() = Some(control),
+        }
     }
 
     /// Take up the grant made on an earlier launch. Called once, before the first read pass.
@@ -617,6 +707,14 @@ impl Deck {
     }
 
     pub fn set_history(&self, next: Vec<ProviderHistory>) {
+        let _view = match self.view_commit.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        self.set_history_raw(next);
+    }
+
+    fn set_history_raw(&self, next: Vec<ProviderHistory>) {
         match self.history.lock() {
             Ok(mut guard) => *guard = next,
             Err(poisoned) => *poisoned.into_inner() = next,
@@ -633,10 +731,35 @@ impl Deck {
     }
 
     pub fn set_state(&self, next: DeckState) {
+        let _view = match self.view_commit.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        self.set_state_raw(next);
+    }
+
+    fn set_state_raw(&self, next: DeckState) {
         match self.state.lock() {
             Ok(mut guard) => *guard = next,
             Err(poisoned) => *poisoned.into_inner() = next,
         }
+    }
+
+    pub fn set_published_view(&self, history: Vec<ProviderHistory>, state: DeckState) {
+        let _view = match self.view_commit.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        self.set_history_raw(history);
+        self.set_state_raw(state);
+    }
+
+    pub fn export_snapshot(&self) -> (DeckState, Vec<ProviderHistory>) {
+        let _view = match self.view_commit.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        (self.state(), self.history())
     }
 
     pub fn settings(&self) -> Settings {
@@ -660,6 +783,79 @@ impl Deck {
 
     pub fn set_demo(&self, demo: bool) -> Result<Settings> {
         self.update_settings(|settings| settings.demo = demo)
+    }
+
+    pub fn set_retention_days(&self, retention: RetentionDays) -> Result<Settings> {
+        self.set_retention_days_with(retention, Settings::save)
+    }
+
+    fn set_retention_days_with(
+        &self,
+        retention: RetentionDays,
+        mut save: impl FnMut(&Settings) -> Result<()>,
+    ) -> Result<Settings> {
+        let _commit = match self.retention_commit.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        let current_retention = self.state().retention;
+        if current_retention.rebuilding {
+            return Err(Error::Invalid(format!(
+                "retention is rebuilding from {} to {} days; wait for it to finish before choosing another retention",
+                current_retention.effective_days, current_retention.requested_days
+            )));
+        }
+        let previous = self.settings();
+        if previous.retention_days == retention {
+            return Ok(previous);
+        }
+        let mut next = previous.clone();
+        next.retention_days = retention;
+        save(&next)?;
+        match self.settings.lock() {
+            Ok(mut guard) => *guard = next.clone(),
+            Err(poisoned) => *poisoned.into_inner() = next.clone(),
+        }
+
+        let control = match self.retention_control.lock() {
+            Ok(guard) => guard.clone(),
+            Err(poisoned) => poisoned.into_inner().clone(),
+        };
+        let (complete, completed) = mpsc::channel();
+        let send_result = control
+            .ok_or_else(|| Error::Invalid("read loop retention control is not registered".into()))
+            .and_then(|control| {
+                control.send(RetentionChangeRequest { retention, complete }).map_err(|error| {
+                    Error::Invalid(format!(
+                        "retention change to {} days could not be delivered to the read loop: {error}",
+                        retention.days()
+                    ))
+                })
+            })
+            .and_then(|()| {
+                completed
+                    .recv()
+                    .map_err(|error| {
+                        Error::Invalid(format!(
+                            "retention change to {} days was delivered, but the read loop acknowledgement was lost: {error}",
+                            retention.days()
+                        ))
+                    })?
+            });
+        if let Err(send_error) = send_result {
+            let rollback_result = save(&previous);
+            match self.settings.lock() {
+                Ok(mut guard) => *guard = previous,
+                Err(poisoned) => *poisoned.into_inner() = previous,
+            }
+            return match rollback_result {
+                Ok(()) => Err(send_error),
+                Err(rollback_error) => Err(Error::Invalid(format!(
+                    "{send_error}; settings rollback also failed: {rollback_error}"
+                ))),
+            };
+        }
+        Ok(next)
     }
 
     pub fn set_provider_policy(
@@ -750,12 +946,11 @@ impl Deck {
         state
             .providers
             .sort_by_key(|snapshot| positions.get(&snapshot.id).copied().unwrap_or(usize::MAX));
-        self.set_state(state);
-
         let mut history = self.history();
+
         history.retain(|entry| settings.is_provider_enabled(entry.id));
         history.sort_by_key(|entry| positions.get(&entry.id).copied().unwrap_or(usize::MAX));
-        self.set_history(history);
+        self.set_published_view(history, state);
         Ok(())
     }
 
@@ -962,6 +1157,7 @@ mod tests {
             refreshing: false,
             refresh_generation: 0,
             refresh_error: None,
+            retention: Default::default(),
         };
         assert_eq!(state.peak_percent(), Some(95.0));
     }
@@ -978,6 +1174,7 @@ mod tests {
             refreshing: false,
             refresh_generation: 0,
             refresh_error: None,
+            retention: Default::default(),
         };
 
         let (provider, window) = state.headline().expect("a headline reading");
@@ -1006,6 +1203,7 @@ mod tests {
             refreshing: false,
             refresh_generation: 0,
             refresh_error: None,
+            retention: Default::default(),
         };
 
         assert_eq!(state.peak_percent(), Some(3.0));
@@ -1021,6 +1219,7 @@ mod tests {
             refreshing: false,
             refresh_generation: 0,
             refresh_error: None,
+            retention: Default::default(),
         };
         assert_eq!(state.peak_percent(), None);
     }
@@ -1043,6 +1242,32 @@ mod tests {
             settings.provider_order,
             vec!["claude-code", "codex", "copilot-cli"]
         );
+        assert_eq!(settings.retention_days, RetentionDays::Days32);
+    }
+
+    #[test]
+    fn retention_days_use_numeric_serde_and_reject_every_unsupported_value() {
+        for (days, expected) in [
+            (32, RetentionDays::Days32),
+            (90, RetentionDays::Days90),
+            (365, RetentionDays::Days365),
+        ] {
+            let decoded: RetentionDays =
+                serde_json::from_str(&days.to_string()).expect("supported retention");
+            assert_eq!(decoded, expected);
+            assert_eq!(
+                serde_json::to_string(&decoded).expect("encode retention"),
+                days.to_string()
+            );
+            assert_eq!(decoded.days(), i64::from(days));
+            assert_eq!(decoded.duration(), chrono::Duration::days(i64::from(days)));
+        }
+
+        for invalid in [0, 31, 366, 999] {
+            let error = serde_json::from_str::<RetentionDays>(&invalid.to_string())
+                .expect_err("unsupported retention must fail");
+            assert!(error.to_string().contains(&invalid.to_string()));
+        }
     }
 
     #[test]
@@ -1057,6 +1282,94 @@ mod tests {
                 .expect("legacy provider order"),
             quotadeck_providers::ids()
         );
+        assert_eq!(stored.retention_days, RetentionDays::Days32);
+    }
+
+    #[test]
+    fn a_retention_change_rolls_back_settings_when_the_read_loop_is_disconnected() {
+        let deck = Deck::new().expect("create deck");
+        let (control, receiver) = mpsc::channel();
+        deck.register_retention_control(control);
+        drop(receiver);
+        let saved = Arc::new(Mutex::new(Vec::new()));
+        let recorded = saved.clone();
+
+        let error = deck
+            .set_retention_days_with(RetentionDays::Days90, move |settings| {
+                recorded
+                    .lock()
+                    .expect("saved settings")
+                    .push(settings.retention_days);
+                Ok(())
+            })
+            .expect_err("a disconnected read loop must roll back");
+
+        assert!(error.to_string().contains("90"));
+        assert_eq!(deck.settings().retention_days, RetentionDays::Days32);
+        assert_eq!(
+            *saved.lock().expect("saved settings"),
+            vec![RetentionDays::Days90, RetentionDays::Days32]
+        );
+    }
+
+    #[test]
+    fn a_retention_change_is_saved_before_the_read_loop_observes_it() {
+        let deck = Deck::new().expect("create deck");
+        let (control, receiver) = mpsc::channel();
+        deck.register_retention_control(control);
+        let saved = Arc::new(AtomicBool::new(false));
+        let marker = saved.clone();
+        let setter = deck.clone();
+        let (finished, result) = mpsc::channel();
+        let thread = std::thread::spawn(move || {
+            let outcome = setter.set_retention_days_with(RetentionDays::Days90, move |_| {
+                marker.store(true, Ordering::Release);
+                Ok(())
+            });
+            finished.send(outcome).expect("return setter result");
+        });
+        let request = receiver.recv().expect("receive retention change");
+        assert!(saved.load(Ordering::Acquire));
+        assert_eq!(request.retention, RetentionDays::Days90);
+        assert!(matches!(result.try_recv(), Err(mpsc::TryRecvError::Empty)));
+
+        let mut state = deck.state();
+        state.retention.requested_days = 90;
+        state.retention.rebuilding = true;
+        deck.set_state(state);
+        request
+            .complete
+            .send(Ok(()))
+            .expect("acknowledge owner state");
+        let settings = result
+            .recv()
+            .expect("setter completion")
+            .expect("accepted change");
+        thread.join().expect("setter thread");
+        assert_eq!(settings.retention_days, RetentionDays::Days90);
+    }
+
+    #[test]
+    fn a_second_retention_change_is_rejected_before_saving_while_rebuilding() {
+        let deck = Deck::new().expect("create deck");
+        let mut state = deck.state();
+        state.retention.rebuilding = true;
+        state.retention.requested_days = 90;
+        deck.set_state(state);
+        let saves = Arc::new(AtomicU64::new(0));
+        let recorded = saves.clone();
+
+        let error = deck
+            .set_retention_days_with(RetentionDays::Days365, move |_| {
+                recorded.fetch_add(1, Ordering::Relaxed);
+                Ok(())
+            })
+            .expect_err("active rebuild rejects a second change");
+
+        assert!(error.to_string().contains("90"));
+        assert!(error.to_string().contains("rebuilding"));
+        assert_eq!(saves.load(Ordering::Relaxed), 0);
+        assert_eq!(deck.settings().retention_days, RetentionDays::Days32);
     }
 
     #[test]
@@ -1136,6 +1449,7 @@ mod tests {
             refreshing: false,
             refresh_generation: 0,
             refresh_error: None,
+            retention: Default::default(),
         });
         deck.set_history(vec![
             ProviderHistory {
@@ -1444,6 +1758,7 @@ mod tests {
             refreshing: false,
             refresh_generation: 0,
             refresh_error: None,
+            retention: Default::default(),
         };
 
         assert_eq!(state.updated_at, attempted);
@@ -1526,7 +1841,7 @@ mod tests {
         let json = serde_json::to_string(&settings).expect("serialise settings");
         assert_eq!(
             json,
-            r#"{"trayMode":"compact","theme":"dark","locale":"system","plans":{"claude-code":"max-20x"},"alerts":{"codex":[85,95]},"mutedUntil":null,"demo":false,"disabledProviders":[],"providerOrder":["claude-code","codex","copilot-cli"]}"#
+            r#"{"trayMode":"compact","theme":"dark","locale":"system","plans":{"claude-code":"max-20x"},"alerts":{"codex":[85,95]},"mutedUntil":null,"demo":false,"disabledProviders":[],"providerOrder":["claude-code","codex","copilot-cli"],"retentionDays":32}"#
         );
     }
 

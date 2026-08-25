@@ -11,7 +11,7 @@ use chrono::{DateTime, Duration, Local, Utc};
 use quotadeck_app::deck::{DeckState, ProviderHistory, Settings};
 use quotadeck_app::{export, icon};
 use quotadeck_core::discovery::{access, RootAccess};
-use quotadeck_core::engine::{ProviderEngine, DEFAULT_RETENTION_DAYS};
+use quotadeck_core::engine::ProviderEngine;
 use quotadeck_core::horizon;
 use quotadeck_core::provider::ProviderConfig;
 use quotadeck_core::types::{
@@ -65,15 +65,86 @@ fn main() -> ExitCode {
 
 fn usage() {
     eprintln!(
-        "usage:\n  quotadeck list                  detected providers on this machine\n  quotadeck paths                 resolved home, data dir and root access\n  quotadeck debug <key> [plan]    parse one provider and print what it found\n  quotadeck export [--json|--csv] [--provider <key>]\n                                  the deck to stdout; exits 0 ok, 10 near, 11 hit, 20 unknown\n  quotadeck tray <key>            draw the menu bar item for that provider\n  quotadeck statusline            what connecting the Claude Code status line would change\n  quotadeck statusline install    write the shim into settings.json\n  quotadeck statusline revert     put settings.json back"
+        "usage:\n  quotadeck list                  detected providers on this machine\n  quotadeck paths                 resolved home, data dir and root access\n  quotadeck debug <key> [plan]    parse one provider and print what it found\n  quotadeck export [--json|--csv] [--provider <key>] [--from <RFC3339> --to <RFC3339>]\n                                  the deck to stdout; exits 0 ok, 10 near, 11 hit, 20 unknown\n  quotadeck tray <key>            draw the menu bar item for that provider\n  quotadeck statusline            what connecting the Claude Code status line would change\n  quotadeck statusline install    write the shim into settings.json\n  quotadeck statusline revert     put settings.json back"
     );
 }
 
-/// What `export` was asked for. JSON unless the caller said otherwise.
-#[derive(Clone, Copy, PartialEq)]
-enum Format {
-    Json,
-    Csv,
+fn parse_rfc3339(flag: &str, value: &str) -> Result<DateTime<Utc>, String> {
+    DateTime::parse_from_rfc3339(value)
+        .map(|instant| instant.with_timezone(&Utc))
+        .map_err(|error| {
+            format!(
+                "{flag} must be an RFC3339 instant with a timezone; received {value:?}: {error}"
+            )
+        })
+}
+
+fn parse_export_request(
+    args: &[String],
+    settings: &Settings,
+    now: DateTime<Utc>,
+) -> Result<export::ExportRequest, String> {
+    let mut format: Option<export::ExportFormat> = None;
+    let mut provider_key: Option<String> = None;
+    let mut from = None;
+    let mut to = None;
+    let mut rest = args.iter();
+    while let Some(arg) = rest.next() {
+        let chosen = match arg.as_str() {
+            "--json" => Some(export::ExportFormat::Json),
+            "--csv" => Some(export::ExportFormat::Csv),
+            "--provider" => {
+                provider_key = Some(
+                    rest.next()
+                        .ok_or_else(|| {
+                            "--provider needs a key; run `quotadeck list` to see them".to_string()
+                        })?
+                        .clone(),
+                );
+                None
+            }
+            "--from" => {
+                let value = rest
+                    .next()
+                    .ok_or_else(|| "--from needs an RFC3339 instant".to_string())?;
+                from = Some(parse_rfc3339("--from", value)?);
+                None
+            }
+            "--to" => {
+                let value = rest
+                    .next()
+                    .ok_or_else(|| "--to needs an RFC3339 instant".to_string())?;
+                to = Some(parse_rfc3339("--to", value)?);
+                None
+            }
+            other => return Err(format!("unknown export option: {other}")),
+        };
+        if let Some(chosen) = chosen {
+            if format.is_some_and(|earlier| earlier != chosen) {
+                return Err("--json and --csv cannot both be given".into());
+            }
+            format = Some(chosen);
+        }
+    }
+
+    let range = match (from, to) {
+        (Some(from), Some(to)) => export::HistoryRange { from, to },
+        (Some(_), None) => return Err("--from requires the paired --to flag".into()),
+        (None, Some(_)) => return Err("--to requires the paired --from flag".into()),
+        (None, None) => export::HistoryRange {
+            from: now - settings.retention_days.duration(),
+            to: now,
+        },
+    };
+    let provider = provider_key
+        .as_deref()
+        .map(|key| explicit_provider(settings, key, "--provider").map(|provider| provider.id()))
+        .transpose()?;
+    Ok(export::ExportRequest {
+        format: format.unwrap_or(export::ExportFormat::Json),
+        range,
+        provider,
+    })
 }
 
 fn explicit_provider(
@@ -119,40 +190,6 @@ fn selected_providers(
 /// parsing anything — see `docs/STORE.md` §9. Nothing is written to disk: the app's own data
 /// directory is the only path this process ever writes to, and an export is not part of it.
 fn export(args: &[String]) -> ExitCode {
-    let mut format: Option<Format> = None;
-    let mut only: Option<&str> = None;
-    let mut rest = args.iter();
-    while let Some(arg) = rest.next() {
-        let chosen = match arg.as_str() {
-            "--json" => Some(Format::Json),
-            "--csv" => Some(Format::Csv),
-            "--provider" => match rest.next() {
-                Some(key) => {
-                    only = Some(key);
-                    None
-                }
-                None => {
-                    eprintln!("--provider needs a key; run `quotadeck list` to see them");
-                    return ExitCode::FAILURE;
-                }
-            },
-            other => {
-                eprintln!("unknown export option: {other}");
-                usage();
-                return ExitCode::FAILURE;
-            }
-        };
-        if let Some(chosen) = chosen {
-            // Two formats is not a preference, it is a mistake worth reporting: whichever one
-            // won silently would land in somebody's pipeline.
-            if format.is_some_and(|earlier| earlier != chosen) {
-                eprintln!("--json and --csv cannot both be given");
-                return ExitCode::FAILURE;
-            }
-            format = Some(chosen);
-        }
-    }
-
     let settings = match Settings::load() {
         Ok(settings) => settings,
         Err(e) => {
@@ -161,7 +198,16 @@ fn export(args: &[String]) -> ExitCode {
         }
     };
 
-    let providers = match selected_providers(&settings, only) {
+    let now = Utc::now();
+    let request = match parse_export_request(args, &settings, now) {
+        Ok(request) => request,
+        Err(error) => {
+            eprintln!("{error}");
+            return ExitCode::FAILURE;
+        }
+    };
+
+    let providers = match selected_providers(&settings, request.provider.map(|id| id.key())) {
         Ok(providers) => providers,
         Err(error) => {
             eprintln!("{error}");
@@ -169,14 +215,14 @@ fn export(args: &[String]) -> ExitCode {
         }
     };
 
-    let now = Utc::now();
-    let history_from = now - Duration::days(DEFAULT_RETENTION_DAYS);
+    let history_from = now - settings.retention_days.duration();
     let mut snapshots = Vec::with_capacity(providers.len());
     let mut history = Vec::with_capacity(providers.len());
 
     for provider in providers {
         let id = provider.id();
-        let mut engine = ProviderEngine::new(provider);
+        let mut engine =
+            ProviderEngine::with_retention(provider, settings.retention_days.duration());
         engine.set_config(settings.config_for(id));
 
         match engine.access() {
@@ -236,14 +282,16 @@ fn export(args: &[String]) -> ExitCode {
         refreshing: false,
         refresh_generation: 0,
         refresh_error: None,
+        retention: quotadeck_app::deck::RetentionState {
+            requested_days: settings.retention_days.into(),
+            effective_days: settings.retention_days.into(),
+            rebuilding: false,
+            error: None,
+        },
     };
 
-    let written = match format.unwrap_or(Format::Json) {
-        Format::Json => export::to_json(&state, &history),
-        Format::Csv => export::to_csv(&history),
-    };
-    let text = match written {
-        Ok(text) => text,
+    let prepared = match export::prepare(&state, &history, &request) {
+        Ok(prepared) => prepared,
         Err(e) => {
             eprintln!("the export could not be written: {e}");
             return ExitCode::FAILURE;
@@ -255,7 +303,7 @@ fn export(args: &[String]) -> ExitCode {
     // not a failure of the export, so the quota status is still what this reports.
     let mut stdout = std::io::stdout().lock();
     match stdout
-        .write_all(text.as_bytes())
+        .write_all(prepared.text.as_bytes())
         .and_then(|()| stdout.flush())
     {
         Ok(()) => {}
@@ -819,5 +867,58 @@ mod provider_policy_tests {
                 quotadeck_core::types::ProviderId::Codex
             ]
         );
+    }
+
+    #[test]
+    fn export_range_flags_are_paired_and_require_rfc3339_instants() {
+        let settings = Settings::default();
+        let now = DateTime::parse_from_rfc3339("2026-08-25T12:00:00Z")
+            .expect("fixed instant")
+            .with_timezone(&Utc);
+        for (args, missing) in [
+            (vec!["--from".into(), "2026-08-01T00:00:00Z".into()], "--to"),
+            (vec!["--to".into(), "2026-08-02T00:00:00Z".into()], "--from"),
+        ] {
+            let error = parse_export_request(&args, &settings, now).expect_err("missing pair");
+            assert!(error.contains(missing), "{error}");
+        }
+
+        let error = parse_export_request(
+            &[
+                "--from".into(),
+                "2026-08-01".into(),
+                "--to".into(),
+                "2026-08-02".into(),
+            ],
+            &settings,
+            now,
+        )
+        .expect_err("date-only input is ambiguous");
+        assert!(error.contains("RFC3339"), "{error}");
+    }
+
+    #[test]
+    fn export_request_defaults_to_effective_retention_and_resolves_provider_id() {
+        let settings = Settings {
+            retention_days: quotadeck_app::deck::RetentionDays::Days90,
+            ..Settings::default()
+        };
+        let now = DateTime::parse_from_rfc3339("2026-08-25T12:00:00Z")
+            .expect("fixed instant")
+            .with_timezone(&Utc);
+        let request = parse_export_request(
+            &["--csv".into(), "--provider".into(), "codex".into()],
+            &settings,
+            now,
+        )
+        .expect("valid request");
+
+        assert_eq!(request.format, export::ExportFormat::Csv);
+        assert_eq!(
+            request.provider,
+            Some(quotadeck_core::types::ProviderId::Codex)
+        );
+        assert_eq!(request.range.from, now - Duration::days(90));
+        assert_eq!(request.range.to, now);
     }
 }

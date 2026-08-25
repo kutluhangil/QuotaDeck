@@ -21,8 +21,8 @@ use std::fmt::Write as _;
 use chrono::{DateTime, SecondsFormat, TimeZone, Utc};
 use quotadeck_core::breakdown::BreakdownPoint;
 use quotadeck_core::error::{Error, Result};
-use quotadeck_core::types::{CostRange, ProviderSnapshot, TokenRollup};
-use serde::Serialize;
+use quotadeck_core::types::{CostRange, ProviderId, ProviderSnapshot, TokenRollup};
+use serde::{Deserialize, Serialize};
 
 use crate::deck::{DeckState, ProviderHistory};
 
@@ -41,6 +41,40 @@ pub const EXIT_INDETERMINATE: u8 = 20;
 /// The same 90% [`quotadeck_core::types::PaceRisk`] already calls at risk. A second number for
 /// the same idea would mean the tray and the exit code disagreeing about the word "near".
 pub const NEAR_LIMIT_PERCENT: f32 = 90.0;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ExportFormat {
+    Json,
+    Csv,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HistoryRange {
+    pub from: DateTime<Utc>,
+    pub to: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExportRequest {
+    pub format: ExportFormat,
+    pub range: HistoryRange,
+    pub provider: Option<ProviderId>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PreparedExport {
+    pub text: String,
+    pub mime_type: &'static str,
+    pub suggested_filename: String,
+    pub rows: usize,
+    pub requested_range: HistoryRange,
+    pub effective_range: HistoryRange,
+    pub clamped: bool,
+}
 
 /// What the deck's worst reading says, in the vocabulary a shell can branch on.
 pub fn exit_code(state: &DeckState) -> u8 {
@@ -121,6 +155,117 @@ pub fn to_csv(history: &[ProviderHistory]) -> Result<String> {
         }
     }
     Ok(out)
+}
+
+pub fn prepare(
+    state: &DeckState,
+    history: &[ProviderHistory],
+    request: &ExportRequest,
+) -> Result<PreparedExport> {
+    if request.range.from >= request.range.to {
+        return Err(Error::Invalid(format!(
+            "history export range must satisfy from < to; received from {} and to {}",
+            request.range.from.to_rfc3339(),
+            request.range.to.to_rfc3339()
+        )));
+    }
+    if request.range.from >= Utc::now() {
+        return Err(Error::Invalid(format!(
+            "history export range is entirely in the future; received from {} and to {}",
+            request.range.from.to_rfc3339(),
+            request.range.to.to_rfc3339()
+        )));
+    }
+    if state.scanning {
+        return Err(Error::Invalid(
+            "history export is unavailable while the usage scan is incomplete".into(),
+        ));
+    }
+    if state.retention.rebuilding {
+        return Err(Error::Invalid(
+            "history export is unavailable while the retention rebuild is incomplete".into(),
+        ));
+    }
+
+    let cutoff =
+        state.updated_at - chrono::Duration::days(i64::from(state.retention.effective_days));
+    let effective_from = request.range.from.max(cutoff).min(request.range.to);
+    let effective_range = HistoryRange {
+        from: effective_from,
+        to: request.range.to,
+    };
+    let clamped = effective_range.from != request.range.from;
+    let from = effective_range.from.timestamp();
+    let to = effective_range.to.timestamp();
+
+    let mut filtered_state = state.clone();
+    if let Some(provider) = request.provider {
+        filtered_state
+            .providers
+            .retain(|snapshot| snapshot.id == provider);
+        filtered_state
+            .health
+            .retain(|health| health.provider == provider);
+    }
+    let filtered_history: Vec<_> = history
+        .iter()
+        .filter(|entry| request.provider.is_none_or(|provider| entry.id == provider))
+        .map(|entry| ProviderHistory {
+            id: entry.id,
+            hours: entry
+                .hours
+                .iter()
+                .filter(|point| point.start >= from && point.start < to)
+                .cloned()
+                .collect(),
+            models: entry
+                .models
+                .iter()
+                .filter(|point| point.start >= from && point.start < to)
+                .cloned()
+                .collect(),
+            models_dropped: entry.models_dropped,
+            projects: entry
+                .projects
+                .iter()
+                .filter(|point| point.start >= from && point.start < to)
+                .cloned()
+                .collect(),
+            projects_dropped: entry.projects_dropped,
+            agents: entry
+                .agents
+                .iter()
+                .filter(|point| point.start >= from && point.start < to)
+                .cloned()
+                .collect(),
+            agents_dropped: entry.agents_dropped,
+        })
+        .collect();
+    let rows = filtered_history
+        .iter()
+        .map(|entry| {
+            entry.hours.len() + entry.models.len() + entry.projects.len() + entry.agents.len()
+        })
+        .sum();
+    let suffix = effective_range.to.format("%Y%m%dT%H%M%SZ").to_string();
+    let (text, mime_type, extension) = match request.format {
+        ExportFormat::Json => (
+            to_json(&filtered_state, &filtered_history)?,
+            "application/json",
+            "json",
+        ),
+        ExportFormat::Csv => (to_csv(&filtered_history)?, "text/csv;charset=utf-8", "csv"),
+    };
+
+    Ok(PreparedExport {
+        text,
+        mime_type,
+        suggested_filename: format!("quotadeck-usage-{suffix}.{extension}"),
+        rows,
+        requested_range: request.range.clone(),
+        effective_range,
+        clamped,
+    })
 }
 
 /// One CSV line, before it is written.
@@ -333,6 +478,7 @@ mod tests {
             refreshing: false,
             refresh_generation: 0,
             refresh_error: None,
+            retention: Default::default(),
         };
 
         let json = to_json(&state, &[history()]).expect("serialise the export");
@@ -532,6 +678,7 @@ mod tests {
             refreshing: false,
             refresh_generation: 0,
             refresh_error: None,
+            retention: Default::default(),
         }
     }
 
@@ -557,6 +704,7 @@ mod tests {
                 refreshing: false,
                 refresh_generation: 0,
                 refresh_error: None,
+                retention: Default::default(),
             }),
             EXIT_INDETERMINATE
         );
@@ -565,6 +713,126 @@ mod tests {
     #[test]
     fn a_scan_still_running_is_indeterminate_however_low_the_reading_is() {
         assert_eq!(exit_code(&deck(Some(3.0), true)), EXIT_INDETERMINATE);
+    }
+
+    #[test]
+    fn prepare_filters_every_dimension_with_half_open_range_and_provider() {
+        let mut first = history();
+        first.hours.push(HistoryPoint {
+            start: HOUR + 3_600,
+            tokens: tokens(999),
+            cost: priced(9.0),
+        });
+        first.models.push(BreakdownPoint {
+            start: HOUR + 3_600,
+            label: Some("excluded-at-to".into()),
+            tokens: tokens(999),
+            cost: priced(9.0),
+        });
+        first.projects = vec![BreakdownPoint {
+            start: HOUR,
+            label: Some("/included".into()),
+            tokens: tokens(5),
+            cost: priced(0.1),
+        }];
+        first.agents = vec![BreakdownPoint {
+            start: HOUR,
+            label: Some("subagent".into()),
+            tokens: tokens(6),
+            cost: priced(0.2),
+        }];
+        let mut other = first.clone();
+        other.id = ProviderId::Codex;
+        let mut state = deck(Some(42.0), false);
+        state.updated_at = Utc
+            .timestamp_opt(HOUR + 7_200, 0)
+            .single()
+            .expect("valid instant");
+        let request = ExportRequest {
+            format: ExportFormat::Csv,
+            range: HistoryRange {
+                from: Utc.timestamp_opt(HOUR, 0).single().expect("from"),
+                to: Utc.timestamp_opt(HOUR + 3_600, 0).single().expect("to"),
+            },
+            provider: Some(ProviderId::ClaudeCode),
+        };
+
+        let prepared = prepare(&state, &[first, other], &request).expect("prepare filtered CSV");
+        assert_eq!(prepared.rows, 4);
+        assert_eq!(prepared.mime_type, "text/csv;charset=utf-8");
+        assert!(prepared.text.lines().skip(1).all(|row| {
+            column(row, "provider", EXPECTED_HEADER) == "claude-code"
+                && column(row, "start", EXPECTED_HEADER) == HOUR.to_string()
+        }));
+        assert_eq!(prepared.requested_range, request.range);
+        assert_eq!(prepared.effective_range, request.range);
+        assert!(!prepared.clamped);
+    }
+
+    #[test]
+    fn prepare_reports_retention_clamping_in_result_metadata() {
+        let mut state = deck(Some(42.0), false);
+        state.updated_at = Utc
+            .timestamp_opt(HOUR + 40 * 86_400, 0)
+            .single()
+            .expect("valid instant");
+        state.retention.effective_days = 32;
+        let request = ExportRequest {
+            format: ExportFormat::Json,
+            range: HistoryRange {
+                from: state.updated_at - chrono::Duration::days(40),
+                to: state.updated_at,
+            },
+            provider: None,
+        };
+
+        let prepared = prepare(&state, &[history()], &request).expect("prepare clamped JSON");
+        assert!(prepared.clamped);
+        assert_eq!(prepared.requested_range, request.range);
+        assert_eq!(
+            prepared.effective_range.from,
+            state.updated_at - chrono::Duration::days(32)
+        );
+        assert_eq!(prepared.effective_range.to, request.range.to);
+    }
+
+    #[test]
+    fn prepare_rejects_invalid_future_and_incomplete_state_ranges_actionably() {
+        let state = deck(Some(42.0), false);
+        let at = Utc::now();
+        for range in [
+            HistoryRange { from: at, to: at },
+            HistoryRange {
+                from: at + chrono::Duration::days(2),
+                to: at + chrono::Duration::days(3),
+            },
+        ] {
+            let error = prepare(
+                &state,
+                &[],
+                &ExportRequest {
+                    format: ExportFormat::Json,
+                    range: range.clone(),
+                    provider: None,
+                },
+            )
+            .expect_err("invalid range");
+            assert!(error.to_string().contains(&range.from.to_rfc3339()));
+            assert!(error.to_string().contains(&range.to.to_rfc3339()));
+        }
+
+        let mut rebuilding = state.clone();
+        rebuilding.retention.rebuilding = true;
+        let request = ExportRequest {
+            format: ExportFormat::Json,
+            range: HistoryRange {
+                from: at - chrono::Duration::hours(1),
+                to: at,
+            },
+            provider: None,
+        };
+        let error = prepare(&rebuilding, &[], &request).expect_err("rebuild is incomplete");
+        assert!(error.to_string().contains("retention rebuild"));
     }
 
     #[test]
