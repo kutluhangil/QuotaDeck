@@ -278,9 +278,7 @@ impl EventIndex {
     /// than the new one refused: the newest sessions are the ones still writing usage.
     fn ingest_session(&mut self, session: SessionEvent) -> bool {
         match self.session_projects.get(&session.session) {
-            Some(existing)
-                if existing.at >= session.at && existing.project == session.project =>
-            {
+            Some(existing) if existing.at >= session.at && existing.project == session.project => {
                 return false;
             }
             Some(existing) if existing.at > session.at => return false,
@@ -1210,7 +1208,13 @@ mod model_breakdown_tests {
         // Codex names no model in any record. Reporting those under an invented label would put
         // a claim where there is no measurement.
         let mut index = index();
-        index.ingest(ParsedEvent::Usage(usage(HOUR, "a", None, 500, Cost::Usd(1.0))));
+        index.ingest(ParsedEvent::Usage(usage(
+            HOUR,
+            "a",
+            None,
+            500,
+            Cost::Usd(1.0),
+        )));
 
         let points = index.models().points(ts(HOUR), ts(HOUR + 3600));
         assert_eq!(points.len(), 1);
@@ -1245,7 +1249,9 @@ mod model_breakdown_tests {
             )));
         }
 
-        let series_total = index.rolling(ts(HOUR + 3600), ChronoDuration::hours(2)).input;
+        let series_total = index
+            .rolling(ts(HOUR + 3600), ChronoDuration::hours(2))
+            .input;
         let breakdown_total: u64 = index
             .models()
             .points(ts(HOUR), ts(HOUR + 3600))
@@ -1310,7 +1316,13 @@ mod model_breakdown_tests {
             100,
             Cost::Usd(3.0),
         )));
-        index.ingest(ParsedEvent::Usage(usage(HOUR, "b", None, 50, Cost::Unpriced)));
+        index.ingest(ParsedEvent::Usage(usage(
+            HOUR,
+            "b",
+            None,
+            50,
+            Cost::Unpriced,
+        )));
 
         let encoded = serde_json::to_vec(&index.checkpoint()).expect("checkpoint serializes");
         let decoded: EventIndexCheckpoint =
@@ -1349,7 +1361,9 @@ mod model_breakdown_tests {
         // The history is not lost, only the breakdown, which refills from the next reads.
         assert!(restored.models().is_empty());
         assert_eq!(
-            restored.rolling(ts(HOUR + 60), ChronoDuration::hours(1)).input,
+            restored
+                .rolling(ts(HOUR + 60), ChronoDuration::hours(1))
+                .input,
             100
         );
     }
@@ -1437,7 +1451,9 @@ mod agent_breakdown_tests {
             index.ingest(usage(HOUR + i as i64 * 60, &format!("m{i}"), origin, 100));
         }
 
-        let series_total = index.rolling(ts(HOUR + 3600), ChronoDuration::hours(2)).input;
+        let series_total = index
+            .rolling(ts(HOUR + 3600), ChronoDuration::hours(2))
+            .input;
         let breakdown_total: u64 = labels(&index).iter().map(|(_, tokens)| tokens).sum();
         assert_eq!(series_total, breakdown_total);
         assert_eq!(series_total, 400);
@@ -1491,7 +1507,9 @@ mod agent_breakdown_tests {
 
         assert!(restored.agents().is_empty());
         assert_eq!(
-            restored.rolling(ts(HOUR + 60), ChronoDuration::hours(1)).input,
+            restored
+                .rolling(ts(HOUR + 60), ChronoDuration::hours(1))
+                .input,
             100
         );
     }
@@ -1602,7 +1620,10 @@ mod project_breakdown_tests {
             100,
         )));
 
-        assert_eq!(labels(&index), vec![(Some("/work/this-row".to_string()), 100)]);
+        assert_eq!(
+            labels(&index),
+            vec![(Some("/work/this-row".to_string()), 100)]
+        );
     }
 
     #[test]
@@ -1628,7 +1649,9 @@ mod project_breakdown_tests {
             )));
         }
 
-        let series_total = index.rolling(ts(HOUR + 3600), ChronoDuration::hours(2)).input;
+        let series_total = index
+            .rolling(ts(HOUR + 3600), ChronoDuration::hours(2))
+            .input;
         let breakdown_total: u64 = labels(&index).iter().map(|(_, tokens)| tokens).sum();
         assert_eq!(series_total, breakdown_total);
         assert_eq!(series_total, 400);
@@ -1660,7 +1683,10 @@ mod project_breakdown_tests {
         assert!(!index.ingest(session(HOUR, "s1", "/work/stale")));
         index.ingest(ParsedEvent::Usage(usage(HOUR + 180, "a", None, 100)));
 
-        assert_eq!(labels(&index), vec![(Some("/work/current".to_string()), 100)]);
+        assert_eq!(
+            labels(&index),
+            vec![(Some("/work/current".to_string()), 100)]
+        );
     }
 
     #[test]
@@ -1673,7 +1699,12 @@ mod project_breakdown_tests {
     #[test]
     fn pruning_trims_the_project_breakdown_with_the_series() {
         let mut index = EventIndex::new(ChronoDuration::hours(2));
-        index.ingest(ParsedEvent::Usage(usage(HOUR, "old", Some("/work/one"), 100)));
+        index.ingest(ParsedEvent::Usage(usage(
+            HOUR,
+            "old",
+            Some("/work/one"),
+            100,
+        )));
         index.ingest(ParsedEvent::Usage(usage(
             HOUR + 4 * 3600,
             "new",
@@ -1753,7 +1784,9 @@ mod project_breakdown_tests {
         checkpoint
             .session_projects
             .push(("duplicate".into(), entry.clone()));
-        checkpoint.session_projects.push(("duplicate".into(), entry));
+        checkpoint
+            .session_projects
+            .push(("duplicate".into(), entry));
 
         let error = EventIndex::restore(checkpoint).expect_err("duplicate session project");
         assert!(error
@@ -1781,7 +1814,9 @@ mod project_breakdown_tests {
 
         assert!(restored.projects().is_empty());
         assert_eq!(
-            restored.rolling(ts(HOUR + 60), ChronoDuration::hours(1)).input,
+            restored
+                .rolling(ts(HOUR + 60), ChronoDuration::hours(1))
+                .input,
             100
         );
     }

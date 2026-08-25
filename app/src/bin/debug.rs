@@ -181,7 +181,11 @@ fn export(args: &[String]) -> ExitCode {
 
         history.push(ProviderHistory {
             id,
-            hours: quotadeck_core::history::hours(engine.index().bucket_series(), history_from, now),
+            hours: quotadeck_core::history::hours(
+                engine.index().bucket_series(),
+                history_from,
+                now,
+            ),
             models: engine.index().models().points(history_from, now),
             models_dropped: engine.index().models().labels_dropped(),
             projects: engine.index().projects().points(history_from, now),

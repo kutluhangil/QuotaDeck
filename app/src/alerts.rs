@@ -270,7 +270,9 @@ mod tests {
         alerts.evaluate(&burst_state(None), &settings, now());
 
         assert_eq!(
-            alerts.evaluate(&burst_state(Some(burst())), &settings, now()).len(),
+            alerts
+                .evaluate(&burst_state(Some(burst())), &settings, now())
+                .len(),
             1
         );
         for _ in 0..5 {
@@ -291,7 +293,9 @@ mod tests {
             .evaluate(&burst_state(None), &settings, now())
             .is_empty());
         assert_eq!(
-            alerts.evaluate(&burst_state(Some(burst())), &settings, now()).len(),
+            alerts
+                .evaluate(&burst_state(Some(burst())), &settings, now())
+                .len(),
             1
         );
     }

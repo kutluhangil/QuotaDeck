@@ -339,7 +339,11 @@ fn push_session(
     at: DateTime<Utc>,
     out: &mut Vec<ParsedEvent>,
 ) {
-    let Some(cwd) = data.context.as_ref().and_then(|context| context.cwd.clone()) else {
+    let Some(cwd) = data
+        .context
+        .as_ref()
+        .and_then(|context| context.cwd.clone())
+    else {
         return;
     };
     out.push(ParsedEvent::Session(SessionEvent {

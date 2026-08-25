@@ -142,7 +142,13 @@ impl BreakdownSeries {
     /// refused and counted in [`BreakdownSeries::labels_dropped`]. A label already held is
     /// always folded, so a full series keeps reporting the labels it does know rather than
     /// freezing at the moment it filled up.
-    pub fn add(&mut self, at: DateTime<Utc>, label: Option<&str>, tokens: &TokenRollup, cost: Cost) {
+    pub fn add(
+        &mut self,
+        at: DateTime<Utc>,
+        label: Option<&str>,
+        tokens: &TokenRollup,
+        cost: Cost,
+    ) {
         let Some(id) = self.intern(label) else {
             self.labels_dropped = self.labels_dropped.saturating_add(1);
             return;

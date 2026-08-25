@@ -84,7 +84,9 @@ pub fn detect(series: &BreakdownSeries, now: DateTime<Utc>) -> Option<Burst> {
         }
         tokens = tokens.saturating_add(point.tokens.total());
         cost.usd += point.cost.usd;
-        cost.unpriced_tokens = cost.unpriced_tokens.saturating_add(point.cost.unpriced_tokens);
+        cost.unpriced_tokens = cost
+            .unpriced_tokens
+            .saturating_add(point.cost.unpriced_tokens);
     }
     if tokens < MIN_BURST_TOKENS {
         return None;
@@ -370,7 +372,12 @@ mod tests {
         // spend would attribute work to an agent on no evidence.
         let mut series = BreakdownSeries::new();
         for i in 0..48 {
-            series.add(ts(HOUR - (i + 1) * 3600), None, &tokens(500_000), Cost::Usd(2.0));
+            series.add(
+                ts(HOUR - (i + 1) * 3600),
+                None,
+                &tokens(500_000),
+                Cost::Usd(2.0),
+            );
         }
         series.add(ts(HOUR), None, &tokens(9_000_000), Cost::Usd(40.0));
         assert!(detect(&series, now()).is_none());

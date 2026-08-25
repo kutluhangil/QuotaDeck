@@ -246,11 +246,11 @@ mod tests {
                 AgentOrigin::Workflow,
             ),
             // Nothing about the other tools' layouts looks like an agent transcript.
-            ("/x/sessions/2026/07/25/rollout-019f.jsonl", AgentOrigin::Main),
             (
-                "/x/session-state/013dbf3b/events.jsonl",
+                "/x/sessions/2026/07/25/rollout-019f.jsonl",
                 AgentOrigin::Main,
             ),
+            ("/x/session-state/013dbf3b/events.jsonl", AgentOrigin::Main),
         ];
         for (path, expected) in cases {
             let path = PathBuf::from(path);
@@ -262,8 +262,7 @@ mod tests {
     fn a_workflow_transcript_is_not_reported_as_a_plain_subagent() {
         // Both shapes carry a `subagents` directory, so the inner one has to win or every
         // workflow agent would be counted as an ordinary subagent.
-        let path =
-            PathBuf::from("/x/projects/-p/s/subagents/workflows/wf_1/agent-a.jsonl");
+        let path = PathBuf::from("/x/projects/-p/s/subagents/workflows/wf_1/agent-a.jsonl");
         assert_eq!(LineSource::new(&path).agent_origin(), AgentOrigin::Workflow);
         assert!(LineSource::new(&path).agent_origin().is_agent());
         assert!(!AgentOrigin::Main.is_agent());

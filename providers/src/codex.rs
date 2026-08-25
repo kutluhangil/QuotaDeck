@@ -370,7 +370,9 @@ mod tests {
     #[test]
     fn usage_read_after_the_session_record_is_attributed_to_it() {
         let index = index_of(&["session_meta.jsonl", "token_count_plus.jsonl"]);
-        let now = "2026-07-25T22:00:00Z".parse::<DateTime<Utc>>().expect("now");
+        let now = "2026-07-25T22:00:00Z"
+            .parse::<DateTime<Utc>>()
+            .expect("now");
         let points = index
             .projects()
             .points(now - Duration::days(30), now + Duration::hours(1));
