@@ -14,9 +14,7 @@
  */
 
 import type { BreakdownPoint, ProviderHistory } from "./types";
-import { RANGE_DAYS, type Range } from "./history";
-
-const SECONDS_PER_DAY = 86_400;
+import type { HistoryRange } from "./history";
 
 export interface BreakdownRow {
   /** `null` is "the provider reported no label", not "unknown" and not a name. */
@@ -34,7 +32,7 @@ function countedTokens(point: BreakdownPoint): number {
 }
 
 /**
- * Rows for the rolling range ending at `nowSeconds`, heaviest first.
+ * Rows for one concrete half-open range, heaviest first.
  *
  * Share is computed over cost when every row in the range carried a price, and over tokens
  * otherwise. Mixing the two would give an unpriced model a share of zero and sort it last,
@@ -42,14 +40,11 @@ function countedTokens(point: BreakdownPoint): number {
  */
 export function foldBreakdown(
   points: BreakdownPoint[],
-  range: Range,
-  nowSeconds: number,
+  range: HistoryRange,
 ): BreakdownRow[] {
-  const from = nowSeconds - RANGE_DAYS[range] * SECONDS_PER_DAY;
-
   const byLabel = new Map<string | null, BreakdownRow>();
   for (const point of points) {
-    if (point.start < from || point.start > nowSeconds) continue;
+    if (point.start < range.from || point.start >= range.to) continue;
     const row = byLabel.get(point.label) ?? {
       label: point.label,
       tokens: 0,

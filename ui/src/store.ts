@@ -8,6 +8,8 @@ import { applyProviderPolicy, catalogueForPolicy, providerPolicySettings } from 
 import type {
   AccessState,
   DeckState,
+  ExportFormat,
+  HistoryRange,
   Locale,
   ProviderHistory,
   ProviderDescriptor,
@@ -15,6 +17,8 @@ import type {
   ProviderPolicyOutcome,
   RefreshReceipt,
   ProviderPlans,
+  PreparedExport,
+  RetentionDays,
   Settings,
   StartupState,
   StatuslineState,
@@ -45,6 +49,9 @@ interface DeckStore {
   startupBusy: boolean;
   settingsError: string | null;
   settingsAction: string | null;
+  exportBusy: boolean;
+  exportError: string | null;
+  exportMessage: string | null;
   /** A shell/window command failed outside a settings transaction. */
   shellError: string | null;
   refreshBusy: boolean;
@@ -65,6 +72,7 @@ interface DeckStore {
   setTheme: (theme: Settings["theme"]) => void;
   setLocale: (locale: Locale) => void;
   setDemo: (demo: boolean) => void;
+  setRetentionDays: (days: RetentionDays) => Promise<void>;
   setStartup: (enabled: boolean) => void;
   /** Open the system folder panel. Resolves once the user has answered it. */
   requestAccess: () => Promise<void>;
@@ -81,6 +89,11 @@ interface DeckStore {
   prepareManualStatusline: () => Promise<boolean>;
   openDashboard: () => Promise<void>;
   refreshNow: () => Promise<void>;
+  copyUsageExport: (
+    format: ExportFormat,
+    range: HistoryRange,
+    provider: ProviderId | null,
+  ) => Promise<void>;
   /** Dismiss the popover from the keyboard, the way clicking away already does. */
   hidePanel: () => Promise<void>;
   /** End the process. With no dock icon the tray menu was the only way out. */
@@ -96,6 +109,7 @@ const emptyDeck: DeckState = {
   refreshing: false,
   refreshGeneration: 0,
   refreshError: null,
+  retention: { requestedDays: 32, effectiveDays: 32, rebuilding: false, error: null },
 };
 
 export const useDeck = create<DeckStore>((set, get) => ({
@@ -111,6 +125,7 @@ export const useDeck = create<DeckStore>((set, get) => ({
     demo: false,
     disabledProviders: [],
     providerOrder: ["claude-code", "codex", "copilot-cli"],
+    retentionDays: 32,
   },
   plans: [],
   providerCatalogue: [],
@@ -122,6 +137,9 @@ export const useDeck = create<DeckStore>((set, get) => ({
   startupBusy: false,
   settingsError: null,
   settingsAction: null,
+  exportBusy: false,
+  exportError: null,
+  exportMessage: null,
   shellError: null,
   refreshBusy: false,
   refreshRequest: null,
@@ -179,6 +197,18 @@ export const useDeck = create<DeckStore>((set, get) => ({
         applyLocale(next.value.locale);
       } else set({ settingsError: next.error, settingsAction: null });
     });
+  },
+
+  setRetentionDays: async (retentionDays) => {
+    if (get().settingsAction !== null || get().deck.retention.rebuilding) return;
+    if (!inShell) {
+      set({ settings: { ...get().settings, retentionDays } });
+      return;
+    }
+    set({ settingsError: null, settingsAction: "retention" });
+    const next = await call<Settings>("set_retention_days", { retentionDays });
+    if (next.ok) set({ settings: next.value, settingsAction: null });
+    else set({ settingsError: next.error, settingsAction: null });
   },
 
   setPlan: (provider, planId) => {
@@ -404,6 +434,27 @@ export const useDeck = create<DeckStore>((set, get) => ({
       refreshRequest: completion.pendingRequest,
       refreshError: completion.error,
     });
+  },
+
+  copyUsageExport: async (format, range, provider) => {
+    if (get().exportBusy) return;
+    set({ exportBusy: true, exportError: null, exportMessage: null });
+    const prepared = await call<PreparedExport>("prepare_usage_export", {
+      request: { format, range, provider },
+    });
+    if (!prepared.ok) {
+      set({ exportBusy: false, exportError: `prepare export: ${prepared.error}` });
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(prepared.value.text);
+      set({
+        exportBusy: false,
+        exportMessage: `${format.toUpperCase()} copied: ${prepared.value.rows} rows`,
+      });
+    } catch (error) {
+      set({ exportBusy: false, exportError: `copy export: ${String(error)}` });
+    }
   },
 
   hidePanel: async () => {

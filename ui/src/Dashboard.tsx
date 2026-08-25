@@ -30,9 +30,11 @@ import {
   dailyCells,
   historyFor,
   inRange,
+  localDateRange,
+  rollingRange,
   totals,
-  HEATMAP_DAYS,
   RANGE_DAYS,
+  type HistoryRange,
   type Range,
 } from "./history";
 import { identityHue } from "./identity";
@@ -106,12 +108,14 @@ function RangePicker({ range, onChange }: { range: Range; onChange: (next: Range
 function ProviderPanel({
   snapshot,
   health,
-  range,
+  historyRange,
+  heatmapDays,
   nowSeconds,
 }: {
   snapshot: ProviderSnapshot;
   health: VisibleProviderHealth | null;
-  range: Range;
+  historyRange: HistoryRange;
+  heatmapDays: number;
   nowSeconds: number;
 }) {
   const strings = useStrings();
@@ -122,13 +126,13 @@ function ProviderPanel({
   // render.
   const history = useHistory();
   const hours = historyFor(history, snapshot.id);
-  const sum = totals(inRange(hours, range, nowSeconds));
-  const cells = dailyCells(hours, HEATMAP_DAYS, nowSeconds);
-  const models = foldBreakdown(modelsFor(history, snapshot.id), range, nowSeconds);
+  const sum = totals(inRange(hours, historyRange));
+  const cells = dailyCells(hours, heatmapDays, nowSeconds);
+  const models = foldBreakdown(modelsFor(history, snapshot.id), historyRange);
   const modelsDropped = modelsDroppedFor(history, snapshot.id);
-  const agents = foldBreakdown(agentsFor(history, snapshot.id), range, nowSeconds);
+  const agents = foldBreakdown(agentsFor(history, snapshot.id), historyRange);
   const agentsDropped = agentsDroppedFor(history, snapshot.id);
-  const projects = foldBreakdown(projectsFor(history, snapshot.id), range, nowSeconds);
+  const projects = foldBreakdown(projectsFor(history, snapshot.id), historyRange);
   const projectsDropped = projectsDroppedFor(history, snapshot.id);
   // Shortened against the rows actually on screen, so two directories sharing a last segment
   // never draw as one project.
@@ -284,8 +288,15 @@ export function Dashboard() {
   const refreshNow = useDeck((state) => state.refreshNow);
   const refreshBusy = useDeck((state) => state.refreshBusy);
   const refreshError = useDeck((state) => state.refreshError);
+  const copyUsageExport = useDeck((state) => state.copyUsageExport);
+  const exportBusy = useDeck((state) => state.exportBusy);
+  const exportError = useDeck((state) => state.exportError);
+  const exportMessage = useDeck((state) => state.exportMessage);
   const [range, setRange] = useState<Range>("week");
   const [nowSeconds, setNowSeconds] = useState(() => Math.floor(Date.now() / 1000));
+  const [customFrom, setCustomFrom] = useState(() => dateInputValue(new Date(Date.now() - 6 * 86_400_000)));
+  const [customTo, setCustomTo] = useState(() => dateInputValue(new Date()));
+  const [customRange, setCustomRange] = useState(false);
 
   useEffect(() => {
     void start();
@@ -300,6 +311,18 @@ export function Dashboard() {
   const reporting = deck.providers.filter(
     (snapshot) => snapshot.installed && snapshot.unavailable !== "not-installed",
   );
+  const selectedRange = customRange
+    ? localDateRange(dateFromInput(customFrom), dateFromInput(customTo))
+    : rollingRange(range, nowSeconds);
+  const selectedDays = customRange
+    ? calendarDays(customFrom, customTo)
+    : RANGE_DAYS[range];
+  const heatmapDays = Math.min(90, deck.retention.effectiveDays, Math.max(1, selectedDays));
+  const exportDisabled = deck.scanning || deck.retention.rebuilding || exportBusy;
+  const exportRange = {
+    from: new Date(selectedRange.from * 1000).toISOString(),
+    to: new Date(selectedRange.to * 1000).toISOString(),
+  };
 
   return (
     <div className="board">
@@ -318,7 +341,57 @@ export function Dashboard() {
           >
             {strings.footer.refresh}
           </button>
-          <RangePicker range={range} onChange={setRange} />
+          <RangePicker
+            range={range}
+            onChange={(next) => {
+              setRange(next);
+              setCustomRange(false);
+            }}
+          />
+          <div className="board__export" aria-label={strings.dashboard.customRange}>
+            <label className="type-caption board__date-label">
+              {strings.dashboard.rangeFrom}
+              <input
+                type="date"
+                value={customFrom}
+                max={customTo}
+                onChange={(event) => {
+                  setCustomFrom(event.target.value);
+                  setCustomRange(true);
+                }}
+              />
+            </label>
+            <label className="type-caption board__date-label">
+              {strings.dashboard.rangeTo}
+              <input
+                type="date"
+                value={customTo}
+                min={customFrom}
+                onChange={(event) => {
+                  setCustomTo(event.target.value);
+                  setCustomRange(true);
+                }}
+              />
+            </label>
+            <button
+              type="button"
+              className="type-caption panel__action"
+              disabled={exportDisabled}
+              aria-busy={exportBusy}
+              onClick={() => void copyUsageExport("json", exportRange, null)}
+            >
+              {exportBusy ? strings.dashboard.exporting : strings.dashboard.copyJson}
+            </button>
+            <button
+              type="button"
+              className="type-caption panel__action"
+              disabled={exportDisabled}
+              aria-busy={exportBusy}
+              onClick={() => void copyUsageExport("csv", exportRange, null)}
+            >
+              {exportBusy ? strings.dashboard.exporting : strings.dashboard.copyCsv}
+            </button>
+          </div>
         </div>
       </header>
 
@@ -326,6 +399,31 @@ export function Dashboard() {
         {refreshError !== null && (
           <p className="type-caption settings__error" role="alert">
             {strings.refreshFailed(refreshError)}
+          </p>
+        )}
+        {deck.retention.rebuilding && (
+          <p className="type-caption board__notice" role="status">
+            {strings.dashboard.rebuilding(deck.retention.effectiveDays, deck.retention.requestedDays)}
+          </p>
+        )}
+        {deck.retention.error !== null && (
+          <p className="type-caption settings__error" role="alert">
+            {strings.dashboard.rebuildFailed(deck.retention.error)}
+          </p>
+        )}
+        {exportError !== null && (
+          <p className="type-caption settings__error" role="alert">
+            {strings.dashboard.exportFailed(exportError)}
+          </p>
+        )}
+        {exportMessage !== null && (
+          <p className="type-caption board__notice" role="status">
+            {exportMessage}
+          </p>
+        )}
+        {exportDisabled && !exportBusy && (
+          <p className="type-caption board__notice" role="status">
+            {strings.dashboard.exportUnavailable}
           </p>
         )}
         {reporting.length === 0 ? (
@@ -340,7 +438,8 @@ export function Dashboard() {
                 key={snapshot.id}
                 snapshot={snapshot}
                 health={visibleProviderHealth(snapshot, deck.health)}
-                range={range}
+                historyRange={selectedRange}
+                heatmapDays={heatmapDays}
                 nowSeconds={nowSeconds}
               />
             ))}
@@ -349,9 +448,32 @@ export function Dashboard() {
       </main>
 
       <footer className="board__foot type-caption">
-        <span>{strings.dashboard.rangeSpan(RANGE_DAYS[range])}</span>
-        <span>{strings.dashboard.retention(HEATMAP_DAYS)}</span>
+        <span>{customRange ? strings.dashboard.customRange : strings.dashboard.rangeSpan(RANGE_DAYS[range])}</span>
+        <span>{strings.dashboard.retention(deck.retention.effectiveDays)}</span>
+        <span>{strings.dashboard.hourlyHistory}</span>
       </footer>
     </div>
   );
+}
+
+function dateInputValue(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function dateFromInput(value: string): Date {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (match === null) return new Date();
+  return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+}
+
+/** Calendar count, not elapsed milliseconds: DST has no reason to change a selected day count. */
+function calendarDays(from: string, to: string): number {
+  const start = dateFromInput(from);
+  const end = dateFromInput(to);
+  const startDay = Date.UTC(start.getFullYear(), start.getMonth(), start.getDate());
+  const endDay = Date.UTC(end.getFullYear(), end.getMonth(), end.getDate());
+  return Math.max(1, Math.floor((endDay - startDay) / 86_400_000) + 1);
 }

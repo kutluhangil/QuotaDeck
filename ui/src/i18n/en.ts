@@ -195,6 +195,19 @@ export const en = {
     heatmapLabel: "Daily activity over the last month",
     heatmapQuiet: "quiet",
     heatmapBusy: "busy",
+    customRange: "Dates",
+    rangeFrom: "From",
+    rangeTo: "To",
+    hourlyHistory: "Hourly history; buckets are included by their start time.",
+    copyJson: "Copy JSON",
+    copyCsv: "Copy CSV",
+    exporting: "Preparing…",
+    copied: (format: string, rows: number) => `${format} copied: ${rows} rows`,
+    exportFailed: (reason: string) => `Could not export history: ${reason}`,
+    exportUnavailable: "Export is unavailable until the current usage history is complete.",
+    rebuilding: (from: number, to: number) =>
+      `Keeping the complete ${from}-day history while ${to} days rebuild from local logs.`,
+    rebuildFailed: (reason: string) => `History rebuild needs attention: ${reason}`,
   },
 
   /**
@@ -306,6 +319,11 @@ export const en = {
     themeSystem: "Match system",
     themeDark: "Dark",
     themeLight: "Light",
+    retentionTitle: "History kept on this device",
+    retentionDays: (days: number) => `${days} days`,
+    retentionHint: "Changing to a longer period rereads only local logs. The last complete history stays available until that finishes.",
+    retentionRebuilding: (from: number, to: number) =>
+      `Keeping the complete ${from}-day history while ${to} days rebuild from local logs.`,
     back: "Done",
     settingsFailed: (reason: string) => `Could not save settings: ${reason}`,
     providersTitle: "Tools",

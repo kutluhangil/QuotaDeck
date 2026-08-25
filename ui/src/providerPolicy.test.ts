@@ -18,6 +18,7 @@ const settings: Settings = {
   demo: false,
   disabledProviders: [],
   providerOrder: ["claude-code", "codex", "copilot-cli"],
+  retentionDays: 32,
 };
 
 describe("provider policy", () => {

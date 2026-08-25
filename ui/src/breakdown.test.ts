@@ -8,10 +8,15 @@ import {
   projectsFor,
   shortenPaths,
 } from "./breakdown";
+import { rollingRange } from "./history";
 import type { BreakdownPoint, ProviderHistory } from "./types";
 
 const NOW = 1_785_715_200;
 const HOUR = 3_600;
+
+function range(days: "day" | "week" = "week") {
+  return rollingRange(days, NOW);
+}
 
 function point(
   startOffsetHours: number,
@@ -36,14 +41,13 @@ function point(
 
 describe("foldBreakdown", () => {
   it("returns nothing for no points rather than a fabricated row", () => {
-    expect(foldBreakdown([], "week", NOW)).toEqual([]);
+    expect(foldBreakdown([], range())).toEqual([]);
   });
 
   it("folds every hour carrying the same label into one row", () => {
     const rows = foldBreakdown(
       [point(1, "opus", 100, 3), point(2, "opus", 50, 1.5)],
-      "week",
-      NOW,
+      range(),
     );
     expect(rows).toHaveLength(1);
     expect(rows[0]?.tokens).toBe(150);
@@ -53,14 +57,13 @@ describe("foldBreakdown", () => {
   it("excludes points outside the rolling range", () => {
     const rows = foldBreakdown(
       [point(2, "inside", 100, 1), point(24 * 8, "outside", 999, 9)],
-      "week",
-      NOW,
+      range(),
     );
     expect(rows.map((row) => row.label)).toEqual(["inside"]);
   });
 
   it("keeps a null label null instead of naming it", () => {
-    const rows = foldBreakdown([point(1, null, 100, 1)], "day", NOW);
+    const rows = foldBreakdown([point(1, null, 100, 1)], range("day"));
     expect(rows).toHaveLength(1);
     expect(rows[0]?.label).toBeNull();
   });
@@ -68,8 +71,7 @@ describe("foldBreakdown", () => {
   it("sorts by cost descending when everything carried a price", () => {
     const rows = foldBreakdown(
       [point(1, "cheap", 9000, 0.4), point(1, "dear", 100, 12)],
-      "week",
-      NOW,
+      range(),
     );
     expect(rows.map((row) => row.label)).toEqual(["dear", "cheap"]);
   });
@@ -77,8 +79,7 @@ describe("foldBreakdown", () => {
   it("shares sum to one across the rows", () => {
     const rows = foldBreakdown(
       [point(1, "a", 100, 3), point(1, "b", 100, 1), point(2, "c", 100, 6)],
-      "week",
-      NOW,
+      range(),
     );
     const total = rows.reduce((sum, row) => sum + row.share, 0);
     expect(total).toBeCloseTo(1, 10);
@@ -90,8 +91,7 @@ describe("foldBreakdown", () => {
     // heaviest consumer in the range last — the exact row worth seeing.
     const rows = foldBreakdown(
       [point(1, "priced", 100, 5), point(1, "unpriced", 50_000, 0, 50_000)],
-      "week",
-      NOW,
+      range(),
     );
     expect(rows.map((row) => row.label)).toEqual(["unpriced", "priced"]);
     expect(rows[0]?.unpricedTokens).toBe(50_000);
@@ -99,20 +99,20 @@ describe("foldBreakdown", () => {
   });
 
   it("carries unpriced tokens rather than folding them into the dollar figure", () => {
-    const rows = foldBreakdown([point(1, "m", 400, 1.25, 400)], "week", NOW);
+    const rows = foldBreakdown([point(1, "m", 400, 1.25, 400)], range());
     expect(rows[0]?.costUsd).toBeCloseTo(1.25, 10);
     expect(rows[0]?.unpricedTokens).toBe(400);
   });
 
   it("gives every row a zero share when nothing was counted", () => {
-    const rows = foldBreakdown([point(1, "m", 0, 0)], "week", NOW);
+    const rows = foldBreakdown([point(1, "m", 0, 0)], range());
     expect(rows[0]?.share).toBe(0);
   });
 
   it("narrows with the range", () => {
     const points = [point(2, "recent", 100, 1), point(48, "older", 100, 1)];
-    expect(foldBreakdown(points, "day", NOW).map((row) => row.label)).toEqual(["recent"]);
-    expect(foldBreakdown(points, "week", NOW)).toHaveLength(2);
+    expect(foldBreakdown(points, range("day")).map((row) => row.label)).toEqual(["recent"]);
+    expect(foldBreakdown(points, range())).toHaveLength(2);
   });
 });
 

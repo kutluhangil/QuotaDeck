@@ -6,7 +6,7 @@ import { hostPlatform } from "../platform";
 import { focusDirectionAfterMove } from "../providerPolicy";
 import { useDeck, useLocale, useStrings } from "../store";
 import { DEFAULT_THRESHOLDS, thresholdsFor } from "../types";
-import type { Locale, ProviderId, ProviderPlans, Settings, TrayMode } from "../types";
+import type { Locale, ProviderId, ProviderPlans, RetentionDays, Settings, TrayMode } from "../types";
 import { StatuslineCard } from "./StatuslineCard";
 
 /**
@@ -45,6 +45,41 @@ function locales(strings: Catalogue): { locale: Locale; label: string }[] {
     { locale: "en", label: strings.settings.languageEnglish },
     { locale: "tr", label: strings.settings.languageTurkish },
   ];
+}
+
+const retentionOptions: RetentionDays[] = [32, 90, 365];
+
+function RetentionGroup() {
+  const strings = useStrings();
+  const settings = useDeck((state) => state.settings);
+  const retention = useDeck((state) => state.deck.retention);
+  const busy = useDeck((state) => state.settingsAction !== null);
+  const setRetentionDays = useDeck((state) => state.setRetentionDays);
+
+  return (
+    <fieldset className="settings__group" disabled={busy || retention.rebuilding}>
+      <legend className="type-label settings__legend">{strings.settings.retentionTitle}</legend>
+      <div className="settings__row">
+        {retentionOptions.map((days) => (
+          <label key={days} className="settings__chip">
+            <input
+              type="radio"
+              name="retention-days"
+              value={days}
+              checked={settings.retentionDays === days}
+              onChange={() => void setRetentionDays(days)}
+            />
+            <span className="type-body">{strings.settings.retentionDays(days)}</span>
+          </label>
+        ))}
+      </div>
+      <p className="type-caption settings__hint">
+        {retention.rebuilding
+          ? strings.settings.retentionRebuilding(retention.effectiveDays, retention.requestedDays)
+          : strings.settings.retentionHint}
+      </p>
+    </fieldset>
+  );
 }
 
 function ProviderGroup() {
@@ -419,6 +454,8 @@ export function SettingsView({ now }: { now: number }) {
       </fieldset>
 
       <StartupGroup />
+
+      <RetentionGroup />
 
       <fieldset className="settings__group" disabled={settingsBusy}>
         <legend className="type-label settings__legend">{strings.settings.themeTitle}</legend>

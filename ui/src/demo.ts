@@ -198,6 +198,7 @@ export function demoDeck(): DeckState {
     refreshing: false,
     refreshGeneration: 0,
     refreshError: null,
+    retention: { requestedDays: 32, effectiveDays: 32, rebuilding: false, error: null },
   };
 }
 

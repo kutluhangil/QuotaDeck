@@ -240,6 +240,33 @@ export interface DeckState {
   refreshing: boolean;
   refreshGeneration: number;
   refreshError: string | null;
+  /** The requested and actually complete history horizons. They differ during a rebuild. */
+  retention: RetentionState;
+}
+
+export type RetentionDays = 32 | 90 | 365;
+
+export interface RetentionState {
+  requestedDays: RetentionDays;
+  effectiveDays: RetentionDays;
+  rebuilding: boolean;
+  error: string | null;
+}
+
+export type ExportFormat = "json" | "csv";
+
+/** UTC instants, with a half-open interval: [from, to). */
+export interface HistoryRange {
+  from: string;
+  to: string;
+}
+
+/** Text made by the Rust serializer. The webview only sends it to the clipboard. */
+export interface PreparedExport {
+  text: string;
+  mimeType: string;
+  suggestedFilename: string;
+  rows: number;
 }
 
 export type HealthState =
@@ -314,6 +341,7 @@ export interface Settings {
   demo: boolean;
   disabledProviders: ProviderId[];
   providerOrder: ProviderId[];
+  retentionDays: RetentionDays;
 }
 
 export interface ProviderDescriptor {

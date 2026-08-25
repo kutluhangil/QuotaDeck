@@ -22,6 +22,12 @@ export const HEATMAP_DAYS = 30;
 
 const SECONDS_PER_DAY = 86_400;
 
+/** A concrete, UTC half-open range shared by totals and breakdowns. */
+export interface HistoryRange {
+  from: number;
+  to: number;
+}
+
 export interface Totals {
   tokens: number;
   usd: number;
@@ -49,10 +55,29 @@ export function localDayStart(seconds: number): number {
   return Math.floor(at.getTime() / 1000);
 }
 
-/** Points falling inside the rolling range ending at `nowSeconds`. */
-export function inRange(hours: HistoryPoint[], range: Range, nowSeconds: number): HistoryPoint[] {
-  const from = nowSeconds - RANGE_DAYS[range] * SECONDS_PER_DAY;
-  return hours.filter((point) => point.start >= from && point.start <= nowSeconds);
+/** The rolling range ending at `nowSeconds`, with an exclusive upper instant. */
+export function rollingRange(range: Range, nowSeconds: number): HistoryRange {
+  return { from: nowSeconds - RANGE_DAYS[range] * SECONDS_PER_DAY, to: nowSeconds };
+}
+
+/** Points whose hourly bucket starts inside the half-open range. */
+export function inRange(hours: HistoryPoint[], range: HistoryRange): HistoryPoint[] {
+  return hours.filter((point) => point.start >= range.from && point.start < range.to);
+}
+
+/**
+ * A local calendar selection becomes UTC only after its local midnights are constructed.
+ *
+ * `setDate` intentionally advances a calendar day instead of assuming every day is 86,400
+ * seconds; that preserves spring-forward and fall-back ranges.
+ */
+export function localDateRange(fromDate: Date, toDate: Date): HistoryRange {
+  const from = new Date(fromDate);
+  from.setHours(0, 0, 0, 0);
+  const to = new Date(toDate);
+  to.setHours(0, 0, 0, 0);
+  to.setDate(to.getDate() + 1);
+  return { from: Math.floor(from.getTime() / 1000), to: Math.floor(to.getTime() / 1000) };
 }
 
 export function totals(points: HistoryPoint[]): Totals {

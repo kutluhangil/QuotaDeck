@@ -63,7 +63,43 @@
 .board__actions {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
   gap: var(--space-2);
+}
+
+/* Export remains a clipboard action, but dates are local calendar inputs. Keeping the controls
+   in one quiet rail makes their dependency legible without turning the dashboard into a form. */
+.board__export {
+  display: flex;
+  align-items: end;
+  flex-wrap: wrap;
+  gap: var(--step-1);
+}
+
+.board__date-label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  color: var(--ink-tertiary);
+}
+
+.board__date-label input {
+  min-block-size: 28px;
+  color: var(--ink-secondary);
+  background: var(--surface-inset);
+  border: var(--hairline) solid var(--rule);
+  border-radius: var(--radius);
+  padding-inline: var(--step-2);
+  font: inherit;
+}
+
+.board__notice {
+  margin: 0 0 var(--step-3);
+  padding: var(--step-2) var(--step-3);
+  color: var(--ink-secondary);
+  border-inline-start: 2px solid var(--rule-strong);
+  background: var(--surface-inset);
 }
 
 .board__title {
@@ -273,6 +309,18 @@
   padding-inline: var(--step-5);
   border-block-start: var(--hairline) solid var(--rule);
   color: var(--ink-tertiary);
+}
+
+@media (max-width: 760px) {
+  .board__head {
+    block-size: auto;
+    align-items: flex-start;
+    padding-block: var(--step-3);
+  }
+
+  .board__actions {
+    max-inline-size: 70%;
+  }
 }
 
 .heatmap {

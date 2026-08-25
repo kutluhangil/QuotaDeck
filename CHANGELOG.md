@@ -4,6 +4,7 @@
 
 - History: added retention-aware checkpoint transitions, crash-safe staged rebuild persistence, and one typed backend export request shared by the local CLI.
 - History: preserve a disabled provider's complete checkpoint while a longer retention waits for its first enabled rebuild, and make CLI range clamping explicit on stderr.
+- Dashboard: added 32/90/365-day retention controls, local-calendar half-open date selection, and backend-generated JSON/CSV clipboard export without filesystem access.
 - Pricing: apply official Anthropic rates by event date, version price-dependent checkpoints, and rebuild only providers whose pricing revision changed.
 - Alerts: added reliable projected-exhaustion notifications with health gating, reset-aware re-arming, mute/first-pass silence, and same-window threshold coalescing.
 - Tray: added ordered local provider summaries plus Dashboard and single-flight Refresh actions, rebuilding the native menu only when its pure model changes.

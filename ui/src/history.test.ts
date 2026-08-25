@@ -1,6 +1,15 @@
 import { describe, expect, it } from "vitest";
 
-import { dailyCells, inRange, intensity, localDayStart, peakTokens, totals } from "./history";
+import {
+  dailyCells,
+  inRange,
+  intensity,
+  localDateRange,
+  localDayStart,
+  peakTokens,
+  rollingRange,
+  totals,
+} from "./history";
 import type { HistoryPoint } from "./types";
 
 function point(start: number, tokens: number, usd: number, unpriced = 0): HistoryPoint {
@@ -19,14 +28,29 @@ const DAY = 86_400;
 describe("inRange", () => {
   it("takes a rolling window back from now, matching the panel's rolling day", () => {
     const hours = [point(NOON - 2 * DAY, 10, 1), point(NOON - HOUR, 10, 1)];
-    expect(inRange(hours, "day", NOON)).toHaveLength(1);
-    expect(inRange(hours, "week", NOON)).toHaveLength(2);
+    expect(inRange(hours, rollingRange("day", NOON))).toHaveLength(1);
+    expect(inRange(hours, rollingRange("week", NOON))).toHaveLength(2);
   });
 
   it("excludes anything after now", () => {
     // Clock skew between the machine writing the log and this process is real; a point in
     // the future must not be counted into a range that has not happened yet.
-    expect(inRange([point(NOON + HOUR, 10, 1)], "month", NOON)).toHaveLength(0);
+    expect(inRange([point(NOON + HOUR, 10, 1)], rollingRange("month", NOON))).toHaveLength(0);
+  });
+
+  it("uses an exclusive upper boundary so an hourly bucket is never duplicated", () => {
+    const range = { from: NOON - HOUR, to: NOON };
+    expect(inRange([point(NOON - HOUR, 10, 1), point(NOON, 10, 1)], range)).toHaveLength(1);
+  });
+
+  it("builds a local calendar end by advancing the date, rather than milliseconds", () => {
+    const from = new Date(2026, 2, 7, 15);
+    const to = new Date(2026, 2, 8, 15);
+    const range = localDateRange(from, to);
+    const expectedFrom = new Date(2026, 2, 7);
+    const expectedTo = new Date(2026, 2, 9);
+    expect(range.from).toBe(Math.floor(expectedFrom.getTime() / 1000));
+    expect(range.to).toBe(Math.floor(expectedTo.getTime() / 1000));
   });
 });
 

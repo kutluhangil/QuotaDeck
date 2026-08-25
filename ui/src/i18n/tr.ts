@@ -144,6 +144,19 @@ export const tr: Catalogue = {
     heatmapLabel: "Son bir aydaki günlük etkinlik",
     heatmapQuiet: "sakin",
     heatmapBusy: "yoğun",
+    customRange: "Tarihler",
+    rangeFrom: "Başlangıç",
+    rangeTo: "Bitiş",
+    hourlyHistory: "Saatlik geçmiş; kayıtlar başlangıç saatine göre alınır.",
+    copyJson: "JSON kopyala",
+    copyCsv: "CSV kopyala",
+    exporting: "Hazırlanıyor…",
+    copied: (format, rows) => `${format} kopyalandı: ${rows} satır`,
+    exportFailed: (reason) => `Geçmiş dışa aktarılamadı: ${reason}`,
+    exportUnavailable: "Geçerli kullanım geçmişi tamamlanana kadar dışa aktarma kullanılamaz.",
+    rebuilding: (from, to) =>
+      `${to} günlük geçmiş yerel günlüklerden yeniden oluşturulurken tam ${from} günlük geçmiş korunuyor.`,
+    rebuildFailed: (reason) => `Geçmiş yeniden oluşturma işlemi bekliyor: ${reason}`,
   },
 
   breakdown: {
@@ -223,6 +236,11 @@ export const tr: Catalogue = {
     themeSystem: "Sistemle aynı",
     themeDark: "Koyu",
     themeLight: "Açık",
+    retentionTitle: "Bu cihazda tutulan geçmiş",
+    retentionDays: (days) => `${days} gün`,
+    retentionHint: "Daha uzun bir dönem seçmek yalnız yerel günlükleri yeniden okur. Son tam geçmiş bitene kadar kullanılabilir kalır.",
+    retentionRebuilding: (from, to) =>
+      `${to} günlük geçmiş yerel günlüklerden yeniden oluşturulurken tam ${from} günlük geçmiş korunuyor.`,
     back: "Bitti",
     settingsFailed: (reason) => `Ayarlar kaydedilemedi: ${reason}`,
     providersTitle: "Araçlar",
