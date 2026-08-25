@@ -3,6 +3,7 @@
 ## 2026-08-25
 
 - Release: removed the duplicate declarative tray icon so `app/src/tray.rs` is the sole owner, added a tray guard across every release override and an Astro semantic check, and refreshed release evidence while retaining unresolved account, runtime, accessibility, soak, price, and domain gates.
+- Release: launch the ad-hoc App Sandbox integration probe through macOS LaunchServices so current macOS completes secinit while preserving observable stdin, stdout, and stderr assertions.
 
 ## 2026-08-05
 

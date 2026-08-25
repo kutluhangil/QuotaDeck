@@ -19,14 +19,23 @@ kabul kriterleri blueprint Ek A.
 - [x] `npm test --prefix ui` — 71 Vitest testi geçti
 - [x] `npm run build --prefix ui` — `tsc --noEmit` temiz ve üretim paketi derlendi
 - [x] `npm --prefix ui exec tauri -- build --bundles app` — macOS `.app` paketi derlendi
+- [x] `cargo clippy --workspace --all-targets -- -D warnings` — uyarı yok
 - [x] `cargo test -p quotadeck-app tray` — 3 test geçti, 0 başarısız
 - [x] `node scripts/check-appstore-config.mjs` — özel macOS API'leri kapalı, tray yalnızca Rust'tan
       oluşturuluyor ve seçilen home grant'i salt-okunur
 - [x] `npm run check --prefix site` — Astro tanılama özeti 0 hata, 0 uyarı, 0 ipucu; altı sayfa
       derlendi ve CSP kontrolü geçti
-
-`cargo clippy`, release perf bütçesi, sandbox ve ikon kontrolleri için 2026-08-25 tarihli yeni
-kanıt henüz yoktur; bu maddeler yeni çalıştırma kaydı olmadan kapalı sayılmaz.
+- [x] `cargo test -p quotadeck-core --release --test perf -- --ignored --test-threads=1
+      --nocapture` — 4/4 geçti: cold parse 83 ms / 160,3 MB / 500 dosya, sıcak tik 4.805 µs ve
+      0 byte, bir saatlik izleme yalnız eklenen 65.343 byte'ı okudu, tepe RSS 7,2 MB
+- [x] `bash scripts/sandbox-check.sh` — gerçek App Sandbox etkin; gerçek home korundu, Claude,
+      Codex ve Copilot kökleri `missing` yerine `denied` döndürdü, statusline zinciri ve yalnız-kota
+      capture doğrulandı, otomatik ayar yazımı salt-okunur hatasıyla reddedildi
+- [x] `python3 app/icons/generate.py --check` — izlenen ikonlar kaynakla aynı
+- [x] Release `.app` gerçek macOS oturumunda açıldı; süreç çalıştı ve Control Center native status
+      item kaydını oluşturdu. Tray tıklaması, panel odağı ve tıklayınca gizleme hâlâ insan gözüyle
+      kapatılacak çalışma zamanı maddeleridir; erişilebilirlik otomasyonu accessory uygulamanın gizli
+      paneline bağlanamadı.
 
 ### Tarihsel ölçüm (2026-08-01)
 

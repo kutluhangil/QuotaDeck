@@ -3,14 +3,18 @@
 # Run the path resolution inside a real App Sandbox and assert what the sandbox changes.
 #
 # `sandbox-exec` is deprecated and its profile language is not the App Sandbox. An ad-hoc code
-# signature carrying `app/Entitlements.plist` is — the kernel applies the same sandbox it applies
-# to a store build, which makes this the only local test worth trusting.
+# signature carrying `app/Entitlements.plist`, launched through LaunchServices, is — the kernel
+# applies the same sandbox it applies to a store build, which makes this the only local test worth
+# trusting.
 #
 # The entitlement has to be attached to a *bundle*. A bare Mach-O signed with
 # `com.apple.security.app-sandbox` is killed with SIGTRAP at launch, because the container is
 # named after `CFBundleIdentifier` and there is nowhere to put it. So this wraps the debug
 # binary in the smallest bundle that satisfies that, using the shipping identifier so the
-# container is the same one the real app gets.
+# container is the same one the real app gets. LaunchServices is not optional here: current macOS
+# releases abort an ad-hoc sandboxed executable invoked directly because its secinit handshake has
+# no application launch context. `open` supplies that context and can still wire stdin/stdout/stderr
+# to files, so every assertion remains observable from this script.
 #
 # What is asserted, in order of how expensive each failure is to discover in App Review:
 #
@@ -35,6 +39,24 @@ APP="${STAGE}/QuotaDeckCheck.app"
 EXEC="${APP}/Contents/MacOS/QuotaDeckCheck"
 HELPER_APP="${STAGE}/QuotaDeckHelper.app"
 HELPER_EXEC="${HELPER_APP}/Contents/MacOS/QuotaDeckHelper"
+
+launch_sandboxed() {
+  local app="$1"
+  local stdin_path="$2"
+  local stdout_path="$3"
+  local stderr_path="$4"
+  shift 4
+
+  : > "${stdout_path}"
+  : > "${stderr_path}"
+
+  if [[ "${stdin_path}" == "/dev/null" ]]; then
+    open -W -n -g -o "${stdout_path}" --stderr "${stderr_path}" "${app}" --args "$@"
+  else
+    open -W -n -g -i "${stdin_path}" -o "${stdout_path}" --stderr "${stderr_path}" \
+      "${app}" --args "$@"
+  fi
+}
 
 echo "==> building"
 cargo build -p quotadeck-app --bin quotadeck-debug --bin quotadeck
@@ -68,7 +90,15 @@ PLIST
 codesign --sign - --entitlements app/Entitlements.plist --force "${APP}"
 
 echo "==> sandboxed"
-SANDBOXED="$("${EXEC}" paths)"
+PATHS_STDOUT="${STAGE}/paths.stdout"
+PATHS_STDERR="${STAGE}/paths.stderr"
+launch_sandboxed "${APP}" /dev/null "${PATHS_STDOUT}" "${PATHS_STDERR}" paths
+if [[ ! -s "${PATHS_STDOUT}" ]]; then
+  echo "error: the sandboxed path probe produced no output" >&2
+  sed -n '1,80p' "${PATHS_STDERR}" >&2
+  exit 1
+fi
+SANDBOXED="$(<"${PATHS_STDOUT}")"
 echo "${SANDBOXED}"
 
 field() { printf '%s\n' "${SANDBOXED}" | awk -v k="$1" '$1==k {print $2}'; }
@@ -129,8 +159,20 @@ sed \
 codesign --sign - --entitlements app/Entitlements.plist --force "${HELPER_APP}"
 
 STATUSLINE_DIR="${env_home}/Library/Application Support/QuotaDeck/sandbox-statusline-check-$$"
-CHAINED="$(printf '%s\n' '{"version":"check","cwd":"must-not-persist","session_id":"must-not-persist","rate_limits":{"five_hour":{"used_percentage":12}}}' \
-  | "${HELPER_EXEC}" --statusline-helper --log "${STATUSLINE_DIR}" --chain 'printf sandbox-chain-ok')"
+STATUSLINE_INPUT="${STAGE}/statusline.stdin"
+STATUSLINE_STDOUT="${STAGE}/statusline.stdout"
+STATUSLINE_STDERR="${STAGE}/statusline.stderr"
+printf '%s\n' '{"version":"check","cwd":"must-not-persist","session_id":"must-not-persist","rate_limits":{"five_hour":{"used_percentage":12}}}' \
+  > "${STATUSLINE_INPUT}"
+launch_sandboxed "${HELPER_APP}" "${STATUSLINE_INPUT}" "${STATUSLINE_STDOUT}" \
+  "${STATUSLINE_STDERR}" --statusline-helper --log "${STATUSLINE_DIR}" \
+  --chain 'printf sandbox-chain-ok'
+if [[ -s "${STATUSLINE_STDERR}" ]]; then
+  echo "error: the sandboxed statusline helper wrote to stderr" >&2
+  sed -n '1,80p' "${STATUSLINE_STDERR}" >&2
+  exit 1
+fi
+CHAINED="$(<"${STATUSLINE_STDOUT}")"
 check "the sandboxed helper preserves chained output" "${CHAINED}" "sandbox-chain-ok"
 
 CAPTURE="$(find "${STATUSLINE_DIR}" -type f -name '*.jsonl' -print -quit)"
@@ -147,7 +189,11 @@ else
   fail=1
 fi
 
-INSTALL_ERROR="$("${EXEC}" statusline install 2>&1 || true)"
+INSTALL_STDOUT="${STAGE}/install.stdout"
+INSTALL_STDERR="${STAGE}/install.stderr"
+launch_sandboxed "${APP}" /dev/null "${INSTALL_STDOUT}" "${INSTALL_STDERR}" \
+  statusline install
+INSTALL_ERROR="$(sed -n '1,80p' "${INSTALL_STDOUT}" "${INSTALL_STDERR}")"
 if [[ "${INSTALL_ERROR}" == *"read-only access"* ]]; then
   echo "OK   automatic settings writes are refused inside the sandbox"
 else
