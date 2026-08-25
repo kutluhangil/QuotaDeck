@@ -232,6 +232,10 @@ fn export(args: &[String]) -> ExitCode {
         // Every file was read before anything was written, so this is a measurement rather
         // than a lower bound.
         scanning: false,
+        health: Vec::new(),
+        refreshing: false,
+        refresh_generation: 0,
+        refresh_error: None,
     };
 
     let written = match format.unwrap_or(Format::Json) {

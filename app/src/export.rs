@@ -329,6 +329,10 @@ mod tests {
             providers: vec![snapshot(Some(42.0))],
             updated_at: Utc.timestamp_opt(HOUR, 0).single().expect("valid instant"),
             scanning: false,
+            health: Vec::new(),
+            refreshing: false,
+            refresh_generation: 0,
+            refresh_error: None,
         };
 
         let json = to_json(&state, &[history()]).expect("serialise the export");
@@ -524,6 +528,10 @@ mod tests {
             providers: vec![snapshot(percent)],
             updated_at: Utc.timestamp_opt(HOUR, 0).single().expect("valid instant"),
             scanning,
+            health: Vec::new(),
+            refreshing: false,
+            refresh_generation: 0,
+            refresh_error: None,
         }
     }
 
@@ -545,6 +553,10 @@ mod tests {
                 providers: Vec::new(),
                 updated_at: Utc.timestamp_opt(HOUR, 0).single().expect("valid instant"),
                 scanning: false,
+                health: Vec::new(),
+                refreshing: false,
+                refresh_generation: 0,
+                refresh_error: None,
             }),
             EXIT_INDETERMINATE
         );

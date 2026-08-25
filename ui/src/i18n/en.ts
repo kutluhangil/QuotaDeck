@@ -42,6 +42,7 @@ const planHints: Partial<Record<ProviderId, string>> = {
 export const en = {
   appName: "Quota Deck",
   shellFailed: (reason: string) => `The app could not complete an action: ${reason}`,
+  refreshFailed: (reason: string) => `Could not refresh usage: ${reason}`,
 
   header: {
     settings: "Settings",
@@ -53,6 +54,7 @@ export const en = {
     reporting: (reporting: number, total: number) =>
       total === 0 ? "" : `${reporting} of ${total} reporting`,
     dashboard: "Dashboard",
+    refresh: "Refresh",
     /**
      * With no dock icon, the tray menu used to be the only way out. It is a right click on
      * macOS and Windows and a left click on Linux, which is three different gestures for the
@@ -69,6 +71,15 @@ export const en = {
     ample: "Good",
     tight: "Caution",
     critical: "Critical",
+  },
+
+  health: {
+    stale: (reason: string | null) =>
+      `Latest refresh failed. Showing the last successful reading.${reason ? ` ${reason}` : ""}`,
+    error: (reason: string | null) =>
+      `Usage could not be refreshed.${reason ? ` ${reason}` : " Try Refresh again."}`,
+    unavailable: (reason: string | null) =>
+      `This tool is currently unavailable.${reason ? ` ${reason}` : ""}`,
   },
 
   filters: {

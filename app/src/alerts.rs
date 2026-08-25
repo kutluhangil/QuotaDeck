@@ -19,9 +19,9 @@ use std::collections::{HashMap, HashSet};
 
 use chrono::{DateTime, Utc};
 use quotadeck_core::burst::Burst;
-use quotadeck_core::types::{Confidence, ProviderId, QuotaWindow};
+use quotadeck_core::types::{Confidence, PaceRisk, ProviderId, QuotaWindow};
 
-use crate::deck::{DeckState, Settings};
+use crate::deck::{DeckState, HealthState, Settings};
 use crate::i18n::{provider_name, Language};
 
 /// How far a window must fall back below an announced threshold before it can raise it again.
@@ -54,6 +54,7 @@ type Key = (ProviderId, String, u32);
 #[derive(Debug, Default)]
 pub struct Alerts {
     fired: HashMap<Key, Fired>,
+    pace_fired: HashMap<Key, Option<DateTime<Utc>>>,
     /// Providers whose current burst has already been announced. A burst is one episode, not a
     /// reading: the hour it is measured over slides forward on every tick, so without this the
     /// same runaway workflow would notify once a minute for as long as it ran. Cleared the
@@ -84,33 +85,88 @@ impl Alerts {
 
         for snapshot in &state.providers {
             let thresholds = settings.thresholds_for(snapshot.id);
+            let provider_healthy = state.health.iter().any(|health| {
+                health.provider == snapshot.id && health.state == HealthState::Healthy
+            });
             for window in &snapshot.windows {
                 let Some(percent) = window.used_percent else {
                     continue;
                 };
-                if !percent.is_finite() || matches!(window.confidence, Confidence::Stale { .. }) {
+                if !percent.is_finite()
+                    || matches!(
+                        window.confidence,
+                        Confidence::Stale { .. } | Confidence::Unavailable { .. }
+                    )
+                {
                     continue;
                 }
 
                 let key = (snapshot.id, window.limit_id.clone(), window.window_minutes);
                 let carried = self.carried(&key, window, percent);
-
-                let Some(crossed) = highest_crossed(&thresholds, percent) else {
-                    continue;
-                };
-                if carried.is_some_and(|already| already >= crossed) {
-                    continue;
+                let mut threshold_alert = None;
+                if let Some(crossed) = highest_crossed(&thresholds, percent) {
+                    if !carried.is_some_and(|already| already >= crossed) {
+                        self.fired.insert(
+                            key.clone(),
+                            Fired {
+                                threshold: crossed,
+                                resets_at: window.resets_at,
+                            },
+                        );
+                        if announce {
+                            threshold_alert =
+                                Some(alert_for(snapshot.id, window, percent, language));
+                        }
+                    }
                 }
 
-                self.fired.insert(
-                    key,
-                    Fired {
-                        threshold: crossed,
-                        resets_at: window.resets_at,
-                    },
-                );
-                if announce {
-                    alerts.push(alert_for(snapshot.id, window, percent, language));
+                let pace = snapshot.pace.iter().find(|forecast| {
+                    forecast.limit_id == window.limit_id
+                        && forecast.window_minutes == window.window_minutes
+                });
+                let mut pace_body = None;
+                if self
+                    .pace_fired
+                    .get(&key)
+                    .is_some_and(|reset| *reset != window.resets_at)
+                {
+                    self.pace_fired.remove(&key);
+                }
+                if pace.is_some_and(|forecast| forecast.risk == PaceRisk::Healthy) {
+                    self.pace_fired.remove(&key);
+                } else if provider_healthy
+                    && !self.pace_fired.contains_key(&key)
+                    && pace.is_some_and(|forecast| {
+                        forecast.risk == PaceRisk::Over && forecast.exhausted_at.is_some()
+                    })
+                {
+                    let exhausted_at = pace.and_then(|forecast| forecast.exhausted_at);
+                    self.pace_fired.insert(key, window.resets_at);
+                    if announce {
+                        if let Some(exhausted_at) = exhausted_at {
+                            let clock = exhausted_at
+                                .with_timezone(&chrono::Local)
+                                .format("%H:%M")
+                                .to_string();
+                            pace_body =
+                                Some(language.pace_body(&language.window_label(window), &clock));
+                        }
+                    }
+                }
+
+                match (threshold_alert, pace_body) {
+                    (Some(mut threshold), Some(pace)) => {
+                        threshold.body.push(' ');
+                        threshold.body.push_str(&pace);
+                        alerts.push(threshold);
+                    }
+                    (Some(threshold), None) => alerts.push(threshold),
+                    (None, Some(body)) => alerts.push(Alert {
+                        provider: snapshot.id,
+                        title: provider_name(snapshot.id),
+                        body,
+                    }),
+                    (None, None) => {}
                 }
             }
 
@@ -193,9 +249,11 @@ fn burst_alert(provider: ProviderId, burst: &Burst, language: Language) -> Alert
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::deck::DEFAULT_THRESHOLDS;
+    use crate::deck::{HealthState, ProviderHealth, DEFAULT_THRESHOLDS};
     use crate::i18n::Locale;
-    use quotadeck_core::types::{CostRange, ProviderSnapshot, TokenRollup, WindowKind};
+    use quotadeck_core::types::{
+        CostRange, PaceForecast, PaceRisk, ProviderSnapshot, TokenRollup, WindowKind,
+    };
 
     fn now() -> DateTime<Utc> {
         DateTime::from_timestamp(1_785_715_200, 0).expect("a valid instant")
@@ -240,6 +298,10 @@ mod tests {
             }],
             updated_at: now(),
             scanning,
+            health: Vec::new(),
+            refreshing: false,
+            refresh_generation: 0,
+            refresh_error: None,
         }
     }
 
@@ -247,6 +309,264 @@ mod tests {
         let mut state = state(Vec::new(), false);
         state.providers[0].burst = burst;
         state
+    }
+
+    fn pace_state(
+        percent: f32,
+        risk: PaceRisk,
+        exhausted_at: Option<DateTime<Utc>>,
+        resets_at: Option<DateTime<Utc>>,
+        health_state: HealthState,
+    ) -> DeckState {
+        let mut state = state(vec![window(percent, resets_at)], false);
+        state.providers[0].pace = vec![PaceForecast {
+            limit_id: "codex".into(),
+            window_minutes: 10_080,
+            projected_percent: if risk == PaceRisk::Over { 118.0 } else { 95.0 },
+            risk,
+            exhausted_at,
+        }];
+        state.health = vec![ProviderHealth {
+            state: health_state,
+            ..ProviderHealth::new(ProviderId::Codex)
+        }];
+        state
+    }
+
+    #[test]
+    fn projected_exhaustion_is_silent_on_first_pass_then_announced_as_a_projection() {
+        let settings = settings();
+        let exhausted = now() + chrono::Duration::hours(2);
+        let mut alerts = Alerts::new();
+        assert!(alerts
+            .evaluate(
+                &pace_state(
+                    40.0,
+                    PaceRisk::Over,
+                    Some(exhausted),
+                    None,
+                    HealthState::Healthy
+                ),
+                &settings,
+                now(),
+            )
+            .is_empty());
+
+        alerts.evaluate(
+            &pace_state(40.0, PaceRisk::Healthy, None, None, HealthState::Healthy),
+            &settings,
+            now(),
+        );
+        let raised = alerts.evaluate(
+            &pace_state(
+                40.0,
+                PaceRisk::Over,
+                Some(exhausted),
+                None,
+                HealthState::Healthy,
+            ),
+            &settings,
+            now(),
+        );
+        assert_eq!(raised.len(), 1);
+        assert!(raised[0].body.contains("projected"), "{}", raised[0].body);
+        assert!(raised[0].body.contains(
+            &exhausted
+                .with_timezone(&chrono::Local)
+                .format("%H:%M")
+                .to_string()
+        ));
+    }
+
+    #[test]
+    fn pace_jitter_does_not_rearm_until_healthy_but_a_reset_does() {
+        let settings = settings();
+        let exhausted = now() + chrono::Duration::hours(2);
+        let first_reset = Some(now() + chrono::Duration::days(1));
+        let next_reset = Some(now() + chrono::Duration::days(8));
+        let mut alerts = Alerts::new();
+        alerts.evaluate(
+            &pace_state(
+                40.0,
+                PaceRisk::Healthy,
+                None,
+                first_reset,
+                HealthState::Healthy,
+            ),
+            &settings,
+            now(),
+        );
+        assert_eq!(
+            alerts
+                .evaluate(
+                    &pace_state(
+                        40.0,
+                        PaceRisk::Over,
+                        Some(exhausted),
+                        first_reset,
+                        HealthState::Healthy
+                    ),
+                    &settings,
+                    now()
+                )
+                .len(),
+            1
+        );
+        assert!(alerts
+            .evaluate(
+                &pace_state(
+                    40.0,
+                    PaceRisk::AtRisk,
+                    None,
+                    first_reset,
+                    HealthState::Healthy
+                ),
+                &settings,
+                now()
+            )
+            .is_empty());
+        assert!(alerts
+            .evaluate(
+                &pace_state(
+                    40.0,
+                    PaceRisk::Over,
+                    Some(exhausted),
+                    first_reset,
+                    HealthState::Healthy
+                ),
+                &settings,
+                now()
+            )
+            .is_empty());
+        assert_eq!(
+            alerts
+                .evaluate(
+                    &pace_state(
+                        40.0,
+                        PaceRisk::Over,
+                        Some(exhausted),
+                        next_reset,
+                        HealthState::Healthy
+                    ),
+                    &settings,
+                    now()
+                )
+                .len(),
+            1
+        );
+
+        alerts.evaluate(
+            &pace_state(
+                40.0,
+                PaceRisk::Healthy,
+                None,
+                next_reset,
+                HealthState::Healthy,
+            ),
+            &settings,
+            now(),
+        );
+        assert_eq!(
+            alerts
+                .evaluate(
+                    &pace_state(
+                        40.0,
+                        PaceRisk::Over,
+                        Some(exhausted),
+                        next_reset,
+                        HealthState::Healthy
+                    ),
+                    &settings,
+                    now()
+                )
+                .len(),
+            1
+        );
+    }
+
+    #[test]
+    fn pace_updates_while_muted_and_unhealthy_providers_never_announce() {
+        let exhausted = now() + chrono::Duration::hours(2);
+        let mut settings = settings();
+        let mut alerts = Alerts::new();
+        alerts.evaluate(
+            &pace_state(40.0, PaceRisk::Healthy, None, None, HealthState::Healthy),
+            &settings,
+            now(),
+        );
+        settings.muted_until = Some(now() + chrono::Duration::hours(1));
+        assert!(alerts
+            .evaluate(
+                &pace_state(
+                    40.0,
+                    PaceRisk::Over,
+                    Some(exhausted),
+                    None,
+                    HealthState::Healthy
+                ),
+                &settings,
+                now()
+            )
+            .is_empty());
+        settings.muted_until = None;
+        assert!(alerts
+            .evaluate(
+                &pace_state(
+                    40.0,
+                    PaceRisk::Over,
+                    Some(exhausted),
+                    None,
+                    HealthState::Healthy
+                ),
+                &settings,
+                now()
+            )
+            .is_empty());
+
+        alerts.evaluate(
+            &pace_state(40.0, PaceRisk::Healthy, None, None, HealthState::Healthy),
+            &settings,
+            now(),
+        );
+        assert!(alerts
+            .evaluate(
+                &pace_state(
+                    40.0,
+                    PaceRisk::Over,
+                    Some(exhausted),
+                    None,
+                    HealthState::Stale
+                ),
+                &settings,
+                now()
+            )
+            .is_empty());
+    }
+
+    #[test]
+    fn threshold_and_pace_for_the_same_window_coalesce_into_one_notification() {
+        let settings = settings();
+        let exhausted = now() + chrono::Duration::hours(2);
+        let mut alerts = Alerts::new();
+        alerts.evaluate(
+            &pace_state(40.0, PaceRisk::Healthy, None, None, HealthState::Healthy),
+            &settings,
+            now(),
+        );
+        let raised = alerts.evaluate(
+            &pace_state(
+                96.0,
+                PaceRisk::Over,
+                Some(exhausted),
+                None,
+                HealthState::Healthy,
+            ),
+            &settings,
+            now(),
+        );
+        assert_eq!(raised.len(), 1);
+        assert!(raised[0].body.contains("96%"));
+        assert!(raised[0].body.contains("projected"));
     }
 
     fn burst() -> Burst {

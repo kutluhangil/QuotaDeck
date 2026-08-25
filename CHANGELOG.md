@@ -2,6 +2,9 @@
 
 ## 2026-08-25
 
+- Alerts: added reliable projected-exhaustion notifications with health gating, reset-aware re-arming, mute/first-pass silence, and same-window threshold coalescing.
+- Tray: added ordered local provider summaries plus Dashboard and single-flight Refresh actions, rebuilding the native menu only when its pure model changes.
+- Refresh: exposed ordered provider health and generation-based manual refresh across the read-loop owner, panel, and dashboard while preserving the last successful snapshot through later failures.
 - Release: force-register each recreated sandbox probe bundle with LaunchServices before a fresh launch, eliminating stale executable lookups in repeated verification runs.
 - Providers: return saved provider policy as authoritative with a visible watcher-sync warning instead of rolling the UI back after post-persist failures.
 - Providers: serialized filesystem-watch reconciliation with provider-policy commits and made policy setters wait until disabled roots are no longer watched.

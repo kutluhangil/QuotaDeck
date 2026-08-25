@@ -194,6 +194,18 @@
   color: var(--ink-tertiary);
 }
 
+.card__health {
+  margin: 0;
+  padding: var(--step-2) var(--step-3);
+  border-inline-start: 2px solid var(--rule-strong);
+  color: var(--ink-secondary);
+  background: var(--surface-inset);
+}
+
+.card__health[data-health="error"] {
+  border-inline-start-color: var(--level-critical);
+}
+
 /*
  * Every limit on its own line, four columns wide.
  *

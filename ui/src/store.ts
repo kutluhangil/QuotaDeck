@@ -3,6 +3,7 @@ import { create } from "zustand";
 import { demoDeck, demoHistory, demoPlans, demoStatusline } from "./demo";
 import { catalogueFor, languageFor, type Catalogue } from "./i18n";
 import { hostPlatform } from "./platform";
+import { completeRefresh } from "./refresh";
 import { applyProviderPolicy, catalogueForPolicy, providerPolicySettings } from "./providerPolicy";
 import type {
   AccessState,
@@ -12,6 +13,7 @@ import type {
   ProviderDescriptor,
   ProviderId,
   ProviderPolicyOutcome,
+  RefreshReceipt,
   ProviderPlans,
   Settings,
   StartupState,
@@ -45,6 +47,9 @@ interface DeckStore {
   settingsAction: string | null;
   /** A shell/window command failed outside a settings transaction. */
   shellError: string | null;
+  refreshBusy: boolean;
+  refreshRequest: number | null;
+  refreshError: string | null;
   /** What we may read. Null until the shell answers; a browser build needs no grant. */
   access: AccessState | null;
   view: "panel" | "settings";
@@ -75,6 +80,7 @@ interface DeckStore {
   refreshStatusline: () => Promise<void>;
   prepareManualStatusline: () => Promise<boolean>;
   openDashboard: () => Promise<void>;
+  refreshNow: () => Promise<void>;
   /** Dismiss the popover from the keyboard, the way clicking away already does. */
   hidePanel: () => Promise<void>;
   /** End the process. With no dock icon the tray menu was the only way out. */
@@ -82,7 +88,15 @@ interface DeckStore {
   start: () => Promise<void>;
 }
 
-const emptyDeck: DeckState = { providers: [], updatedAt: new Date(0).toISOString(), scanning: true };
+const emptyDeck: DeckState = {
+  providers: [],
+  health: [],
+  updatedAt: new Date(0).toISOString(),
+  scanning: true,
+  refreshing: false,
+  refreshGeneration: 0,
+  refreshError: null,
+};
 
 export const useDeck = create<DeckStore>((set, get) => ({
   deck: emptyDeck,
@@ -109,6 +123,9 @@ export const useDeck = create<DeckStore>((set, get) => ({
   settingsError: null,
   settingsAction: null,
   shellError: null,
+  refreshBusy: false,
+  refreshRequest: null,
+  refreshError: null,
   access: null,
   view: "panel",
   filter: "all",
@@ -364,6 +381,31 @@ export const useDeck = create<DeckStore>((set, get) => ({
     }
   },
 
+  refreshNow: async () => {
+    if (get().refreshBusy) return;
+    if (!inShell) {
+      set({ refreshBusy: true, refreshError: null });
+      const generation = get().deck.refreshGeneration + 1;
+      set({
+        deck: { ...get().deck, refreshGeneration: generation, refreshing: false },
+        refreshBusy: false,
+      });
+      return;
+    }
+    set({ refreshBusy: true, refreshError: null });
+    const queued = await call<RefreshReceipt>("refresh_now", {});
+    if (!queued.ok) {
+      set({ refreshBusy: false, refreshRequest: null, refreshError: queued.error });
+      return;
+    }
+    const completion = completeRefresh(queued.value.requestId, get().deck);
+    set({
+      refreshBusy: completion.pendingRequest !== null,
+      refreshRequest: completion.pendingRequest,
+      refreshError: completion.error,
+    });
+  },
+
   hidePanel: async () => {
     try {
       await send("hide_panel", {});
@@ -450,7 +492,13 @@ export const useDeck = create<DeckStore>((set, get) => ({
     // History is folded on the same pass that produces the snapshots, so the event that
     // announces one is also the moment the other is worth re-reading.
     await listen<DeckState>("deck://state", (event) => {
-      set({ deck: event.payload });
+      const completion = completeRefresh(get().refreshRequest, event.payload);
+      set({
+        deck: event.payload,
+        refreshBusy: completion.pendingRequest !== null,
+        refreshRequest: completion.pendingRequest,
+        refreshError: completion.error,
+      });
       void invoke<ProviderHistory[]>("usage_history")
         .then((history) => set({ history }))
         .catch((error) => reportShellError("refresh usage history", error));

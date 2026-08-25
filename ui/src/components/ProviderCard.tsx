@@ -16,6 +16,7 @@ import {
 } from "../format";
 import { identityHue } from "../identity";
 import type { Catalogue } from "../i18n";
+import { confidenceForHealth, type VisibleProviderHealth } from "../providerHealth";
 import { useLocale, useStrings } from "../store";
 import {
   awaitingSetup,
@@ -30,6 +31,7 @@ import {
 } from "../types";
 import { ConfidenceBadge } from "./ConfidenceBadge";
 import { HorizonStrip } from "./HorizonStrip";
+import { ProviderHealthNotice } from "./ProviderHealthNotice";
 import { WindowRow } from "./WindowRow";
 
 /**
@@ -104,10 +106,12 @@ function resetMeta(window: QuotaWindow, now: number, strings: Catalogue): string
 
 export function ProviderCard({
   snapshot,
+  health,
   now,
   onSetUp,
 }: {
   snapshot: ProviderSnapshot;
+  health: VisibleProviderHealth | null;
   now: number;
   /** Opens settings, where the plan and the status line live. */
   onSetUp?: () => void;
@@ -144,10 +148,12 @@ export function ProviderCard({
               introduced before they are relied on. */}
           <ConfidenceBadge
             confidence={
-              headline?.confidence ?? {
-                level: "unavailable",
-                reason: snapshot.unavailable ?? "never-reported",
-              }
+              headline
+                ? confidenceForHealth(headline.confidence, health, now)
+                : {
+                    level: "unavailable",
+                    reason: snapshot.unavailable ?? "never-reported",
+                  }
             }
           />
           {level && (
@@ -157,6 +163,8 @@ export function ProviderCard({
           )}
         </span>
       </header>
+
+      <ProviderHealthNotice health={health} />
 
       {snapshot.readError && (
         <p className="type-caption settings__error" role="alert">
@@ -173,7 +181,7 @@ export function ProviderCard({
                 label={formatSpan(window.windowMinutes * 60, strings)}
                 spokenLabel={windowLabel(window, strings)}
                 percent={window.usedPercent}
-                confidence={window.confidence}
+                confidence={confidenceForHealth(window.confidence, health, now)}
                 meta={resetMeta(window, now, strings)}
               />
             ))}

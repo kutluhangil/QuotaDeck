@@ -13,15 +13,18 @@
 //! also load-bearing for a second reason: an indicator with no menu is frequently not drawn at
 //! all.
 
+use std::sync::{Mutex, OnceLock};
+
 use quotadeck_core::horizon;
+use quotadeck_core::types::ProviderId;
 use tauri::image::Image;
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Manager, Runtime};
 use tauri_plugin_positioner::{Position, WindowExt};
 
-use crate::deck::{Deck, DeckState, Settings, TrayMode};
-use crate::i18n::Language;
+use crate::deck::{Deck, DeckState, HealthState, Settings, TrayMode};
+use crate::i18n::{provider_name, Language};
 use crate::icon;
 
 const TRAY_ID: &str = "deck";
@@ -34,8 +37,81 @@ type TrayResult<T = ()> = std::result::Result<T, String>;
 /// item that cannot open anything.
 const CLICK_TOGGLES_PANEL: bool = cfg!(any(target_os = "macos", target_os = "windows"));
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct TrayMenuModel {
+    items: Vec<TrayMenuItem>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum TrayMenuItem {
+    Open(String),
+    Summary(String),
+    Dashboard(String),
+    Refresh(String),
+    Separator,
+    Quit(String),
+}
+
+static INSTALLED_MENU_MODEL: OnceLock<Mutex<Option<TrayMenuModel>>> = OnceLock::new();
+
+fn menu_model(
+    state: &DeckState,
+    settings: &Settings,
+    language: Language,
+) -> quotadeck_core::error::Result<TrayMenuModel> {
+    let mut items = vec![TrayMenuItem::Open(language.tray_open().into())];
+    for provider in settings.ordered_provider_ids(&quotadeck_providers::ids())? {
+        if !settings.is_provider_enabled(provider) {
+            continue;
+        }
+        items.push(TrayMenuItem::Summary(summary_label(
+            state, provider, language,
+        )));
+    }
+    items.push(TrayMenuItem::Dashboard(language.tray_dashboard().into()));
+    items.push(TrayMenuItem::Refresh(language.tray_refresh().into()));
+    items.push(TrayMenuItem::Separator);
+    items.push(TrayMenuItem::Quit(language.tray_quit().into()));
+    Ok(TrayMenuModel { items })
+}
+
+fn summary_label(state: &DeckState, provider: ProviderId, language: Language) -> String {
+    let name = provider_name(provider);
+    let percent = state
+        .providers
+        .iter()
+        .find(|snapshot| snapshot.id == provider)
+        .and_then(|snapshot| {
+            snapshot
+                .windows
+                .iter()
+                .filter_map(|window| window.used_percent)
+                .max_by(f32::total_cmp)
+        });
+    let health = state
+        .health
+        .iter()
+        .find(|health| health.provider == provider);
+    match health.map(|health| health.state) {
+        Some(HealthState::Healthy) => percent
+            .map(|value| format!("{name} — {:.0}%", value))
+            .unwrap_or_else(|| format!("{name} — {}", language.tray_unavailable())),
+        Some(HealthState::Stale) => percent
+            .map(|value| format!("{name} — {} ({:.0}%)", language.tray_stale(), value))
+            .unwrap_or_else(|| format!("{name} — {}", language.tray_stale())),
+        Some(HealthState::Error) => format!("{name} — {}", language.tray_error()),
+        Some(HealthState::Unavailable) | None => {
+            format!("{name} — {}", language.tray_unavailable())
+        }
+        Some(HealthState::Disabled) => format!("{name} — {}", language.tray_unavailable()),
+    }
+}
+
 pub fn install<R: Runtime>(app: &AppHandle<R>, deck: Deck) -> tauri::Result<()> {
-    let menu = build_menu(app, deck.settings().locale.language())?;
+    let settings = deck.settings();
+    let model = menu_model(&deck.state(), &settings, settings.locale.language())
+        .map_err(|error| tauri::Error::Io(std::io::Error::other(error.to_string())))?;
+    let menu = build_menu(app, &model)?;
 
     let handler_deck = deck.clone();
     TrayIconBuilder::with_id(TRAY_ID)
@@ -52,6 +128,20 @@ pub fn install<R: Runtime>(app: &AppHandle<R>, deck: Deck) -> tauri::Result<()> 
                 }
             }
             "quit" => app.exit(0),
+            "dashboard" => {
+                if let Err(error) = show_dashboard(app) {
+                    eprintln!("quotadeck: tray menu could not open the dashboard: {error}");
+                }
+            }
+            "refresh" => {
+                if let Some(deck) = app.try_state::<Deck>() {
+                    if let Err(error) = deck.queue_refresh() {
+                        eprintln!("quotadeck: tray refresh could not be queued: {error}");
+                    }
+                } else {
+                    eprintln!("quotadeck: tray refresh could not find managed deck state");
+                }
+            }
             _ => {}
         })
         .on_tray_icon_event(move |tray, event| {
@@ -71,13 +161,88 @@ pub fn install<R: Runtime>(app: &AppHandle<R>, deck: Deck) -> tauri::Result<()> 
         })
         .build(app)?;
 
+    set_installed_menu_model(model);
+
     Ok(())
 }
 
-fn build_menu<R: Runtime>(app: &AppHandle<R>, language: Language) -> tauri::Result<Menu<R>> {
-    let open = MenuItem::with_id(app, "open", language.tray_open(), true, None::<&str>)?;
-    let quit = MenuItem::with_id(app, "quit", language.tray_quit(), true, None::<&str>)?;
-    Menu::with_items(app, &[&open, &PredefinedMenuItem::separator(app)?, &quit])
+fn show_dashboard<R: Runtime>(app: &AppHandle<R>) -> TrayResult {
+    if let Some(window) = app.get_webview_window(crate::DASHBOARD_WINDOW) {
+        window
+            .show()
+            .map_err(|error| format!("could not show the dashboard: {error}"))?;
+        return window
+            .set_focus()
+            .map_err(|error| format!("could not focus the dashboard: {error}"));
+    }
+    let window = tauri::WebviewWindowBuilder::new(
+        app,
+        crate::DASHBOARD_WINDOW,
+        tauri::WebviewUrl::App("index.html".into()),
+    )
+    .title("Quota Deck")
+    .inner_size(960.0, 640.0)
+    .min_inner_size(720.0, 480.0)
+    .center()
+    .resizable(true)
+    .build()
+    .map_err(|error| format!("could not create the dashboard: {error}"))?;
+    window
+        .set_focus()
+        .map_err(|error| format!("could not focus the dashboard: {error}"))
+}
+
+fn build_menu<R: Runtime>(app: &AppHandle<R>, model: &TrayMenuModel) -> tauri::Result<Menu<R>> {
+    let menu = Menu::new(app)?;
+    for (index, item) in model.items.iter().enumerate() {
+        match item {
+            TrayMenuItem::Open(label) => {
+                menu.append(&MenuItem::with_id(app, "open", label, true, None::<&str>)?)?
+            }
+            TrayMenuItem::Summary(label) => menu.append(&MenuItem::with_id(
+                app,
+                format!("summary-{index}"),
+                label,
+                false,
+                None::<&str>,
+            )?)?,
+            TrayMenuItem::Dashboard(label) => menu.append(&MenuItem::with_id(
+                app,
+                "dashboard",
+                label,
+                true,
+                None::<&str>,
+            )?)?,
+            TrayMenuItem::Refresh(label) => menu.append(&MenuItem::with_id(
+                app,
+                "refresh",
+                label,
+                true,
+                None::<&str>,
+            )?)?,
+            TrayMenuItem::Separator => menu.append(&PredefinedMenuItem::separator(app)?)?,
+            TrayMenuItem::Quit(label) => {
+                menu.append(&MenuItem::with_id(app, "quit", label, true, None::<&str>)?)?
+            }
+        }
+    }
+    Ok(menu)
+}
+
+fn set_installed_menu_model(model: TrayMenuModel) {
+    let cache = INSTALLED_MENU_MODEL.get_or_init(|| Mutex::new(None));
+    match cache.lock() {
+        Ok(mut current) => *current = Some(model),
+        Err(poisoned) => *poisoned.into_inner() = Some(model),
+    }
+}
+
+fn menu_model_changed(model: &TrayMenuModel) -> bool {
+    let cache = INSTALLED_MENU_MODEL.get_or_init(|| Mutex::new(None));
+    match cache.lock() {
+        Ok(current) => current.as_ref() != Some(model),
+        Err(poisoned) => poisoned.into_inner().as_ref() != Some(model),
+    }
 }
 
 /// Rebuild the menu in the language the user just picked.
@@ -85,14 +250,12 @@ fn build_menu<R: Runtime>(app: &AppHandle<R>, language: Language) -> tauri::Resu
 /// With the accessory activation policy there is no dock icon and no app menu, so this menu is
 /// the only way to quit. Leaving it in a language the user has just said they cannot read
 /// would strand them in the app.
-pub fn relanguage<R: Runtime>(app: &AppHandle<R>, language: Language) -> TrayResult {
-    let Some(tray) = app.tray_by_id(TRAY_ID) else {
-        return Err(format!("tray item {TRAY_ID:?} is not installed"));
-    };
-    let menu = build_menu(app, language)
-        .map_err(|error| format!("could not rebuild the tray menu: {error}"))?;
-    tray.set_menu(Some(menu))
-        .map_err(|error| format!("could not replace the tray menu: {error}"))
+pub fn relanguage<R: Runtime>(
+    app: &AppHandle<R>,
+    state: &DeckState,
+    settings: Settings,
+) -> TrayResult {
+    refresh(app, state, settings)
 }
 
 /// Redraw the item for the current reading and tray mode.
@@ -110,7 +273,19 @@ pub fn refresh<R: Runtime>(
         TrayMode::Compact => set_compact(&tray, peak),
         TrayMode::Glyph => set_icon(&tray, &icon::bar(peak)),
         TrayMode::Strip => set_icon(&tray, &strip_for(state)),
+    }?;
+
+    let model = menu_model(state, &settings, settings.locale.language())
+        .map_err(|error| format!("could not create the tray menu model: {error}"))?;
+    if !menu_model_changed(&model) {
+        return Ok(());
     }
+    let menu = build_menu(app, &model)
+        .map_err(|error| format!("could not rebuild the tray menu: {error}"))?;
+    tray.set_menu(Some(menu))
+        .map_err(|error| format!("could not replace the tray menu: {error}"))?;
+    set_installed_menu_model(model);
+    Ok(())
 }
 
 /// The reading as text rather than as a shape.
@@ -209,9 +384,6 @@ fn place_and_show<R: Runtime>(app: &AppHandle<R>) -> TrayResult {
     let Some(window) = app.get_webview_window(PANEL) else {
         return Err(format!("webview window {PANEL:?} does not exist"));
     };
-    // Under the tray item, not wherever the window happened to be last. Linux reports no
-    // geometry for the item, so there is nothing to be under and the panel goes to the corner
-    // the indicator area occupies on the desktops that ship one.
     window
         .move_window(if CLICK_TOGGLES_PANEL {
             Position::TrayBottomCenter
@@ -222,8 +394,6 @@ fn place_and_show<R: Runtime>(app: &AppHandle<R>) -> TrayResult {
     window
         .show()
         .map_err(|error| format!("could not show the panel: {error}"))?;
-    // Focus is what makes the click-away dismissal work: without it the window never
-    // receives the blur that hides it.
     if let Err(error) = window.set_focus() {
         return match window.hide() {
             Ok(()) => Err(format!("could not focus the panel: {error}")),
@@ -233,4 +403,101 @@ fn place_and_show<R: Runtime>(app: &AppHandle<R>) -> TrayResult {
         };
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::deck::{HealthState, ProviderHealth};
+    use chrono::Utc;
+    use quotadeck_core::types::{
+        Confidence, CostRange, ProviderId, ProviderSnapshot, QuotaWindow, TokenRollup, WindowKind,
+    };
+
+    fn snapshot(id: ProviderId, percent: f32) -> ProviderSnapshot {
+        ProviderSnapshot {
+            id,
+            installed: true,
+            windows: vec![QuotaWindow {
+                limit_id: id.key().into(),
+                kind: WindowKind::Weekly,
+                window_minutes: 10_080,
+                used_percent: Some(percent),
+                resets_at: None,
+                confidence: Confidence::Measured {
+                    reported_at: Utc::now(),
+                },
+            }],
+            today: TokenRollup::default(),
+            today_cost: CostRange::default(),
+            series: Vec::new(),
+            pace: Vec::new(),
+            last_activity: None,
+            unavailable: None,
+            read_error: None,
+            burst: None,
+        }
+    }
+
+    #[test]
+    fn menu_model_follows_enabled_provider_order_and_health_wording() {
+        let mut settings = Settings {
+            provider_order: vec!["codex".into(), "claude-code".into(), "copilot-cli".into()],
+            ..Settings::default()
+        };
+        settings.disabled_providers.insert("copilot-cli".into());
+        let mut state = DeckState::empty();
+        state.providers = vec![
+            snapshot(ProviderId::ClaudeCode, 81.0),
+            snapshot(ProviderId::Codex, 72.0),
+        ];
+        let mut codex = ProviderHealth::new(ProviderId::Codex);
+        codex.state = HealthState::Stale;
+        let mut claude = ProviderHealth::new(ProviderId::ClaudeCode);
+        claude.state = HealthState::Healthy;
+        state.health = vec![claude, codex];
+
+        let model = menu_model(&state, &settings, Language::En).expect("menu model");
+        assert_eq!(model.items[0], TrayMenuItem::Open("Open Quota Deck".into()));
+        assert!(
+            matches!(&model.items[1], TrayMenuItem::Summary(label) if label.contains("Codex") && label.contains("Stale") && label.contains("72%"))
+        );
+        assert!(
+            matches!(&model.items[2], TrayMenuItem::Summary(label) if label.contains("Claude Code") && label.contains("81%"))
+        );
+        assert!(!model
+            .items
+            .iter()
+            .any(|item| matches!(item, TrayMenuItem::Summary(label) if label.contains("Copilot"))));
+        assert_eq!(model.items[3], TrayMenuItem::Dashboard("Dashboard".into()));
+        assert_eq!(model.items[4], TrayMenuItem::Refresh("Refresh".into()));
+        assert_eq!(model.items.last(), Some(&TrayMenuItem::Quit("Quit".into())));
+    }
+
+    #[test]
+    fn menu_model_localises_error_and_unavailable_states() {
+        let settings = Settings::default();
+        let mut state = DeckState::empty();
+        state.health = vec![
+            ProviderHealth {
+                state: HealthState::Error,
+                ..ProviderHealth::new(ProviderId::ClaudeCode)
+            },
+            ProviderHealth {
+                state: HealthState::Unavailable,
+                ..ProviderHealth::new(ProviderId::Codex)
+            },
+        ];
+        let model = menu_model(&state, &settings, Language::Tr).expect("menu model");
+        let labels: Vec<&str> = model
+            .items
+            .iter()
+            .filter_map(|item| match item {
+                TrayMenuItem::Summary(label) => Some(label.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert!(labels.iter().any(|label| label.contains("Hata")));
+        assert!(labels.iter().any(|label| label.contains("Kullanılamıyor")));
+    }
 }

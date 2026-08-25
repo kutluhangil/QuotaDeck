@@ -189,8 +189,8 @@
 - `HealthState` is `healthy | stale | error | disabled | unavailable`.
 - `DeckState` carries `health` and `refreshing`; old successful snapshots remain visible on a later read failure and are explicitly marked stale/error.
 
-- [ ] RED: test success→failure preservation, failure→success reset, disabled/unavailable separation, and global `updatedAt` versus per-provider success.
-- [ ] GREEN: maintain health in the read-loop owner and serialize it with the deck.
+- [x] RED: test success→failure preservation, failure→success reset, disabled/unavailable separation, and global `updatedAt` versus per-provider success.
+- [x] GREEN: maintain health in the read-loop owner and serialize it with the deck.
 
 ### Task 3.2: Add a single-flight refresh command
 
@@ -206,8 +206,8 @@
 - Tauri command `refresh_now() -> Result<RefreshReceipt, String>` acknowledges queueing.
 - Concurrent requests coalesce into one pass; the next state event completes the UI action.
 
-- [ ] RED: test queue wake-up, coalescing, disabled providers, error propagation, and no concurrent engine access.
-- [ ] GREEN: add Refresh controls to panel and dashboard with `aria-busy` and visible failure text.
+- [x] RED: test queue wake-up, coalescing, disabled providers, error propagation, and no concurrent engine access.
+- [x] GREEN: add Refresh controls to panel and dashboard with `aria-busy` and visible failure text.
 
 ### Task 3.3: Add a local-only tray overview
 
@@ -215,9 +215,9 @@
 - Modify: `app/src/tray.rs`
 - Modify: `app/src/i18n.rs`
 
-- [ ] RED: test a pure menu model for provider order, measured percentage, stale/error wording, disabled omission, and locale.
-- [ ] GREEN: keep Open first for Linux, then disabled provider summary rows, Dashboard, Refresh, separator, and Quit.
-- [ ] Rebuild/replace the menu only when its model changes; surface replacement/rollback errors.
+- [x] RED: test a pure menu model for provider order, measured percentage, stale/error wording, disabled omission, and locale.
+- [x] GREEN: keep Open first for Linux, then disabled provider summary rows, Dashboard, Refresh, separator, and Quit.
+- [x] Rebuild/replace the menu only when its model changes; surface replacement/rollback errors.
 
 ### Task 3.4: Add pace-exhaustion notifications
 
@@ -225,8 +225,8 @@
 - Modify: `app/src/alerts.rs`
 - Modify: `app/src/i18n.rs`
 
-- [ ] RED: test first-pass silence, healthy→at-risk transition, jitter suppression, re-arm after healthy, mute behavior, reset behavior, and threshold/pace same-tick coalescing.
-- [ ] GREEN: announce projections as projections with local exhaustion time; never represent them as measured limits.
+- [x] RED: test first-pass silence, healthy→at-risk transition, jitter suppression, re-arm after healthy, mute behavior, reset behavior, and threshold/pace same-tick coalescing.
+- [x] GREEN: announce projections as projections with local exhaustion time; never represent them as measured limits.
 
 ### Task 3.5: Verify, commit, and push
 

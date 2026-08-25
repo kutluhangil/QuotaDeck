@@ -92,6 +92,41 @@ impl Language {
         }
     }
 
+    pub fn tray_dashboard(self) -> &'static str {
+        match self {
+            Language::En => "Dashboard",
+            Language::Tr => "Pano",
+        }
+    }
+
+    pub fn tray_refresh(self) -> &'static str {
+        match self {
+            Language::En => "Refresh",
+            Language::Tr => "Yenile",
+        }
+    }
+
+    pub fn tray_stale(self) -> &'static str {
+        match self {
+            Language::En => "Stale",
+            Language::Tr => "Eski veri",
+        }
+    }
+
+    pub fn tray_error(self) -> &'static str {
+        match self {
+            Language::En => "Error",
+            Language::Tr => "Hata",
+        }
+    }
+
+    pub fn tray_unavailable(self) -> &'static str {
+        match self {
+            Language::En => "Unavailable",
+            Language::Tr => "Kullanılamıyor",
+        }
+    }
+
     /// The sentence inside `NSOpenPanel`.
     ///
     /// Written in Rust because the panel that asks belongs to AppKit, not to the webview. It
@@ -144,6 +179,17 @@ impl Language {
         match self {
             Language::En => format!("The {window} limit is {percent:.0}% used."),
             Language::Tr => format!("{window} limiti %{percent:.0} doldu."),
+        }
+    }
+
+    pub fn pace_body(self, window: &str, clock: &str) -> String {
+        match self {
+            Language::En => format!(
+                "At the current pace, the {window} limit is projected to be exhausted at {clock}."
+            ),
+            Language::Tr => {
+                format!("Mevcut hızla {window} limitinin {clock} itibarıyla tükenmesi öngörülüyor.")
+            }
         }
     }
 

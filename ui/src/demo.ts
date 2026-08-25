@@ -184,8 +184,20 @@ export function demoDeck(): DeckState {
 
   return {
     providers: [claude, codex, copilot],
+    health: ["claude-code", "codex", "copilot-cli"].map((provider) => ({
+      provider: provider as ProviderSnapshot["id"],
+      state: "healthy" as const,
+      lastAttemptAt: iso(0),
+      lastSuccessAt: iso(0),
+      consecutiveFailures: 0,
+      lastError: null,
+      nextRetryAt: null,
+    })),
     updatedAt: iso(0),
     scanning: false,
+    refreshing: false,
+    refreshGeneration: 0,
+    refreshError: null,
   };
 }
 

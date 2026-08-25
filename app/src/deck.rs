@@ -12,7 +12,7 @@ use quotadeck_core::error::{Error, Result};
 use quotadeck_core::history::HistoryPoint;
 use quotadeck_core::paths;
 use quotadeck_core::provider::ProviderConfig;
-use quotadeck_core::types::{ProviderId, ProviderSnapshot, QuotaWindow};
+use quotadeck_core::types::{ProviderId, ProviderSnapshot, QuotaWindow, UnavailableReason};
 use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::i18n::Locale;
@@ -23,17 +23,25 @@ use crate::sandbox::{self, AccessState, ScopedAccess};
 #[serde(rename_all = "camelCase")]
 pub struct DeckState {
     pub providers: Vec<ProviderSnapshot>,
+    pub health: Vec<ProviderHealth>,
     pub updated_at: DateTime<Utc>,
     /// True until the first pass over every file has finished.
     pub scanning: bool,
+    pub refreshing: bool,
+    pub refresh_generation: u64,
+    pub refresh_error: Option<String>,
 }
 
 impl DeckState {
-    fn empty() -> Self {
+    pub(crate) fn empty() -> Self {
         DeckState {
             providers: Vec::new(),
+            health: Vec::new(),
             updated_at: DateTime::UNIX_EPOCH,
             scanning: true,
+            refreshing: false,
+            refresh_generation: 0,
+            refresh_error: None,
         }
     }
 
@@ -65,6 +73,93 @@ impl DeckState {
                 },
             )
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum HealthState {
+    Healthy,
+    Stale,
+    Error,
+    Disabled,
+    Unavailable,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderHealth {
+    pub provider: ProviderId,
+    pub state: HealthState,
+    pub last_attempt_at: Option<DateTime<Utc>>,
+    pub last_success_at: Option<DateTime<Utc>>,
+    pub consecutive_failures: u32,
+    pub last_error: Option<String>,
+    pub next_retry_at: Option<DateTime<Utc>>,
+}
+
+impl ProviderHealth {
+    pub fn new(provider: ProviderId) -> Self {
+        ProviderHealth {
+            provider,
+            state: HealthState::Unavailable,
+            last_attempt_at: None,
+            last_success_at: None,
+            consecutive_failures: 0,
+            last_error: None,
+            next_retry_at: None,
+        }
+    }
+
+    pub fn retry_due(&self, now: DateTime<Utc>, manual: bool) -> bool {
+        manual || self.next_retry_at.is_none_or(|retry| retry <= now)
+    }
+
+    pub fn record_success(&mut self, at: DateTime<Utc>) {
+        self.state = HealthState::Healthy;
+        self.last_attempt_at = Some(at);
+        self.last_success_at = Some(at);
+        self.consecutive_failures = 0;
+        self.last_error = None;
+        self.next_retry_at = None;
+    }
+
+    pub fn record_failure(&mut self, at: DateTime<Utc>, error: String, had_success: bool) {
+        self.state = if had_success {
+            HealthState::Stale
+        } else {
+            HealthState::Error
+        };
+        self.last_attempt_at = Some(at);
+        self.consecutive_failures = self.consecutive_failures.saturating_add(1);
+        self.last_error = Some(error);
+        let shift = self.consecutive_failures.saturating_sub(1).min(6);
+        let seconds = (5_i64 << shift).min(300);
+        self.next_retry_at = Some(at + chrono::Duration::seconds(seconds));
+    }
+
+    pub fn record_disabled(&mut self) {
+        self.state = HealthState::Disabled;
+        self.consecutive_failures = 0;
+        self.last_error = None;
+        self.next_retry_at = None;
+    }
+
+    pub fn record_unavailable(&mut self, at: DateTime<Utc>, error: String) {
+        self.state = HealthState::Unavailable;
+        self.last_attempt_at = Some(at);
+        self.consecutive_failures = 0;
+        self.last_error = Some(error);
+        self.next_retry_at = None;
+    }
+}
+
+pub(crate) fn provider_snapshot_after_failure(
+    previous: Option<&ProviderSnapshot>,
+    provider: ProviderId,
+) -> ProviderSnapshot {
+    previous
+        .cloned()
+        .unwrap_or_else(|| ProviderSnapshot::unavailable(provider, UnavailableReason::ReadError))
 }
 
 /// One provider's retained usage, folded to the hour.
@@ -367,6 +462,33 @@ pub struct ProviderPolicyOutcome {
     pub warning: Option<String>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RefreshReceipt {
+    pub request_id: u64,
+}
+
+#[cfg(test)]
+pub(crate) fn refresh_request_completed(completed_generation: u64, request_id: u64) -> bool {
+    completed_generation >= request_id
+}
+
+fn publish_refresh_generation(
+    requested: &AtomicU64,
+    request_id: u64,
+    wake: impl FnOnce() -> Result<()>,
+) -> Result<()> {
+    let previous = requested.swap(request_id, Ordering::Release);
+    if let Err(error) = wake() {
+        // The caller serializes request publication with the refresh-control lock. A failed
+        // send means there is no receiver that could have consumed this wake, so restoring the
+        // last successfully queued generation cannot race a live read loop or a newer request.
+        requested.store(previous, Ordering::Release);
+        return Err(error);
+    }
+    Ok(())
+}
+
 /// Handle shared by the read loop, the tray and the command handlers.
 #[derive(Clone)]
 pub struct Deck {
@@ -381,6 +503,9 @@ pub struct Deck {
     provider_policy_revision: Arc<AtomicU64>,
     provider_policy_commit: Arc<Mutex<()>>,
     provider_policy_sync: Arc<Mutex<Option<mpsc::Sender<ProviderPolicySyncRequest>>>>,
+    refresh_control: Arc<Mutex<Option<mpsc::Sender<()>>>>,
+    next_refresh_request: Arc<AtomicU64>,
+    requested_refresh_generation: Arc<AtomicU64>,
 }
 
 impl Deck {
@@ -395,7 +520,40 @@ impl Deck {
             provider_policy_revision: Arc::new(AtomicU64::new(0)),
             provider_policy_commit: Arc::new(Mutex::new(())),
             provider_policy_sync: Arc::new(Mutex::new(None)),
+            refresh_control: Arc::new(Mutex::new(None)),
+            next_refresh_request: Arc::new(AtomicU64::new(0)),
+            requested_refresh_generation: Arc::new(AtomicU64::new(0)),
         })
+    }
+
+    pub(crate) fn register_refresh_control(&self, control: mpsc::Sender<()>) {
+        match self.refresh_control.lock() {
+            Ok(mut slot) => *slot = Some(control),
+            Err(poisoned) => *poisoned.into_inner() = Some(control),
+        }
+    }
+
+    pub fn queue_refresh(&self) -> Result<RefreshReceipt> {
+        let control = match self.refresh_control.lock() {
+            Ok(slot) => slot,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        let control = control
+            .as_ref()
+            .ok_or_else(|| Error::Invalid("read loop refresh control is not registered".into()))?;
+        let request_id = self.next_refresh_request.fetch_add(1, Ordering::AcqRel) + 1;
+        publish_refresh_generation(&self.requested_refresh_generation, request_id, || {
+            control.send(()).map_err(|error| {
+                Error::Invalid(format!(
+                    "read loop refresh request {request_id} could not be queued: {error}"
+                ))
+            })
+        })?;
+        Ok(RefreshReceipt { request_id })
+    }
+
+    pub(crate) fn requested_refresh_generation(&self) -> u64 {
+        self.requested_refresh_generation.load(Ordering::Acquire)
     }
 
     /// Take up the grant made on an earlier launch. Called once, before the first read pass.
@@ -740,7 +898,9 @@ impl Deck {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use quotadeck_core::types::{Confidence, ProviderId, QuotaWindow, TokenRollup, WindowKind};
+    use quotadeck_core::types::{
+        Confidence, ProviderId, QuotaWindow, TokenRollup, UnavailableReason, WindowKind,
+    };
 
     fn scratch(name: &str) -> PathBuf {
         let unique = std::time::SystemTime::now()
@@ -788,6 +948,10 @@ mod tests {
             providers: vec![snapshot(&[12.0, 80.0]), snapshot(&[95.0])],
             updated_at: Utc::now(),
             scanning: false,
+            health: Vec::new(),
+            refreshing: false,
+            refresh_generation: 0,
+            refresh_error: None,
         };
         assert_eq!(state.peak_percent(), Some(95.0));
     }
@@ -800,6 +964,10 @@ mod tests {
             providers: vec![snapshot(&[12.0, 80.0]), busy],
             updated_at: Utc::now(),
             scanning: false,
+            health: Vec::new(),
+            refreshing: false,
+            refresh_generation: 0,
+            refresh_error: None,
         };
 
         let (provider, window) = state.headline().expect("a headline reading");
@@ -824,6 +992,10 @@ mod tests {
             providers: vec![unreported, snapshot(&[3.0])],
             updated_at: Utc::now(),
             scanning: false,
+            health: Vec::new(),
+            refreshing: false,
+            refresh_generation: 0,
+            refresh_error: None,
         };
 
         assert_eq!(state.peak_percent(), Some(3.0));
@@ -835,6 +1007,10 @@ mod tests {
             providers: vec![snapshot(&[])],
             updated_at: Utc::now(),
             scanning: false,
+            health: Vec::new(),
+            refreshing: false,
+            refresh_generation: 0,
+            refresh_error: None,
         };
         assert_eq!(state.peak_percent(), None);
     }
@@ -946,6 +1122,10 @@ mod tests {
             providers: vec![claude, codex],
             updated_at: Utc::now(),
             scanning: false,
+            health: Vec::new(),
+            refreshing: false,
+            refresh_generation: 0,
+            refresh_error: None,
         });
         deck.set_history(vec![
             ProviderHistory {
@@ -1139,6 +1319,164 @@ mod tests {
                 .is_some_and(|warning| warning.contains("could not be delivered")),
             "the warning must explain why watcher reconciliation failed"
         );
+    }
+
+    #[test]
+    fn provider_health_preserves_success_then_backs_off_and_resets() {
+        let first = DateTime::from_timestamp(1_785_715_200, 0).expect("valid instant");
+        let failed = first + chrono::Duration::seconds(30);
+        let recovered = failed + chrono::Duration::seconds(20);
+        let mut health = ProviderHealth::new(ProviderId::Codex);
+
+        health.record_success(first);
+        health.record_failure(failed, "could not read codex log".into(), true);
+        assert_eq!(health.state, HealthState::Stale);
+        assert_eq!(health.last_success_at, Some(first));
+        assert_eq!(health.consecutive_failures, 1);
+        assert_eq!(
+            health.next_retry_at,
+            Some(failed + chrono::Duration::seconds(5))
+        );
+        assert!(!health.retry_due(failed + chrono::Duration::seconds(4), false));
+        assert!(
+            health.retry_due(failed, true),
+            "manual refresh bypasses backoff"
+        );
+
+        health.record_failure(
+            failed + chrono::Duration::seconds(5),
+            "still unreadable".into(),
+            true,
+        );
+        assert_eq!(
+            health.next_retry_at,
+            Some(failed + chrono::Duration::seconds(15)),
+            "the second failure backs off for ten seconds"
+        );
+
+        health.record_success(recovered);
+        assert_eq!(health.state, HealthState::Healthy);
+        assert_eq!(health.last_attempt_at, Some(recovered));
+        assert_eq!(health.last_success_at, Some(recovered));
+        assert_eq!(health.consecutive_failures, 0);
+        assert!(health.last_error.is_none());
+        assert!(health.next_retry_at.is_none());
+    }
+
+    #[test]
+    fn provider_health_distinguishes_disabled_unavailable_and_first_error() {
+        let at = DateTime::from_timestamp(1_785_715_200, 0).expect("valid instant");
+        let mut disabled = ProviderHealth::new(ProviderId::ClaudeCode);
+        disabled.record_disabled();
+        assert_eq!(disabled.state, HealthState::Disabled);
+        assert!(disabled.last_attempt_at.is_none());
+
+        let mut unavailable = ProviderHealth::new(ProviderId::Codex);
+        unavailable.record_unavailable(at, "provider root is not readable".into());
+        assert_eq!(unavailable.state, HealthState::Unavailable);
+        assert_eq!(unavailable.last_attempt_at, Some(at));
+
+        let mut error = ProviderHealth::new(ProviderId::CopilotCli);
+        error.record_failure(at, "provider parser failed".into(), false);
+        assert_eq!(error.state, HealthState::Error);
+    }
+
+    #[test]
+    fn a_failed_provider_attempt_keeps_the_last_successful_snapshot() {
+        let previous = snapshot(&[72.0]);
+        let preserved = provider_snapshot_after_failure(Some(&previous), ProviderId::Codex);
+        assert_eq!(preserved.id, previous.id);
+        assert_eq!(preserved.windows.len(), previous.windows.len());
+        assert_eq!(preserved.windows[0].used_percent, Some(72.0));
+
+        let first_failure = provider_snapshot_after_failure(None, ProviderId::ClaudeCode);
+        assert_eq!(first_failure.id, ProviderId::ClaudeCode);
+        assert_eq!(
+            first_failure.unavailable,
+            Some(UnavailableReason::ReadError)
+        );
+    }
+
+    #[test]
+    fn global_update_time_can_advance_without_changing_provider_success_time() {
+        let success = DateTime::from_timestamp(1_785_715_200, 0).expect("valid instant");
+        let attempted = success + chrono::Duration::minutes(1);
+        let mut health = ProviderHealth::new(ProviderId::Codex);
+        health.record_success(success);
+        health.record_failure(attempted, "temporary failure".into(), true);
+        let state = DeckState {
+            providers: Vec::new(),
+            health: vec![health],
+            updated_at: attempted,
+            scanning: false,
+            refreshing: false,
+            refresh_generation: 0,
+            refresh_error: None,
+        };
+
+        assert_eq!(state.updated_at, attempted);
+        assert_eq!(state.health[0].last_success_at, Some(success));
+    }
+
+    #[test]
+    fn refresh_requests_are_monotonic_and_coalesce_to_the_latest_generation() {
+        let deck = Deck::new().expect("create deck");
+        let (wake, woken) = mpsc::channel();
+        deck.register_refresh_control(wake);
+
+        let first = deck.queue_refresh().expect("queue first refresh");
+        let second = deck.queue_refresh().expect("queue second refresh");
+
+        assert_eq!(first.request_id + 1, second.request_id);
+        assert_eq!(deck.requested_refresh_generation(), second.request_id);
+        assert!(woken.recv().is_ok());
+        assert!(woken.recv().is_ok());
+    }
+
+    #[test]
+    fn refresh_wake_observes_the_published_receipt_generation() {
+        let requested = Arc::new(AtomicU64::new(0));
+        let observed = requested.clone();
+        let (wake, woken) = mpsc::sync_channel(0);
+        let consumer = std::thread::spawn(move || {
+            woken.recv().expect("receive wake");
+            observed.load(Ordering::Acquire)
+        });
+
+        publish_refresh_generation(&requested, 7, || {
+            wake.send(())
+                .map_err(|error| Error::Invalid(error.to_string()))
+        })
+        .expect("publish refresh generation");
+
+        assert_eq!(consumer.join().expect("consumer completes"), 7);
+    }
+
+    #[test]
+    fn a_dropped_refresh_control_channel_is_an_actionable_error() {
+        let deck = Deck::new().expect("create deck");
+        let (wake, woken) = mpsc::channel();
+        deck.register_refresh_control(wake);
+        drop(woken);
+
+        let error = deck
+            .queue_refresh()
+            .expect_err("queue must fail")
+            .to_string();
+        assert!(error.contains("read loop"), "{error}");
+        assert!(error.contains("refresh"), "{error}");
+        assert_eq!(
+            deck.requested_refresh_generation(),
+            0,
+            "a failed wake must not leave a request pending for a future loop"
+        );
+    }
+
+    #[test]
+    fn a_refresh_generation_completes_every_older_request() {
+        assert!(refresh_request_completed(7, 7));
+        assert!(refresh_request_completed(8, 7));
+        assert!(!refresh_request_completed(6, 7));
     }
 
     #[test]

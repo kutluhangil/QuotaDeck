@@ -32,6 +32,7 @@ const planHints: Partial<Record<ProviderId, string>> = {
 export const tr: Catalogue = {
   appName: "Quota Deck",
   shellFailed: (reason) => `Uygulama bir işlemi tamamlayamadı: ${reason}`,
+  refreshFailed: (reason) => `Kullanım yenilenemedi: ${reason}`,
 
   header: {
     settings: "Ayarlar",
@@ -42,6 +43,7 @@ export const tr: Catalogue = {
     reporting: (reporting, total) =>
       total === 0 ? "" : `${total} araçtan ${reporting} tanesi bildiriyor`,
     dashboard: "Pano",
+    refresh: "Yenile",
     quit: "Çık",
   },
 
@@ -49,6 +51,15 @@ export const tr: Catalogue = {
     ample: "İyi",
     tight: "Dikkat",
     critical: "Kritik",
+  },
+
+  health: {
+    stale: (reason) =>
+      `Son yenileme başarısız oldu. Son başarılı ölçüm gösteriliyor.${reason ? ` ${reason}` : ""}`,
+    error: (reason) =>
+      `Kullanım yenilenemedi.${reason ? ` ${reason}` : " Yenilemeyi tekrar dene."}`,
+    unavailable: (reason) =>
+      `Bu araç şu anda kullanılamıyor.${reason ? ` ${reason}` : ""}`,
   },
 
   filters: {

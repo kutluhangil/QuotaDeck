@@ -6,6 +6,7 @@ import { QuietTools } from "./components/QuietTools";
 import { SettingsView } from "./components/SettingsView";
 import { formatClock } from "./format";
 import { identityHue } from "./identity";
+import { visibleProviderHealth } from "./providerHealth";
 import { reportPanelHeight, useDeck, useDeckState, useLocale, useStrings } from "./store";
 import { awaitingSetup, type ProviderId, type ProviderSnapshot } from "./types";
 
@@ -82,6 +83,9 @@ export function App() {
   const quit = useDeck((state) => state.quit);
   const start = useDeck((state) => state.start);
   const shellError = useDeck((state) => state.shellError);
+  const refreshBusy = useDeck((state) => state.refreshBusy);
+  const refreshError = useDeck((state) => state.refreshError);
+  const refreshNow = useDeck((state) => state.refreshNow);
   const providerCatalogue = useDeck((state) => state.providerCatalogue);
   const [now, setNow] = useState(() => Date.now());
   const bodyRef = useRef<HTMLElement>(null);
@@ -188,6 +192,11 @@ export function App() {
             {strings.shellFailed(shellError)}
           </p>
         )}
+        {refreshError !== null && (
+          <p className="type-caption settings__error" role="alert">
+            {strings.refreshFailed(refreshError)}
+          </p>
+        )}
         {view === "settings" ? (
           <SettingsView now={now} />
         ) : needsAccess ? (
@@ -230,6 +239,7 @@ export function App() {
               <ProviderCard
                 key={snapshot.id}
                 snapshot={snapshot}
+                health={visibleProviderHealth(snapshot, deck.health)}
                 now={now}
                 onSetUp={() => setView("settings")}
               />
@@ -261,6 +271,15 @@ export function App() {
                 .join(" · ")}
         </span>
         <span className="panel__actions" role="toolbar" aria-label={strings.a11y.footerActions}>
+          <button
+            type="button"
+            className="type-caption panel__action"
+            onClick={() => void refreshNow()}
+            disabled={refreshBusy}
+            aria-busy={refreshBusy}
+          >
+            {strings.footer.refresh}
+          </button>
           <button
             type="button"
             className="type-caption panel__action"

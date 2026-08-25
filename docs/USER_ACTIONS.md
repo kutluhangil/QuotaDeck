@@ -19,6 +19,8 @@ Bu dosyada yalnızca kodla, CI ile veya bu macOS oturumunda güvenilir biçimde 
 
 ## 3. Gerçek insan QA’sı
 
+- [ ] macOS oturumunun kilidini açıp `target/release/bundle/macos/Quota Deck.app` uygulamasını çalıştır; tek tray öğesini, Open/panel aç-kapat ve odak-kaybında gizlenme davranışını doğrula.
+- [ ] Tray menüsündeki sağlayıcı özetlerini, Dashboard ve Refresh eylemlerini dene; panel ve dashboard Refresh düğmelerinin bekleme durumunu bitirdiğini ve hata varsa görünür metin ürettiğini doğrula.
 - [ ] VoiceOver ile panel, ayarlar ve dashboard sekme/okuma sırasını dinle; çift okunan yüzdeleri ve kaybolan odağı not et.
 - [ ] İmzalı sandbox build’ini 72 saat açık bırak; başlangıç ve bitiş RSS değerlerini kaydet. Artış %20’yi geçerse raporla.
 - [ ] Mağaza ekran görüntüleri için gerçek tray öğesi ve yerel bildirim görüntülerini onayla.

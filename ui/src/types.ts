@@ -233,9 +233,29 @@ export interface StartupState {
 /** What the backend pushes on every refresh. */
 export interface DeckState {
   providers: ProviderSnapshot[];
+  health: ProviderHealth[];
   /** ISO-8601 timestamp of the scan that produced these snapshots. */
   updatedAt: string;
   scanning: boolean;
+  refreshing: boolean;
+  refreshGeneration: number;
+  refreshError: string | null;
+}
+
+export type HealthState = "healthy" | "stale" | "error" | "disabled" | "unavailable";
+
+export interface ProviderHealth {
+  provider: ProviderId;
+  state: HealthState;
+  lastAttemptAt: string | null;
+  lastSuccessAt: string | null;
+  consecutiveFailures: number;
+  lastError: string | null;
+  nextRetryAt: string | null;
+}
+
+export interface RefreshReceipt {
+  requestId: number;
 }
 
 /**

@@ -36,7 +36,13 @@ import {
   type Range,
 } from "./history";
 import { identityHue } from "./identity";
+import {
+  confidenceForHealth,
+  visibleProviderHealth,
+  type VisibleProviderHealth,
+} from "./providerHealth";
 import type { Catalogue } from "./i18n";
+import { ProviderHealthNotice } from "./components/ProviderHealthNotice";
 import { useDeck, useDeckState, useHistory, useLocale, useStrings } from "./store";
 import { paceFor, sortedWindows, worstWindow, type ProviderSnapshot } from "./types";
 
@@ -99,10 +105,12 @@ function RangePicker({ range, onChange }: { range: Range; onChange: (next: Range
 
 function ProviderPanel({
   snapshot,
+  health,
   range,
   nowSeconds,
 }: {
   snapshot: ProviderSnapshot;
+  health: VisibleProviderHealth | null;
   range: Range;
   nowSeconds: number;
 }) {
@@ -141,7 +149,11 @@ function ProviderPanel({
           {name}
         </h2>
         <span className="card__head-right">
-          {headline && <ConfidenceBadge confidence={headline.confidence} />}
+          {headline && (
+            <ConfidenceBadge
+              confidence={confidenceForHealth(headline.confidence, health, nowSeconds * 1000)}
+            />
+          )}
           {level && (
             <span className="type-caption card__status" data-level={level}>
               {strings.status[level]}
@@ -149,6 +161,8 @@ function ProviderPanel({
           )}
         </span>
       </header>
+
+      <ProviderHealthNotice health={health} />
 
       {snapshot.windows.length > 0 ? (
         /* The same four columns the panel draws. Two surfaces reading the same limits in two
@@ -162,7 +176,7 @@ function ProviderPanel({
                 label={formatSpan(window.windowMinutes * 60, strings)}
                 spokenLabel={windowLabel(window, strings)}
                 percent={window.usedPercent}
-                confidence={window.confidence}
+                confidence={confidenceForHealth(window.confidence, health, nowSeconds * 1000)}
                 meta={seconds === null ? "" : formatDuration(seconds, strings)}
               />
             );
@@ -267,6 +281,9 @@ export function Dashboard() {
   const strings = useStrings();
   const deck = useDeckState();
   const start = useDeck((state) => state.start);
+  const refreshNow = useDeck((state) => state.refreshNow);
+  const refreshBusy = useDeck((state) => state.refreshBusy);
+  const refreshError = useDeck((state) => state.refreshError);
   const [range, setRange] = useState<Range>("week");
   const [nowSeconds, setNowSeconds] = useState(() => Math.floor(Date.now() / 1000));
 
@@ -291,10 +308,26 @@ export function Dashboard() {
           <span className="panel__glyph" aria-hidden="true" />
           {strings.dashboard.title}
         </span>
-        <RangePicker range={range} onChange={setRange} />
+        <div className="board__actions">
+          <button
+            type="button"
+            className="type-caption panel__action"
+            onClick={() => void refreshNow()}
+            disabled={refreshBusy}
+            aria-busy={refreshBusy}
+          >
+            {strings.footer.refresh}
+          </button>
+          <RangePicker range={range} onChange={setRange} />
+        </div>
       </header>
 
       <main className="board__body" aria-label={strings.a11y.tools}>
+        {refreshError !== null && (
+          <p className="type-caption settings__error" role="alert">
+            {strings.refreshFailed(refreshError)}
+          </p>
+        )}
         {reporting.length === 0 ? (
           <EmptyState
             title={strings.empty.noTools.title}
@@ -306,6 +339,7 @@ export function Dashboard() {
               <ProviderPanel
                 key={snapshot.id}
                 snapshot={snapshot}
+                health={visibleProviderHealth(snapshot, deck.health)}
                 range={range}
                 nowSeconds={nowSeconds}
               />

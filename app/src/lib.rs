@@ -14,7 +14,7 @@ pub mod statusline;
 pub mod statusline_helper;
 pub mod tray;
 
-use std::collections::{BTreeSet, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
@@ -33,8 +33,8 @@ use tauri::{AppHandle, Emitter, Manager};
 
 use crate::alerts::{Alert, Alerts};
 use crate::deck::{
-    Deck, DeckState, ProviderHistory, ProviderPolicyOutcome, ProviderPolicySyncRequest, Settings,
-    Theme, TrayMode,
+    provider_snapshot_after_failure, Deck, DeckState, ProviderHealth, ProviderHistory,
+    ProviderPolicyOutcome, ProviderPolicySyncRequest, RefreshReceipt, Settings, Theme, TrayMode,
 };
 use crate::i18n::Locale;
 use crate::sandbox::AccessState;
@@ -128,6 +128,7 @@ pub fn run() -> Result<()> {
         .manage(deck.clone())
         .invoke_handler(tauri::generate_handler![
             current_state,
+            refresh_now,
             current_settings,
             provider_catalogue,
             provider_plans,
@@ -220,6 +221,11 @@ pub fn run() -> Result<()> {
 #[tauri::command]
 fn current_state(deck: tauri::State<'_, Deck>) -> DeckState {
     deck.state()
+}
+
+#[tauri::command]
+fn refresh_now(deck: tauri::State<'_, Deck>) -> std::result::Result<RefreshReceipt, String> {
+    deck.queue_refresh().map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -567,8 +573,10 @@ fn set_locale(
     locale: Locale,
 ) -> std::result::Result<Settings, String> {
     let previous = deck.settings();
-    if let Err(error) = tray::relanguage(&app, locale.language()) {
-        let rollback = tray::relanguage(&app, previous.locale.language());
+    let mut proposed = previous.clone();
+    proposed.locale = locale;
+    if let Err(error) = tray::relanguage(&app, &deck.state(), proposed) {
+        let rollback = tray::relanguage(&app, &deck.state(), previous.clone());
         return Err(match rollback {
             Ok(()) => error,
             Err(rollback) => format!(
@@ -579,7 +587,7 @@ fn set_locale(
     match deck.set_locale(locale) {
         Ok(settings) => Ok(settings),
         Err(error) => {
-            let rollback = tray::relanguage(&app, previous.locale.language());
+            let rollback = tray::relanguage(&app, &deck.state(), previous);
             Err(match rollback {
                 Ok(()) => error.to_string(),
                 Err(rollback) => format!(
@@ -819,6 +827,8 @@ fn spawn_read_loop(app: AppHandle, deck: Deck) -> Result<ReadLoopControl> {
     let mut watched = HashSet::new();
     let (provider_policy_sync, provider_policy_sync_requested) = mpsc::channel();
     deck.register_provider_policy_sync(provider_policy_sync);
+    let (refresh_signal, refresh_requested) = mpsc::channel();
+    deck.register_refresh_control(refresh_signal);
     let mut watcher = match DebouncedWatcher::new(DEFAULT_DEBOUNCE) {
         Ok(mut watcher) => {
             match sync_watches_for_current_policy(&deck, &mut watcher, &mut watched, &engines) {
@@ -859,6 +869,8 @@ fn spawn_read_loop(app: AppHandle, deck: Deck) -> Result<ReadLoopControl> {
                 ReadPass {
                     max_files: Some(FIRST_PASS_FILES),
                     scanning: true,
+                    manual: false,
+                    refresh_generation: 0,
                     cancelled: &read_cancelled,
                 },
             );
@@ -910,6 +922,9 @@ fn spawn_read_loop(app: AppHandle, deck: Deck) -> Result<ReadLoopControl> {
                 ) {
                     refresh_immediately = true;
                 }
+                while refresh_requested.try_recv().is_ok() {
+                    refresh_immediately = true;
+                }
 
                 let changed = if refresh_immediately {
                     // A stale pass committed nothing. Re-run against the new policy without
@@ -948,14 +963,21 @@ fn spawn_read_loop(app: AppHandle, deck: Deck) -> Result<ReadLoopControl> {
                 }
                 let policy_revision = deck.provider_policy_revision();
                 let policy_changed = policy_revision != observed_policy_revision;
+                let requested_generation = deck.requested_refresh_generation();
+                let manual = requested_generation > deck.state().refresh_generation;
                 if !changed
                     && !policy_changed
                     && !refresh_immediately
+                    && !manual
                     && Instant::now() < next_refresh
                 {
                     continue;
                 }
                 refresh_immediately = false;
+
+                if manual {
+                    mark_refreshing(&app, &deck);
+                }
 
                 let attempted_policy_revision = policy_revision;
                 match publish(
@@ -967,6 +989,8 @@ fn spawn_read_loop(app: AppHandle, deck: Deck) -> Result<ReadLoopControl> {
                     ReadPass {
                         max_files: None,
                         scanning: false,
+                        manual,
+                        refresh_generation: requested_generation,
                         cancelled: &read_cancelled,
                     },
                 ) {
@@ -980,6 +1004,9 @@ fn spawn_read_loop(app: AppHandle, deck: Deck) -> Result<ReadLoopControl> {
                     }
                     Err(error) => {
                         observed_policy_revision = attempted_policy_revision;
+                        if manual {
+                            mark_refresh_failed(&app, &deck, requested_generation, &error);
+                        }
                         eprintln!("quotadeck: read pass failed; retrying on the next tick: {error}");
                     }
                 }
@@ -1058,6 +1085,29 @@ fn refresh_interval(deck: &Deck) -> Duration {
         FOREGROUND_TICK
     } else {
         BACKGROUND_TICK
+    }
+}
+
+fn mark_refreshing(app: &AppHandle, deck: &Deck) {
+    let mut state = deck.state();
+    state.refreshing = true;
+    state.refresh_error = None;
+    deck.set_state(state.clone());
+    if let Err(error) = app.emit(STATE_EVENT, &state) {
+        eprintln!("quotadeck: could not emit manual refresh start: {error}");
+    }
+}
+
+fn mark_refresh_failed(app: &AppHandle, deck: &Deck, generation: u64, error: &Error) {
+    let mut state = deck.state();
+    state.refreshing = false;
+    state.refresh_generation = state.refresh_generation.max(generation);
+    state.refresh_error = Some(error.to_string());
+    deck.set_state(state.clone());
+    if let Err(emit_error) = app.emit(STATE_EVENT, &state) {
+        eprintln!(
+            "quotadeck: could not emit manual refresh failure for request {generation}: {emit_error}"
+        );
     }
 }
 
@@ -1151,6 +1201,7 @@ fn apply_provider_policy_sync_requests(
     handled
 }
 
+#[cfg(test)]
 fn ordered_enabled_engine_ids(
     settings: &Settings,
     engines: &[ProviderEngine],
@@ -1169,6 +1220,8 @@ fn ordered_enabled_engine_ids(
 struct ReadPass<'a> {
     max_files: Option<usize>,
     scanning: bool,
+    manual: bool,
+    refresh_generation: u64,
     cancelled: &'a AtomicBool,
 }
 
@@ -1189,14 +1242,43 @@ fn publish(
 ) -> Result<PublishOutcome> {
     let now = Utc::now();
     let (settings, policy_revision) = deck.provider_policy_snapshot();
+    let previous = deck.state();
+    let previous_refresh_generation = previous.refresh_generation;
+    let previous_snapshots: HashMap<ProviderId, ProviderSnapshot> = previous
+        .providers
+        .into_iter()
+        .map(|snapshot| (snapshot.id, snapshot))
+        .collect();
+    let previous_health: HashMap<ProviderId, ProviderHealth> = previous
+        .health
+        .into_iter()
+        .map(|health| (health.provider, health))
+        .collect();
     let mut providers = Vec::with_capacity(engines.len());
+    let mut health = Vec::with_capacity(engines.len());
     let mut history = Vec::with_capacity(engines.len());
     let mut checkpoints = Vec::new();
     let mut diagnostics = Vec::new();
     let history_from = now - chrono::Duration::days(DEFAULT_RETENTION_DAYS);
 
-    let enabled = ordered_enabled_engine_ids(&settings, engines)?;
-    for provider_id in enabled {
+    let ordered = settings.ordered_provider_ids(&quotadeck_providers::ids())?;
+    for provider_id in ordered {
+        let mut provider_health = previous_health
+            .get(&provider_id)
+            .cloned()
+            .unwrap_or_else(|| ProviderHealth::new(provider_id));
+        if !settings.is_provider_enabled(provider_id) {
+            provider_health.record_disabled();
+            health.push(provider_health);
+            continue;
+        }
+        if !provider_health.retry_due(now, pass.manual) {
+            if let Some(snapshot) = previous_snapshots.get(&provider_id) {
+                providers.push(snapshot.clone());
+            }
+            health.push(provider_health);
+            continue;
+        }
         let engine_index = engines
             .iter()
             .position(|engine| engine.provider().id() == provider_id)
@@ -1218,6 +1300,8 @@ fn publish(
                     engine.provider().id(),
                     UnavailableReason::NotInstalled,
                 ));
+                provider_health.record_unavailable(now, "provider is not installed".into());
+                health.push(provider_health);
                 continue;
             }
             RootAccess::Denied => {
@@ -1227,6 +1311,9 @@ fn publish(
                     engine.provider().id(),
                     UnavailableReason::PermissionDenied,
                 ));
+                provider_health
+                    .record_unavailable(now, "provider directory is not readable".into());
+                health.push(provider_health);
                 continue;
             }
         }
@@ -1266,7 +1353,20 @@ fn publish(
                             .unwrap_or("provider parser returned no error detail")
                     ));
                 }
-                providers.push(engine.snapshot(now));
+                let snapshot = engine.snapshot(now);
+                if !snapshot.installed || snapshot.unavailable.is_some() {
+                    provider_health.record_unavailable(
+                        now,
+                        format!(
+                            "provider snapshot is unavailable: {:?}",
+                            snapshot.unavailable
+                        ),
+                    );
+                } else {
+                    provider_health.record_success(now);
+                }
+                providers.push(snapshot);
+                health.push(provider_health);
             }
             Err(e) => {
                 // A provider that cannot be read says so; it does not silently vanish from
@@ -1275,10 +1375,18 @@ fn publish(
                     "quotadeck: {} could not be read: {e}",
                     engine.provider().id().key()
                 ));
-                providers.push(ProviderSnapshot::unavailable(
+                let error = e.to_string();
+                let previous_snapshot = previous_snapshots.get(&provider_id);
+                provider_health.record_failure(
+                    now,
+                    error,
+                    previous_snapshot.is_some() && provider_health.last_success_at.is_some(),
+                );
+                providers.push(provider_snapshot_after_failure(
+                    previous_snapshot,
                     engine.provider().id(),
-                    UnavailableReason::ReadError,
                 ));
+                health.push(provider_health);
             }
         }
     }
@@ -1287,6 +1395,15 @@ fn publish(
         providers,
         updated_at: now,
         scanning: pass.scanning,
+        health,
+        refreshing: false,
+        refresh_generation: if pass.manual {
+            deck.requested_refresh_generation()
+                .max(pass.refresh_generation)
+        } else {
+            previous_refresh_generation
+        },
+        refresh_error: None,
     };
     let committed = deck.with_current_provider_policy(policy_revision, || {
         for (engine_index, provider_id, checkpoint) in checkpoints {
