@@ -267,6 +267,7 @@ mod tests {
                 glyph
                     .rgba
                     .chunks(4)
+                    .filter(|px| px[3] > 0)
                     .all(|px| px[0] == r && px[1] == g && px[2] == b),
                 "{percent}% must carry no colour of its own"
             );
@@ -377,6 +378,7 @@ mod tests {
                 glyph
                     .rgba
                     .chunks(4)
+                    .filter(|px| px[3] > 0)
                     .all(|px| px[0] == r && px[1] == g && px[2] == b),
                 "{percent}% must carry no colour of its own"
             );

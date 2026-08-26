@@ -25,6 +25,7 @@ use quotadeck_core::reader::LineReader;
 mod budget {
     pub const COLD_PARSE_MS: u128 = 3_000;
     pub const WARM_TICK_MS: u128 = 20;
+    #[cfg(unix)]
     pub const PEAK_RSS_BYTES: u64 = 60 * 1024 * 1024;
     pub const HOURLY_BYTES: u64 = 5 * 1024 * 1024;
 }

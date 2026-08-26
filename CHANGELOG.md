@@ -2,7 +2,7 @@
 
 ## 2026-08-25
 
-- CI: compile macOS sandbox helpers only on macOS, use the stable Win32 handle API for Windows log-file identity, and ship the required generated Windows `.ico` asset for Linux and Windows matrix checks.
+- CI: compile macOS sandbox helpers only on macOS, use the stable Win32 handle API for Windows log-file identity, ship the required generated Windows `.ico` asset, and make cross-platform perf/icon checks match their supported platform semantics.
 - History: added retention-aware checkpoint transitions, crash-safe staged rebuild persistence, and one typed backend export request shared by the local CLI.
 - History: preserve a disabled provider's complete checkpoint while a longer retention waits for its first enabled rebuild, and make CLI range clamping explicit on stderr.
 - Dashboard: added 32/90/365-day retention controls, local-calendar half-open date selection, and backend-generated JSON/CSV clipboard export without filesystem access.
