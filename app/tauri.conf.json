@@ -37,7 +37,7 @@
   "bundle": {
     "active": true,
     "targets": ["app", "dmg"],
-    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/256x256.png", "icons/icon.icns"],
+    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/256x256.png", "icons/icon.ico", "icons/icon.icns"],
     "category": "DeveloperTool",
     "shortDescription": "Local quota tracking for AI coding tools",
     "longDescription": "Quota Deck reads the session logs that AI coding tools already write to your disk and shows how much of each rolling quota window is used. No account, no login, no network requests.",

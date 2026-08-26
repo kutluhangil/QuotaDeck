@@ -19,7 +19,9 @@
 
 use std::path::{Path, PathBuf};
 
-use quotadeck_core::error::{Error, Result};
+#[cfg(target_os = "macos")]
+use quotadeck_core::error::Error;
+use quotadeck_core::error::Result;
 use quotadeck_core::paths;
 use serde::Serialize;
 

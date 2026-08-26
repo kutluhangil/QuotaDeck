@@ -94,6 +94,29 @@ def write_icns(path: pathlib.Path, iconset: pathlib.Path) -> None:
     path.write_bytes(b"icns" + struct.pack(">I", len(chunks) + 8) + chunks)
 
 
+def write_ico(path: pathlib.Path, output: pathlib.Path) -> None:
+    """Write a Windows ICO containing the same PNG payloads as the other platforms."""
+    images = [(32, output / "32x32.png"), (128, output / "128x128.png"), (256, output / "256x256.png")]
+    payloads = [source.read_bytes() for _, source in images]
+    header_size = 6 + 16 * len(payloads)
+    entries = bytearray()
+    offset = header_size
+    for (size, _), payload in zip(images, payloads):
+        entries += struct.pack(
+            "<BBBBHHII",
+            size if size < 256 else 0,
+            size if size < 256 else 0,
+            0,
+            0,
+            1,
+            32,
+            len(payload),
+            offset,
+        )
+        offset += len(payload)
+    path.write_bytes(struct.pack("<HHH", 0, 1, len(payloads)) + entries + b"".join(payloads))
+
+
 def blend(under: tuple[int, int, int, int], colour: tuple[int, int, int], alpha: float):
     a = max(0.0, min(1.0, alpha))
     return (
@@ -191,6 +214,7 @@ def generate(output: pathlib.Path) -> None:
     for size in (32, 128, 256, 512):
         write_png(output / f"{size}x{size}.png", draw(size))
     write_png(output / "icon.png", draw(512))
+    write_ico(output / "icon.ico", output)
 
     iconset = output / "icon.iconset"
     iconset.mkdir(exist_ok=True)
@@ -218,7 +242,15 @@ def main() -> None:
     with tempfile.TemporaryDirectory(prefix="quotadeck-icons-") as temporary:
         generated = pathlib.Path(temporary)
         generate(generated)
-        names = ["32x32.png", "128x128.png", "256x256.png", "512x512.png", "icon.png", "icon.icns"]
+        names = [
+            "32x32.png",
+            "128x128.png",
+            "256x256.png",
+            "512x512.png",
+            "icon.png",
+            "icon.ico",
+            "icon.icns",
+        ]
         changed = [name for name in names if (generated / name).read_bytes() != (HERE / name).read_bytes()]
         if changed:
             raise SystemExit(
