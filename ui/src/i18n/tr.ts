@@ -251,6 +251,21 @@ export const tr: Catalogue = {
     providerUp: (provider) => `${provider} aracını yukarı taşı`,
     providerDown: (provider) => `${provider} aracını aşağı taşı`,
 
+    rootsTitle: (provider) => `${provider} · ek günlük klasörleri`,
+    rootsHint:
+      "Bu aracın kendi günlükleriyle aynı kotaya katılır. İkinci bir aboneliğin değil, ortak diskteki ikinci bir makinenin günlükleri için.",
+    rootsUnsupported:
+      "Bu sürüm ev klasörünü tek bir izinle okuyor ve ikincisini açamıyor; ek klasörler burada kullanılamaz.",
+    rootsPlaceholder: "Klasörün tam yolu",
+    rootsAdd: "Klasör ekle",
+    rootsRemove: (path) => `${path} klasörünü kaldır`,
+    rootsEmpty: "Ek klasör yok.",
+    rootsInvalidEmpty: "Önce klasörün tam yolunu yaz.",
+    rootsInvalidRelative:
+      "Tam yolu yaz. Neye göre olduğu belli olmayan bir yol, her açılışta başka bir klasörü gösterir.",
+    rootsInvalidDuplicate: "Bu klasör zaten listede.",
+    rootsInvalidTooMany: (limit) => `Araç başına en fazla ${limit} ek klasör.`,
+
     languageTitle: "Dil",
     languageSystem: "Sistemle aynı",
     languageEnglish: "English",

@@ -40,6 +40,12 @@ interface DeckStore {
   /** Tiers each provider declared, fetched once. Empty until the shell answers. */
   plans: ProviderPlans[];
   providerCatalogue: ProviderDescriptor[];
+  /**
+   * Whether this build may read folders outside the ones the tools declare. False in the App
+   * Store build, which reaches the home directory through a single grant and has no second
+   * bookmark to open another folder with.
+   */
+  additionalRootsSupported: boolean;
   statusline: StatuslineState | null;
   /** Set when an install or revert failed, so the panel can say what went wrong. */
   statuslineError: string | null;
@@ -73,6 +79,7 @@ interface DeckStore {
   setLocale: (locale: Locale) => void;
   setDemo: (demo: boolean) => void;
   setRetentionDays: (days: RetentionDays) => Promise<void>;
+  setAdditionalRoots: (provider: ProviderId, roots: string[]) => Promise<void>;
   setStartup: (enabled: boolean) => void;
   /** Open the system folder panel. Resolves once the user has answered it. */
   requestAccess: () => Promise<void>;
@@ -132,11 +139,13 @@ export const useDeck = create<DeckStore>((set, get) => ({
     mutedUntil: null,
     demo: false,
     disabledProviders: [],
+    additionalRoots: {},
     providerOrder: ["claude-code", "codex", "copilot-cli"],
     retentionDays: 32,
   },
   plans: [],
   providerCatalogue: [],
+  additionalRootsSupported: false,
   statusline: null,
   statuslineError: null,
   statuslineAction: null,
@@ -217,6 +226,33 @@ export const useDeck = create<DeckStore>((set, get) => ({
     const next = await call<Settings>("set_retention_days", { retentionDays });
     if (next.ok) set({ settings: next.value, settingsAction: null });
     else set({ settingsError: next.error, settingsAction: null });
+  },
+
+  /**
+   * Replace one provider's extra log folders.
+   *
+   * Not optimistic: the shell checks that each folder exists and can be read, which the webview
+   * cannot, and showing a folder as saved before that answer comes back would show a typo as a
+   * setting. The list on screen changes when the shell says it did.
+   */
+  setAdditionalRoots: async (provider, roots) => {
+    if (get().settingsAction !== null) return;
+    if (!inShell) {
+      const next = { ...get().settings.additionalRoots };
+      if (roots.length === 0) delete next[provider];
+      else next[provider] = roots;
+      set({ settings: { ...get().settings, additionalRoots: next } });
+      return;
+    }
+    set({ settingsError: null, settingsAction: "additional-roots" });
+    const outcome = await call<ProviderPolicyOutcome>("set_additional_roots", { provider, roots });
+    if (outcome.ok) {
+      set({
+        settings: outcome.value.settings,
+        settingsError: outcome.value.warning,
+        settingsAction: null,
+      });
+    } else set({ settingsError: outcome.error, settingsAction: null });
   },
 
   setPlan: (provider, planId) => {
@@ -578,6 +614,7 @@ export const useDeck = create<DeckStore>((set, get) => ({
       invoke<AccessState>("access_state"),
       call<StartupState>("startup_state", {}),
     ]);
+    const additionalRootsSupported = await call<boolean>("additional_roots_supported", {});
     const statusline = await call<StatuslineState>("statusline_state", {});
     set({
       deck,
@@ -585,6 +622,9 @@ export const useDeck = create<DeckStore>((set, get) => ({
       settings,
       providerCatalogue,
       plans,
+      // A shell that cannot answer is treated as one that cannot do it. Offering a control
+      // that then fails is worse than not offering it.
+      additionalRootsSupported: additionalRootsSupported.ok ? additionalRootsSupported.value : false,
       statusline: statusline.ok ? statusline.value : unavailableStatusline(),
       statuslineError: statusline.ok ? null : statusline.error,
       startup:

@@ -352,13 +352,14 @@
 ### Task 7.1: Add deduplicated additional roots
 
 **Files:**
-- Modify: `core/src/engine.rs`
-- Modify: `app/src/deck.rs`
-- Modify: `app/src/lib.rs`
-- Modify: `ui/src/components/SettingsView.tsx`
+- Modify: `core/src/discovery.rs`, `core/src/engine.rs`
+- Modify: `app/src/deck.rs`, `app/src/lib.rs`, `cli/src/main.rs`
+- Create: `ui/src/roots.ts`, `ui/src/roots.test.ts`
+- Modify: `ui/src/types.ts`, `ui/src/store.ts`, `ui/src/components/SettingsView.tsx`,
+  `ui/src/styles/panel.css`, `ui/src/i18n/en.ts`, `ui/src/i18n/tr.ts`
 
-- [ ] RED: test disjoint roots, parent/child overlap, symlink/canonical duplicate, root removal, watch cleanup, and unreadable path errors.
-- [ ] GREEN: resolve configured roots in the backend, deduplicate files by canonical path/file identity, and label this feature “additional log folders.”
+- [x] RED: test disjoint roots, parent/child overlap, symlink/canonical duplicate, root removal, watch cleanup, and unreadable path errors.
+- [x] GREEN: resolve configured roots in the backend, deduplicate files by canonical path/file identity, and label this feature “additional log folders.” — a nested root is deliberately **not** collapsed into its parent: watch globs are relative to their root, so merging them would lose files. Overlap is resolved at the file level instead.
 
 ### Task 7.2: Introduce provider-instance identity
 

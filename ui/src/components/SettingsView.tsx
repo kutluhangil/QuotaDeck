@@ -1,9 +1,11 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
 
 import { formatClock } from "../format";
 import type { Catalogue } from "../i18n";
 import { hostPlatform } from "../platform";
 import { focusDirectionAfterMove } from "../providerPolicy";
+import { addRoot, MAX_ADDITIONAL_ROOTS, removeRoot } from "../roots";
+import type { AddRootFailure } from "../roots";
 import { useDeck, useLocale, useStrings } from "../store";
 import { DEFAULT_THRESHOLDS, thresholdsFor } from "../types";
 import type { Locale, ProviderId, ProviderPlans, RetentionDays, Settings, TrayMode } from "../types";
@@ -150,6 +152,108 @@ function ProviderGroup() {
       </ol>
     </fieldset>
   );
+}
+
+/**
+ * Extra log folders for one tool.
+ *
+ * A typed path rather than a folder picker. The picker this app already owns is the macOS
+ * sandbox grant — one panel, one folder, and unavailable on the two desktops that have no such
+ * grant. A second picker would mean a dialog plugin and a capability the frontend does not
+ * have, to reach a feature most people will never open. What arrives here is checked twice: the
+ * shape below, and existence and readability in the shell, which a webview cannot know.
+ */
+function LogFolderGroup({ provider, displayName }: { provider: ProviderId; displayName: string }) {
+  const strings = useStrings();
+  const supported = useDeck((state) => state.additionalRootsSupported);
+  const roots = useDeck((state) => state.settings.additionalRoots[provider] ?? EMPTY_ROOTS);
+  const setAdditionalRoots = useDeck((state) => state.setAdditionalRoots);
+  const busy = useDeck((state) => state.settingsAction !== null);
+  const [draft, setDraft] = useState("");
+  const [refusal, setRefusal] = useState<AddRootFailure | null>(null);
+
+  function add() {
+    const outcome = addRoot(roots, draft);
+    if (!outcome.ok) {
+      setRefusal(outcome.reason);
+      return;
+    }
+    setRefusal(null);
+    setDraft("");
+    void setAdditionalRoots(provider, outcome.roots);
+  }
+
+  return (
+    <fieldset className="settings__group" disabled={busy || !supported}>
+      <legend className="type-label settings__legend">{strings.settings.rootsTitle(displayName)}</legend>
+      <p className="type-caption settings__hint">
+        {supported ? strings.settings.rootsHint : strings.settings.rootsUnsupported}
+      </p>
+      {roots.length === 0 ? (
+        <p className="type-caption settings__hint">{strings.settings.rootsEmpty}</p>
+      ) : (
+        <ul className="settings__roots">
+          {roots.map((root) => (
+            <li key={root} className="settings__root">
+              <span className="type-body settings__root-path">{root}</span>
+              <button
+                type="button"
+                className="settings__move"
+                aria-label={strings.settings.rootsRemove(root)}
+                onClick={() => void setAdditionalRoots(provider, removeRoot(roots, root))}
+              >
+                ×
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="settings__row">
+        <input
+          type="text"
+          className="settings__text"
+          value={draft}
+          placeholder={strings.settings.rootsPlaceholder}
+          aria-label={strings.settings.rootsPlaceholder}
+          spellCheck={false}
+          onChange={(event) => {
+            setDraft(event.target.value);
+            setRefusal(null);
+          }}
+          // Enter inside a settings screen means "add this one", not "submit everything".
+          onKeyDown={(event) => {
+            if (event.key !== "Enter") return;
+            event.preventDefault();
+            add();
+          }}
+        />
+        <button type="button" className="settings__button" onClick={add}>
+          <span className="type-body">{strings.settings.rootsAdd}</span>
+        </button>
+      </div>
+      {refusal !== null && (
+        <p className="type-caption settings__error" role="alert">
+          {rootRefusal(strings, refusal)}
+        </p>
+      )}
+    </fieldset>
+  );
+}
+
+/** Stable identity, so the selector does not hand zustand a new array on every render. */
+const EMPTY_ROOTS: string[] = [];
+
+function rootRefusal(strings: Catalogue, reason: AddRootFailure): string {
+  switch (reason) {
+    case "empty":
+      return strings.settings.rootsInvalidEmpty;
+    case "relative":
+      return strings.settings.rootsInvalidRelative;
+    case "duplicate":
+      return strings.settings.rootsInvalidDuplicate;
+    case "too-many":
+      return strings.settings.rootsInvalidTooMany(MAX_ADDITIONAL_ROOTS);
+  }
 }
 
 /**
@@ -423,6 +527,7 @@ export function SettingsView({ now }: { now: number }) {
   // Selected whole and filtered here: a selector returning a fresh array every call gives
   // zustand a new snapshot on every render and the component never settles.
   const providers = useDeck((state) => state.deck.providers);
+  const catalogue = useDeck((state) => state.providerCatalogue);
   const alerting = providers.filter((snapshot) => snapshot.windows.length > 0);
 
   return (
@@ -503,6 +608,14 @@ export function SettingsView({ now }: { now: number }) {
       <ProviderGroup />
       <AccessGroup />
       <DemoGroup />
+
+      {/* One per enabled tool, under the list that enables them: a folder added to a tool
+          nobody reads would be a setting with no effect. */}
+      {catalogue
+        .filter((entry) => entry.enabled)
+        .map((entry) => (
+          <LogFolderGroup key={entry.id} provider={entry.id} displayName={entry.displayName} />
+        ))}
 
       {plans.map((entry) => (
         <PlanGroup key={entry.provider} entry={entry} />

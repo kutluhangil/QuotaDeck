@@ -13,7 +13,7 @@ use chrono::{DateTime, Duration as ChronoDuration, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::cursor::FileCursor;
-use crate::discovery::{access, find_files, RootAccess};
+use crate::discovery::{access, find_files, resolve_roots, RootAccess};
 use crate::error::Result;
 use crate::events::{EventIndex, ParsedEvent};
 use crate::provider::{LineSource, Provider, ProviderConfig};
@@ -69,6 +69,13 @@ pub struct ProviderEngine {
     /// Reused across every line so parsing allocates nothing per record.
     scratch: Vec<ParsedEvent>,
     config: ProviderConfig,
+    /// Folders the user added to this provider, beyond the ones the tool declares.
+    additional_roots: Vec<PathBuf>,
+    /// Configured roots that could not be listed this pass, keyed by the path as configured.
+    ///
+    /// Recomputed on every refresh rather than persisted: it describes the disk right now, and
+    /// a stale complaint about a folder the user has since fixed is worse than none.
+    root_errors: BTreeMap<PathBuf, String>,
     duplicates_at_last_report: u64,
     checkpoint_dirty: bool,
     read_errors: BTreeMap<PathBuf, String>,
@@ -126,6 +133,8 @@ impl ProviderEngine {
             reader: LineReader::default(),
             scratch: Vec::new(),
             config: ProviderConfig::default(),
+            additional_roots: Vec::new(),
+            root_errors: BTreeMap::new(),
             duplicates_at_last_report: 0,
             checkpoint_dirty: false,
             read_errors: BTreeMap::new(),
@@ -152,8 +161,25 @@ impl ProviderEngine {
     /// A denied root is reported as denied rather than as an absent tool: under the macOS
     /// App Sandbox that is where every user starts, and telling them the tool is not
     /// installed sends them to reinstall something that is already there.
+    /// Folders the user added to this provider, on top of the ones it declares.
+    ///
+    /// Additional roots are a *setting*, not engine state: they are not checkpointed, and a
+    /// root that disappears from this list takes its cursors with it on the next refresh.
+    pub fn set_additional_roots(&mut self, roots: Vec<PathBuf>) {
+        self.additional_roots = roots;
+    }
+
+    pub fn additional_roots(&self) -> &[PathBuf] {
+        &self.additional_roots
+    }
+
+    /// Every root this engine scans: the tool's own, then the user's, deduplicated.
+    pub fn roots(&self) -> Vec<PathBuf> {
+        resolve_roots(&self.provider.discover_roots(), &self.additional_roots)
+    }
+
     pub fn access(&self) -> RootAccess {
-        let roots = self.provider.discover_roots();
+        let roots = self.roots();
         if roots.is_empty() {
             return RootAccess::Missing;
         }
@@ -182,7 +208,22 @@ impl ProviderEngine {
         mut cancelled: impl FnMut() -> bool,
     ) -> Result<RefreshReport> {
         let started = Instant::now();
-        let roots = self.provider.discover_roots();
+        let roots = self.roots();
+        // A folder the user pointed at and then deleted stops contributing numbers. Nothing
+        // else on screen would say so, so the state of every configured root is recorded here
+        // before a single file is read.
+        self.root_errors.clear();
+        for root in &roots {
+            let reason = match access(root) {
+                RootAccess::Readable => continue,
+                RootAccess::Missing => "does not exist",
+                RootAccess::Denied => "cannot be read by this process",
+            };
+            self.root_errors.insert(
+                root.clone(),
+                format!("configured log folder {} {reason}", root.display()),
+            );
+        }
         let found = find_files(&roots, self.provider.watch_globs());
 
         let mut report = RefreshReport {
@@ -296,10 +337,19 @@ impl ProviderEngine {
 
     pub fn snapshot(&self, now: DateTime<Utc>) -> ProviderSnapshot {
         let mut snapshot = self.provider.build_snapshot(&self.index, now, &self.config);
-        let mut messages: Vec<_> = self.read_errors.values().take(3).cloned().collect();
+        // Root problems come first: an unreadable folder explains a missing file, and a file
+        // error under a folder that is gone is a consequence rather than a second fault.
+        let mut messages: Vec<_> = self
+            .root_errors
+            .values()
+            .chain(self.read_errors.values())
+            .take(3)
+            .cloned()
+            .collect();
         let hidden = self
-            .read_errors
+            .root_errors
             .len()
+            .saturating_add(self.read_errors.len())
             .saturating_sub(messages.len())
             .saturating_add(self.read_error_overflow);
         if hidden > 0 {
@@ -393,6 +443,10 @@ impl ProviderEngine {
             reader: LineReader::default(),
             scratch: Vec::new(),
             config: ProviderConfig::default(),
+            // Not restored: additional roots are settings, reapplied by the caller after a
+            // restore, and a stale root error describes a disk state that may have changed.
+            additional_roots: Vec::new(),
+            root_errors: BTreeMap::new(),
             duplicates_at_last_report,
             checkpoint_dirty: false,
             read_errors: checkpoint.read_errors,
@@ -442,7 +496,16 @@ impl ProviderEngine {
     /// Current cursor paths are considered in newest lexical order and capped to avoid
     /// registering every historical date directory on long-lived installations.
     pub fn watch_directories(&self) -> Vec<PathBuf> {
-        let roots = self.provider.discover_roots();
+        self.watch_directories_with(&self.additional_roots)
+    }
+
+    /// The same list, computed against roots the engine has not been given yet.
+    ///
+    /// The watcher is reconciled from the stored settings, which can name a folder added since
+    /// the last refresh. Waiting for the engine to catch up would leave that folder unwatched
+    /// until something else happened to wake the loop.
+    pub fn watch_directories_with(&self, additional: &[PathBuf]) -> Vec<PathBuf> {
+        let roots = resolve_roots(&self.provider.discover_roots(), additional);
         let mut directories = Vec::new();
         let mut seen = HashSet::new();
 
@@ -652,6 +715,115 @@ mod tests {
             .open(path)
             .expect("open for append");
         file.write_all(contents.as_bytes()).expect("append");
+    }
+
+    /// A second folder the user pointed the app at, folded into the same quota identity.
+    #[test]
+    fn additional_roots_are_read_alongside_the_declared_one() {
+        let (mut engine, root) = engine_for("additional-roots");
+        let extra = root.parent().expect("a temp dir").join(format!(
+            "quotadeck-engine-{}-additional-roots-extra",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&extra);
+        std::fs::create_dir_all(&extra).expect("create the extra root");
+
+        append(&root.join("a.jsonl"), "one\n");
+        append(&extra.join("b.jsonl"), "two\ntwo\n");
+
+        engine.set_additional_roots(vec![extra.clone()]);
+        let report = engine.refresh(None).expect("refresh");
+
+        assert_eq!(report.files_found, 2);
+        assert_eq!(report.lines, 3);
+        let _ = std::fs::remove_dir_all(&extra);
+    }
+
+    /// The same directory named twice — literally, or through a symlink — is one root.
+    #[test]
+    fn a_root_named_twice_is_read_once() {
+        let (mut engine, root) = engine_for("duplicate-roots");
+        append(&root.join("a.jsonl"), "one\n");
+
+        engine.set_additional_roots(vec![
+            root.clone(),
+            root.join(".")
+                .join("..")
+                .join(root.file_name().expect("a directory name")),
+        ]);
+        let report = engine.refresh(None).expect("refresh");
+
+        assert_eq!(report.files_found, 1, "the same root was scanned twice");
+        assert_eq!(report.lines, 1);
+    }
+
+    /// A root the user removed from settings takes its cursors with it, so a later refresh
+    /// neither reads those files nor keeps their offsets alive in the checkpoint.
+    #[test]
+    fn removing_a_root_drops_its_cursors() {
+        let (mut engine, root) = engine_for("root-removal");
+        let extra = root.parent().expect("a temp dir").join(format!(
+            "quotadeck-engine-{}-root-removal-extra",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&extra);
+        std::fs::create_dir_all(&extra).expect("create the extra root");
+        append(&root.join("a.jsonl"), "one\n");
+        append(&extra.join("b.jsonl"), "two\n");
+
+        engine.set_additional_roots(vec![extra.clone()]);
+        engine.refresh(None).expect("first refresh");
+        assert_eq!(engine.cursor_count(), 2);
+
+        engine.set_additional_roots(Vec::new());
+        let report = engine.refresh(None).expect("second refresh");
+
+        assert_eq!(report.files_found, 1);
+        assert_eq!(engine.cursor_count(), 1);
+        let _ = std::fs::remove_dir_all(&extra);
+    }
+
+    /// A folder the user pointed at and then deleted is reported, not silently ignored: the
+    /// numbers on screen no longer include it, and nothing else would say so.
+    #[test]
+    fn an_unreadable_additional_root_is_reported_rather_than_skipped() {
+        let (mut engine, root) = engine_for("unreadable-root");
+        append(&root.join("a.jsonl"), "one\n");
+        let missing = root.join("not-there");
+
+        engine.set_additional_roots(vec![missing.clone()]);
+        engine.refresh(None).expect("refresh");
+
+        let snapshot = engine.snapshot(Utc::now());
+        let reported = snapshot.read_error.expect("the missing folder is reported");
+        assert!(
+            reported.contains(&missing.display().to_string()),
+            "{reported}"
+        );
+
+        // Fixing it clears the message rather than leaving a stale complaint on screen.
+        std::fs::create_dir_all(&missing).expect("create the folder");
+        engine.refresh(None).expect("refresh again");
+        assert_eq!(engine.snapshot(Utc::now()).read_error, None);
+    }
+
+    /// Watches follow the configured roots in both directions.
+    #[test]
+    fn watch_directories_cover_additional_roots_and_release_them() {
+        let (mut engine, root) = engine_for("watch-roots");
+        let extra = root.parent().expect("a temp dir").join(format!(
+            "quotadeck-engine-{}-watch-roots-extra",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&extra);
+        std::fs::create_dir_all(&extra).expect("create the extra root");
+
+        engine.set_additional_roots(vec![extra.clone()]);
+        assert!(engine.watch_directories().contains(&extra));
+
+        engine.set_additional_roots(Vec::new());
+        assert!(!engine.watch_directories().contains(&extra));
+        let _ = std::fs::remove_dir_all(&extra);
     }
 
     #[test]

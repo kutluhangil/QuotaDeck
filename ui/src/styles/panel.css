@@ -911,6 +911,50 @@
 }
 
 /*
+ * Added log folders. Paths are set in the monospace face and wrap rather than truncate: a
+ * folder the user cannot read in full is a folder they cannot check before trusting it.
+ */
+.settings__roots {
+  list-style: none;
+  margin: 0 0 var(--step-2);
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--step-1);
+}
+
+.settings__root {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--step-2);
+  padding: var(--step-1) var(--step-2);
+  border: var(--hairline) solid var(--rule);
+  border-radius: var(--radius);
+}
+
+.settings__root-path {
+  font-family: var(--face-data);
+  overflow-wrap: anywhere;
+}
+
+.settings__text {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  font-family: var(--face-data);
+  font-size: inherit;
+  color: var(--ink-primary);
+  background: var(--surface-raised);
+  border: var(--hairline) solid var(--rule);
+  border-radius: var(--radius);
+  padding: var(--step-1) var(--step-2);
+}
+
+.settings__text::placeholder {
+  color: var(--ink-tertiary);
+}
+
+/*
  * The before/after of someone else's config file. Shown in full — a truncated command is a
  * change the user cannot actually inspect before agreeing to it.
  */

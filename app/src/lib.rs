@@ -148,6 +148,8 @@ pub fn run() -> Result<()> {
             set_demo,
             set_retention_days,
             set_provider_policy,
+            set_additional_roots,
+            additional_roots_supported,
             set_plan,
             set_alert_thresholds,
             set_mute,
@@ -324,6 +326,33 @@ fn set_provider_policy(
 ) -> std::result::Result<ProviderPolicyOutcome, String> {
     deck.set_provider_policy(disabled_providers, provider_order)
         .map_err(|error| error.to_string())
+}
+
+/// Point one provider at extra log folders, replacing whatever it had.
+///
+/// Absolute paths only, and each one must be a readable directory right now — the person is
+/// standing in front of the setting, and a typo they can still see is worth reporting to them
+/// rather than discovering as a missing number an hour later.
+#[tauri::command]
+fn set_additional_roots(
+    deck: tauri::State<'_, Deck>,
+    provider: ProviderId,
+    roots: Vec<PathBuf>,
+) -> std::result::Result<ProviderPolicyOutcome, String> {
+    if sandbox::sandboxed() {
+        return Err(
+            "this build reads the home folder through a single grant and cannot open a second one; additional log folders are unavailable here"
+                .into(),
+        );
+    }
+    deck.set_additional_roots(provider, roots)
+        .map_err(|error| error.to_string())
+}
+
+/// Whether this build can use additional log folders at all.
+#[tauri::command]
+fn additional_roots_supported() -> bool {
+    !sandbox::sandboxed()
 }
 
 #[tauri::command]
@@ -1584,6 +1613,20 @@ fn mark_refresh_failed(app: &AppHandle, deck: &Deck, generation: u64, error: &Er
     }
 }
 
+/// The extra log folders this build is allowed to read for a provider.
+///
+/// Empty inside the App Sandbox regardless of what is stored. The store build reaches the real
+/// home through exactly one security-scoped bookmark; a second folder outside it would need a
+/// second bookmark, resolved and started before every pass. Until that exists and is tested,
+/// honouring the setting there would produce a folder that is configured, shown, and silently
+/// unreadable — which is worse than a folder the build says it cannot use.
+fn additional_roots_for(settings: &Settings, id: ProviderId) -> Vec<PathBuf> {
+    if sandbox::sandboxed() {
+        return Vec::new();
+    }
+    settings.additional_roots_for(id).to_vec()
+}
+
 fn sync_watches(
     watcher: &mut DebouncedWatcher,
     watched: &mut HashSet<PathBuf>,
@@ -1593,7 +1636,15 @@ fn sync_watches(
     let desired: HashSet<PathBuf> = engines
         .iter()
         .filter(|managed| settings.is_provider_enabled(managed.engine.provider().id()))
-        .flat_map(|managed| managed.engine.watch_directories())
+        .flat_map(|managed| {
+            let id = managed.engine.provider().id();
+            // The engine learns its extra roots on the next refresh; the watcher must not wait
+            // for that, or a folder added in the settings screen would stay unwatched until
+            // something else woke the loop.
+            managed
+                .engine
+                .watch_directories_with(&additional_roots_for(settings, id))
+        })
         .collect();
 
     for directory in desired.difference(watched) {
@@ -1801,6 +1852,7 @@ fn publish(
         // without re-reading a byte of log.
         let engine_provider_id = engine.provider().id();
         engine.set_config(settings.config_for(engine_provider_id));
+        engine.set_additional_roots(additional_roots_for(&settings, engine_provider_id));
 
         match engine.access() {
             RootAccess::Readable => {}

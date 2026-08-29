@@ -344,6 +344,12 @@ export interface Settings {
   demo: boolean;
   disabledProviders: ProviderId[];
   providerOrder: ProviderId[];
+  /**
+   * Extra log folders per provider, on top of the ones the tool declares. Folded into the same
+   * quota identity — this is "additional log folders", not multiple accounts. A provider absent
+   * from this map has none; the app never guesses a folder.
+   */
+  additionalRoots: Partial<Record<ProviderId, string[]>>;
   retentionDays: RetentionDays;
 }
 

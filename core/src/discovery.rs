@@ -34,6 +34,33 @@ pub fn access(path: &Path) -> RootAccess {
     }
 }
 
+/// Fold a provider's declared roots and the folders the user added into the set actually
+/// scanned.
+///
+/// Order is preserved — declared first, then the user's own, in the order they configured them
+/// — because it decides which copy of a file a duplicate collapses onto.
+///
+/// Duplicates are resolved through [`std::fs::canonicalize`], so a symlink, a `..` detour and a
+/// literal repeat all collapse to one root. A path that cannot be canonicalised is kept exactly
+/// as written: it is usually a folder that has been deleted or is unreadable, and dropping it
+/// here would turn "you pointed me at something I cannot read" into silence.
+///
+/// A root nested inside another is **not** dropped. Watch globs are relative to their root, so
+/// a parent and a child produce different file sets; collapsing them would lose files. Files
+/// found through both are deduplicated in [`find_files`] instead, where the comparison is
+/// between actual files rather than between prefixes.
+pub fn resolve_roots(declared: &[PathBuf], additional: &[PathBuf]) -> Vec<PathBuf> {
+    let mut out = Vec::with_capacity(declared.len() + additional.len());
+    let mut seen = std::collections::HashSet::new();
+    for root in declared.iter().chain(additional) {
+        let identity = std::fs::canonicalize(root).unwrap_or_else(|_| root.clone());
+        if seen.insert(identity) {
+            out.push(root.clone());
+        }
+    }
+    out
+}
+
 /// One discovered log file, with the metadata the scheduler orders work by.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FoundFile {
@@ -144,12 +171,85 @@ pub fn find_files(roots: &[PathBuf], patterns: &[&str]) -> Vec<FoundFile> {
             .then_with(|| a.path.cmp(&b.path))
     });
     out.dedup_by(|a, b| a.path == b.path);
+    if roots.len() > 1 {
+        dedup_by_identity(&mut out);
+    }
     out
+}
+
+/// Collapse files that two roots reached by different paths — a symlinked subtree, or a root
+/// nested inside another.
+///
+/// Only ever called with more than one root, because it costs a `realpath` per file and the
+/// single-root install that every user starts with cannot produce a duplicate.
+fn dedup_by_identity(files: &mut Vec<FoundFile>) {
+    let mut seen = std::collections::HashSet::new();
+    files.retain(|file| {
+        let identity = std::fs::canonicalize(&file.path).unwrap_or_else(|_| file.path.clone());
+        seen.insert(identity)
+    });
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A root reached two ways is one root; a root nested in another is two, because their
+    /// globs resolve to different files.
+    #[test]
+    fn roots_collapse_on_identity_and_not_on_containment() {
+        let base =
+            std::env::temp_dir().join(format!("quotadeck-roots-{}-identity", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let child = base.join("inner");
+        std::fs::create_dir_all(&child).expect("create the nested root");
+
+        let detour = base.join("inner").join("..").join("inner");
+        let resolved = resolve_roots(
+            std::slice::from_ref(&base),
+            &[child.clone(), detour, base.clone()],
+        );
+
+        assert_eq!(
+            resolved,
+            vec![base.clone(), child],
+            "identity collapsed wrongly"
+        );
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// A path nobody can canonicalise is kept, so the caller can say why it failed.
+    #[test]
+    fn a_missing_root_survives_resolution_so_it_can_be_reported() {
+        let missing =
+            std::env::temp_dir().join(format!("quotadeck-roots-{}-missing", std::process::id()));
+        let _ = std::fs::remove_dir_all(&missing);
+
+        assert_eq!(
+            resolve_roots(&[], &[missing.clone(), missing.clone()]),
+            vec![missing]
+        );
+    }
+
+    /// Two roots that reach the same file through different paths yield it once.
+    #[test]
+    fn a_file_reachable_from_two_roots_is_found_once() {
+        let base =
+            std::env::temp_dir().join(format!("quotadeck-roots-{}-overlap", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let inner = base.join("inner");
+        std::fs::create_dir_all(&inner).expect("create the nested root");
+        std::fs::write(inner.join("a.jsonl"), "x\n").expect("write a log file");
+
+        // `inner/*.jsonl` from the parent and `*.jsonl` from the child are the same file.
+        let found = find_files(
+            &[base.clone(), inner.clone()],
+            &["inner/*.jsonl", "*.jsonl"],
+        );
+
+        assert_eq!(found.len(), 1, "{found:?}");
+        let _ = std::fs::remove_dir_all(&base);
+    }
 
     #[test]
     fn wildcards_only_span_one_segment() {

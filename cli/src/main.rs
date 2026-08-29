@@ -16,6 +16,7 @@
 
 use std::cmp::Ordering::Equal;
 use std::io::Write;
+use std::path::PathBuf;
 use std::process::ExitCode;
 
 use chrono::{DateTime, Duration, Local, Utc};
@@ -68,6 +69,18 @@ fn main() -> ExitCode {
             StatuslineAction::Revert => statusline_apply(quotadeck_app::statusline::revert()),
         },
     }
+}
+
+/// Extra log folders this build may read for a provider.
+///
+/// Empty inside the App Sandbox, matching the panel: the store build reaches the home directory
+/// through exactly one security-scoped bookmark, and a folder outside it would be configured,
+/// listed, and unreadable.
+fn additional_roots(settings: &Settings, id: quotadeck_core::types::ProviderId) -> Vec<PathBuf> {
+    if quotadeck_app::sandbox::sandboxed() {
+        return Vec::new();
+    }
+    settings.additional_roots_for(id).to_vec()
 }
 
 /// Load the settings or say, on stderr, why they could not be read.
@@ -242,6 +255,7 @@ fn export(args: &cli::ExportArgs) -> ExitCode {
         let mut engine =
             ProviderEngine::with_retention(provider, settings.retention_days.duration());
         engine.set_config(settings.config_for(id));
+        engine.set_additional_roots(additional_roots(&settings, id));
 
         match engine.access() {
             RootAccess::Readable => {}
@@ -384,6 +398,7 @@ fn tray_preview(key: &str) -> ExitCode {
     };
 
     let mut engine = ProviderEngine::new(provider);
+    engine.set_additional_roots(additional_roots(&settings, engine.provider().id()));
     if let Err(e) = engine.refresh(None) {
         eprintln!("scan failed: {e}");
         return ExitCode::FAILURE;
@@ -646,7 +661,8 @@ fn status(key: Option<&str>, plan_id: Option<String>) -> ExitCode {
                 .filter(|_| key.is_none())
                 .cloned()
         });
-        if !status_provider(provider, plan) {
+        let extra = additional_roots(&settings, provider.id());
+        if !status_provider(provider, plan, extra) {
             code = ExitCode::from(EXIT_USAGE);
         }
     }
@@ -658,12 +674,15 @@ fn status(key: Option<&str>, plan_id: Option<String>) -> ExitCode {
 fn status_provider(
     provider: Box<dyn quotadeck_core::provider::Provider>,
     plan_id: Option<String>,
+    additional: Vec<PathBuf>,
 ) -> bool {
-    let roots = provider.discover_roots();
+    let mut engine = ProviderEngine::new(provider);
+    engine.set_additional_roots(additional);
+    let roots = engine.roots();
     if roots.is_empty() {
         println!(
             "{} is not installed on this machine",
-            provider.display_name()
+            engine.provider().display_name()
         );
         return true;
     }
@@ -673,7 +692,7 @@ fn status_provider(
     {
         println!(
             "{} is installed, but its session logs cannot be read from here",
-            provider.display_name()
+            engine.provider().display_name()
         );
         for root in &roots {
             println!("  denied  {}", root.display());
@@ -681,12 +700,11 @@ fn status_provider(
         return false;
     }
 
-    println!("{}", provider.display_name());
+    println!("{}", engine.provider().display_name());
     for root in &roots {
         println!("  root  {}", root.display());
     }
 
-    let mut engine = ProviderEngine::new(provider);
     if let Some(plan) = &plan_id {
         println!("  plan  {plan}");
     }

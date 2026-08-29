@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-08-29
+
+- Providers: a tool can now be pointed at additional log folders. Called exactly that everywhere it appears — everything found under them is folded into the same quota window as the tool's own logs, so two subscriptions aimed at one provider would be summed rather than reported apart. Multiple accounts is a different feature and is not this one.
+- Providers: roots are deduplicated by canonical identity, so the same folder named twice, or reached through a symlink or a `..` detour, is scanned once. A nested root is *not* collapsed into its parent — watch globs are relative to their root, so a parent and a child resolve to different files and merging them would lose some; files reachable from both are deduplicated at the file level instead, and only when more than one root is configured, so the single-root install everyone starts with pays nothing.
+- Providers: a configured folder that is missing or unreadable is reported on the provider card rather than quietly contributing nothing. Recomputed every pass, so fixing the folder clears the message instead of leaving a stale complaint on screen.
+- Providers: removing a folder from settings drops its cursors on the next refresh, and the watcher is reconciled before the setting call returns — a folder added in the panel is watched immediately rather than at the next thing that happened to wake the loop.
+- Providers: additional folders are unavailable in the App Store build, and the settings group says so instead of hiding. That build reaches the home directory through a single security-scoped bookmark; a second folder needs a second bookmark, and a folder that is configured, listed and silently unreadable is worse than one the build admits it cannot use.
+- Settings: added log folders are typed as absolute paths rather than chosen from a picker. The only picker this app owns is the macOS sandbox grant — one panel, one folder, absent on the other two desktops — and a second one would mean a dialog plugin plus a frontend capability the panel deliberately does not have. The path is checked twice: its shape in the panel, its existence and readability in the shell.
+
 ## 2026-08-28
 
 - CLI: renamed `quotadeck-debug` to `quotadeckctl` and gave it a documented command surface — `providers`, `status`, `export`, `config show`, `config validate`, `guard`, `tray` and `statusline preview|install|revert`. The old name said the binary was a scratch harness while `docs/STORE.md` §9 was already telling people to pipe its output; one of the two had to become true.

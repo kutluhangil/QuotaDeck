@@ -334,6 +334,26 @@ export const en = {
     providerUp: (provider: string) => `Move ${provider} up`,
     providerDown: (provider: string) => `Move ${provider} down`,
 
+    /**
+     * Folders, not accounts. Everything found under them is added to the same quota window as
+     * the tool's own logs, so calling it an account would promise a separation that does not
+     * exist.
+     */
+    rootsTitle: (provider: string) => `${provider} · additional log folders`,
+    rootsHint:
+      "Folded into the same quota as this tool's own logs. Use it for a second machine's logs on a shared disk, not for a second subscription.",
+    rootsUnsupported:
+      "This build reads your home folder through a single grant and cannot open a second one, so additional folders are unavailable here.",
+    rootsPlaceholder: "Absolute path to a folder",
+    rootsAdd: "Add folder",
+    rootsRemove: (path: string) => `Remove ${path}`,
+    rootsEmpty: "No additional folders.",
+    rootsInvalidEmpty: "Type the full path to a folder first.",
+    rootsInvalidRelative:
+      "Use the full path. A path relative to nothing in particular names a different folder every launch.",
+    rootsInvalidDuplicate: "That folder is already on the list.",
+    rootsInvalidTooMany: (limit: number) => `At most ${limit} additional folders per tool.`,
+
     languageTitle: "Language",
     languageSystem: "Match system",
     /**

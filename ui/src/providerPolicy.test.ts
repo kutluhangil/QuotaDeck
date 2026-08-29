@@ -17,6 +17,7 @@ const settings: Settings = {
   mutedUntil: null,
   demo: false,
   disabledProviders: [],
+  additionalRoots: {},
   providerOrder: ["claude-code", "codex", "copilot-cli"],
   retentionDays: 32,
 };

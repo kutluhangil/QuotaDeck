@@ -8,6 +8,7 @@ use std::sync::{mpsc, Arc, Mutex};
 use chrono::{DateTime, Utc};
 use quotadeck_core::atomic_write::atomic_write;
 use quotadeck_core::breakdown::BreakdownPoint;
+use quotadeck_core::discovery::{access, RootAccess};
 use quotadeck_core::error::{Error, Result};
 use quotadeck_core::history::HistoryPoint;
 use quotadeck_core::paths;
@@ -324,6 +325,14 @@ pub struct Settings {
     pub disabled_providers: BTreeSet<String>,
     /// Provider keys in the user's preferred presentation and processing order.
     pub provider_order: Vec<String>,
+    /// Extra log folders per provider key, on top of the ones the tool declares.
+    ///
+    /// Called "additional log folders" everywhere the user can see it, never "accounts": the
+    /// folders are folded into one quota identity, so two subscriptions pointed at the same
+    /// provider would be added together rather than reported apart.
+    ///
+    /// Absolute paths only, deduplicated, in the order the user added them.
+    pub additional_roots: BTreeMap<String, Vec<PathBuf>>,
     pub retention_days: RetentionDays,
 }
 
@@ -341,6 +350,7 @@ impl Default for Settings {
             muted_until: None,
             demo: false,
             disabled_providers: BTreeSet::new(),
+            additional_roots: BTreeMap::new(),
             provider_order: quotadeck_providers::ids()
                 .into_iter()
                 .map(|id| id.key().to_string())
@@ -362,6 +372,7 @@ struct SettingsDocument {
     demo: bool,
     disabled_providers: BTreeSet<String>,
     provider_order: Vec<String>,
+    additional_roots: BTreeMap<String, Vec<PathBuf>>,
     retention_days: RetentionDays,
 }
 
@@ -378,6 +389,7 @@ impl Default for SettingsDocument {
             demo: settings.demo,
             disabled_providers: settings.disabled_providers,
             provider_order: settings.provider_order,
+            additional_roots: settings.additional_roots,
             retention_days: settings.retention_days,
         }
     }
@@ -401,12 +413,22 @@ impl<'de> Deserialize<'de> for Settings {
             demo: document.demo,
             disabled_providers: document.disabled_providers,
             provider_order: document.provider_order,
+            additional_roots: document.additional_roots,
             retention_days: document.retention_days,
         };
         let ordered = settings
             .ordered_provider_ids(&quotadeck_providers::ids())
             .map_err(D::Error::custom)?;
         settings.provider_order = ordered.into_iter().map(|id| id.key().to_string()).collect();
+        // The same folder twice is one folder. Collapsed here rather than at read time so the
+        // list the settings screen renders is the list that is scanned.
+        for roots in settings.additional_roots.values_mut() {
+            let mut seen = BTreeSet::new();
+            roots.retain(|root| seen.insert(root.clone()));
+        }
+        settings
+            .additional_roots
+            .retain(|_, roots| !roots.is_empty());
         Ok(settings)
     }
 }
@@ -437,6 +459,24 @@ impl Settings {
             }
         }
 
+        for (key, roots) in &self.additional_roots {
+            if !known.contains_key(key.as_str()) {
+                return Err(Error::Invalid(format!(
+                    "settings.additionalRoots contains unknown provider key {key:?}"
+                )));
+            }
+            for root in roots {
+                // A relative path means a different folder depending on where the app was
+                // launched from, which is not a folder anybody chose.
+                if !root.is_absolute() {
+                    return Err(Error::Invalid(format!(
+                        "settings.additionalRoots[{key:?}] contains the relative path {:?}; an added log folder must be absolute",
+                        root.display().to_string()
+                    )));
+                }
+            }
+        }
+
         let mut seen = BTreeSet::new();
         let mut ordered = Vec::with_capacity(registry.len());
         for key in &self.provider_order {
@@ -458,6 +498,16 @@ impl Settings {
             }
         }
         Ok(ordered)
+    }
+
+    /// Extra log folders configured for this provider, or nothing.
+    ///
+    /// Nothing is the honest default: a folder the user never named is not a folder this app
+    /// may read, and guessing one would be the same class of mistake as guessing a plan.
+    pub fn additional_roots_for(&self, id: ProviderId) -> &[PathBuf] {
+        self.additional_roots
+            .get(id.key())
+            .map_or(&[], Vec::as_slice)
     }
 
     pub fn config_for(&self, id: ProviderId) -> ProviderConfig {
@@ -974,6 +1024,104 @@ impl Deck {
         )
     }
 
+    /// How many extra folders one provider may carry.
+    ///
+    /// The watcher registers a directory per root plus the live log directories under it, and
+    /// its own ceiling is [`quotadeck_core::engine::MAX_WATCH_DIRECTORIES`]. A handful of
+    /// folders is what this feature is for; a hundred is a mistake worth refusing at the point
+    /// it is made rather than discovering as silently dropped watches later.
+    pub const MAX_ADDITIONAL_ROOTS: usize = 8;
+
+    /// Point one provider at extra log folders, replacing whatever it had.
+    ///
+    /// Folded into the same quota identity as the tool's own logs — this is "additional log
+    /// folders", not multiple accounts. Two subscriptions pointed here would be added together,
+    /// which is why the UI never calls it that.
+    pub fn set_additional_roots(
+        &self,
+        provider: ProviderId,
+        roots: Vec<PathBuf>,
+    ) -> Result<ProviderPolicyOutcome> {
+        let next = self.set_additional_roots_with(provider, roots, Settings::save)?;
+        // Same reconciliation the enable/order controls use: the watch set changed, and the
+        // read loop must be told before the call returns or a folder added here would stay
+        // unwatched until something else happened to wake it.
+        let revision = self
+            .provider_policy_revision
+            .fetch_add(1, Ordering::Release)
+            + 1;
+        let warning = self
+            .wait_for_provider_policy_sync(revision)
+            .err()
+            .map(|error| {
+                let warning = error.to_string();
+                eprintln!("quotadeck: {warning}");
+                warning
+            });
+        Ok(ProviderPolicyOutcome {
+            settings: next,
+            warning,
+        })
+    }
+
+    fn set_additional_roots_with(
+        &self,
+        provider: ProviderId,
+        roots: Vec<PathBuf>,
+        save: impl FnOnce(&Settings) -> Result<()>,
+    ) -> Result<Settings> {
+        self.update_settings_result_with(
+            move |settings| {
+                let mut accepted: Vec<PathBuf> = Vec::with_capacity(roots.len());
+                for root in roots {
+                    if !root.is_absolute() {
+                        return Err(Error::Invalid(format!(
+                            "an added log folder must be an absolute path; received {}",
+                            root.display()
+                        )));
+                    }
+                    // Checked now rather than at the next refresh: the person is standing in
+                    // front of the setting, and a typo they can still see is a typo worth
+                    // reporting to them.
+                    match access(&root) {
+                        RootAccess::Readable => {}
+                        RootAccess::Missing => {
+                            return Err(Error::Invalid(format!(
+                                "the added log folder {} does not exist",
+                                root.display()
+                            )))
+                        }
+                        RootAccess::Denied => {
+                            return Err(Error::Invalid(format!(
+                                "the added log folder {} cannot be read by this application",
+                                root.display()
+                            )))
+                        }
+                    }
+                    if !accepted.contains(&root) {
+                        accepted.push(root);
+                    }
+                }
+                if accepted.len() > Self::MAX_ADDITIONAL_ROOTS {
+                    return Err(Error::Invalid(format!(
+                        "at most {} additional log folders are supported per provider; received {}",
+                        Self::MAX_ADDITIONAL_ROOTS,
+                        accepted.len()
+                    )));
+                }
+                if accepted.is_empty() {
+                    settings.additional_roots.remove(provider.key());
+                } else {
+                    settings
+                        .additional_roots
+                        .insert(provider.key().to_string(), accepted);
+                }
+                Ok(())
+            },
+            save,
+        )
+    }
+
     /// Record the tier the user picked for one provider, or clear it.
     pub fn set_plan(&self, provider: ProviderId, plan_id: Option<String>) -> Result<Settings> {
         self.update_settings(|settings| match plan_id {
@@ -1417,6 +1565,95 @@ mod tests {
     }
 
     #[test]
+    fn additional_log_folders_are_kept_per_provider_and_deduplicated() {
+        let settings = serde_json::from_str::<Settings>(
+            r#"{"additionalRoots":{"codex":["/tmp/one","/tmp/one","/tmp/two"]}}"#,
+        )
+        .expect("valid additional roots");
+
+        assert_eq!(
+            settings.additional_roots_for(ProviderId::Codex),
+            [PathBuf::from("/tmp/one"), PathBuf::from("/tmp/two")]
+        );
+        // A provider the user never configured has none, not a default folder.
+        assert!(settings
+            .additional_roots_for(ProviderId::ClaudeCode)
+            .is_empty());
+    }
+
+    #[test]
+    fn additional_log_folders_reject_an_unknown_provider_and_a_relative_path() {
+        let unknown = serde_json::from_str::<Settings>(
+            r#"{"additionalRoots":{"planned-provider":["/tmp/one"]}}"#,
+        )
+        .expect_err("unknown provider must fail");
+        assert!(unknown.to_string().contains("additionalRoots"));
+        assert!(unknown.to_string().contains("planned-provider"));
+
+        // A relative path means something different depending on the working directory the
+        // app happened to be launched from, which is not a folder anyone chose.
+        let relative =
+            serde_json::from_str::<Settings>(r#"{"additionalRoots":{"codex":["logs"]}}"#)
+                .expect_err("a relative path must fail");
+        assert!(relative.to_string().contains("additionalRoots"));
+        assert!(relative.to_string().contains("logs"));
+    }
+
+    #[test]
+    fn setting_additional_log_folders_refuses_a_path_that_is_not_a_readable_folder() {
+        let deck = Deck::new().expect("create deck");
+        let missing = std::env::temp_dir().join(format!(
+            "quotadeck-roots-{}-never-created",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&missing);
+
+        let error = deck
+            .set_additional_roots_with(ProviderId::Codex, vec![missing.clone()], |_| Ok(()))
+            .expect_err("a missing folder must be refused");
+        let message = error.to_string();
+        assert!(
+            message.contains(&missing.display().to_string()),
+            "{message}"
+        );
+
+        // Refused means unchanged, not partially applied.
+        assert!(deck
+            .settings()
+            .additional_roots_for(ProviderId::Codex)
+            .is_empty());
+    }
+
+    #[test]
+    fn setting_additional_log_folders_stores_absolute_deduplicated_paths() {
+        let deck = Deck::new().expect("create deck");
+        let folder =
+            std::env::temp_dir().join(format!("quotadeck-roots-{}-accepted", std::process::id()));
+        std::fs::create_dir_all(&folder).expect("create the folder");
+
+        let settings = deck
+            .set_additional_roots_with(
+                ProviderId::Codex,
+                vec![folder.clone(), folder.clone()],
+                |_| Ok(()),
+            )
+            .expect("an existing folder is accepted");
+        assert_eq!(
+            settings.additional_roots_for(ProviderId::Codex),
+            std::slice::from_ref(&folder)
+        );
+
+        // An empty list removes the provider's entry rather than storing an empty one.
+        let cleared = deck
+            .set_additional_roots_with(ProviderId::Codex, Vec::new(), |_| Ok(()))
+            .expect("clearing is accepted");
+        assert!(!cleared
+            .additional_roots
+            .contains_key(ProviderId::Codex.key()));
+        let _ = std::fs::remove_dir_all(&folder);
+    }
+
+    #[test]
     fn failed_provider_policy_save_rolls_back_the_in_memory_snapshot() {
         let deck = Deck::new().expect("create deck");
         let before = deck.settings();
@@ -1841,7 +2078,7 @@ mod tests {
         let json = serde_json::to_string(&settings).expect("serialise settings");
         assert_eq!(
             json,
-            r#"{"trayMode":"compact","theme":"dark","locale":"system","plans":{"claude-code":"max-20x"},"alerts":{"codex":[85,95]},"mutedUntil":null,"demo":false,"disabledProviders":[],"providerOrder":["claude-code","codex","copilot-cli"],"retentionDays":32}"#
+            r#"{"trayMode":"compact","theme":"dark","locale":"system","plans":{"claude-code":"max-20x"},"alerts":{"codex":[85,95]},"mutedUntil":null,"demo":false,"disabledProviders":[],"providerOrder":["claude-code","codex","copilot-cli"],"additionalRoots":{},"retentionDays":32}"#
         );
     }
 
