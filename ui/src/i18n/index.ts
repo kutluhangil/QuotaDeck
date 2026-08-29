@@ -13,16 +13,18 @@
  */
 
 import type { Locale } from "../types";
+import { de } from "./de";
 import { en, type Catalogue } from "./en";
+import { es } from "./es";
 import { tr } from "./tr";
 
 export type { Catalogue };
 
 /** Languages that have a complete catalogue. `Locale` adds `system` on top of these. */
-export const LANGUAGES = ["en", "tr"] as const;
+export const LANGUAGES = ["en", "tr", "de", "es"] as const;
 export type Language = (typeof LANGUAGES)[number];
 
-const catalogues: Record<Language, Catalogue> = { en, tr };
+const catalogues: Record<Language, Catalogue> = { en, tr, de, es };
 
 function isLanguage(tag: string): tag is Language {
   return (LANGUAGES as readonly string[]).includes(tag);

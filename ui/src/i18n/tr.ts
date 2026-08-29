@@ -282,6 +282,8 @@ export const tr: Catalogue = {
     languageSystem: "Sistemle aynı",
     languageEnglish: "English",
     languageTurkish: "Türkçe",
+    languageGerman: "Deutsch",
+    languageSpanish: "Español",
     languageHint: "Tarih ve saat biçimleri sistemin bölge ayarlarını izlemeye devam eder.",
 
     startupTitle: "Oturum açılışına kaydet",

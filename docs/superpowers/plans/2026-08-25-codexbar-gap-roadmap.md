@@ -399,8 +399,8 @@
 - Modify: `ui/src/components/SettingsView.tsx`
 - Modify: `app/src/i18n.rs`
 
-- [ ] RED: make catalogue parity/placeholder tests iterate every registered language.
-- [ ] GREEN: add `de` and `es` to frontend and native locale resolution with self-named language labels.
+- [x] RED: make catalogue parity/placeholder tests iterate every registered language.
+- [x] GREEN: add `de` and `es` to frontend and native locale resolution with self-named language labels.
 
 ### Task 8.2: Add complete app catalogues
 
@@ -409,18 +409,18 @@
 - Create: `ui/src/i18n/es.ts`
 - Modify: `app/src/i18n.rs`
 
-- [ ] Translate every existing string, notification, tray action, folder grant, health state, and new feature string.
-- [ ] Verify placeholder arity, percent-sign placement, number grouping, reset clocks, and screen-reader language tags.
+- [x] Translate every existing string, notification, tray action, folder grant, health state, and new feature string.
+- [x] Verify placeholder arity, percent-sign placement, number grouping, reset clocks, and screen-reader language tags.
 
 ### Task 8.3: Decide site localization separately
 
-- [ ] Do not add partial `/de` or `/es` routes. If site localization is approved, generalize route/hreflang/sitemap registries first, then add all pages and copy.
+- [x] Do not add partial `/de` or `/es` routes. If site localization is approved, generalize route/hreflang/sitemap registries first, then add all pages and copy. — **not added.** The site stays EN + TR; a half-translated marketing page is worse than none, and the route/hreflang/sitemap generalisation is its own piece of work.
 
 ### Task 8.4: Verify, commit, and push
 
-- [ ] Run Rust i18n tests, all catalogue tests, UI build, Astro semantic check, and native locale smoke.
-- [ ] Commit with `feat(i18n): add German and Spanish app catalogues`.
-- [ ] Push separately.
+- [x] Run Rust i18n tests, all catalogue tests, UI build, Astro semantic check, and native locale smoke.
+- [x] Commit with `feat(i18n): add German and Spanish app catalogues`.
+- [x] Push separately.
 
 ## Phase 9 — Evidence-gated provider expansion and final release gate
 

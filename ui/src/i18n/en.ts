@@ -378,6 +378,8 @@ export const en = {
      */
     languageEnglish: "English",
     languageTurkish: "Türkçe",
+    languageGerman: "Deutsch",
+    languageSpanish: "Español",
     /** Times and dates are a regional setting, not a language one, and stay with the system. */
     languageHint: "Dates and clock times keep following your system's regional settings.",
 

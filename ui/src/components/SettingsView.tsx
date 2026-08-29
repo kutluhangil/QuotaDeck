@@ -54,6 +54,8 @@ function locales(strings: Catalogue): { locale: Locale; label: string }[] {
     { locale: "system", label: strings.settings.languageSystem },
     { locale: "en", label: strings.settings.languageEnglish },
     { locale: "tr", label: strings.settings.languageTurkish },
+    { locale: "de", label: strings.settings.languageGerman },
+    { locale: "es", label: strings.settings.languageSpanish },
   ];
 }
 

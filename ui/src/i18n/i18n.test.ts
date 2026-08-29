@@ -7,6 +7,17 @@ import { tr } from "./tr";
 import { LANGUAGES, catalogueFor, intlLocale, languageFor } from "./index";
 
 /**
+ * Every language but the source one, resolved through the registry.
+ *
+ * Iterated rather than listed: adding a language to `LANGUAGES` without a catalogue, or with a
+ * catalogue that quietly drops a placeholder, has to fail here rather than in front of a reader.
+ */
+const TRANSLATIONS = LANGUAGES.filter((language) => language !== "en").map((language) => ({
+  language,
+  catalogue: catalogueFor(language),
+}));
+
+/**
  * Every leaf of a catalogue, as `path -> shape`.
  *
  * A function's shape carries its arity: a translator who drops a placeholder produces a
@@ -37,22 +48,30 @@ function shape(value: unknown, path = ""): Map<string, string> {
 describe("catalogues", () => {
   it("cover exactly the same keys", () => {
     const english = [...shape(en).keys()].sort();
-    const turkish = [...shape(tr).keys()].sort();
-    expect(turkish).toEqual(english);
-  });
-
-  it("keep every placeholder a sentence was written around", () => {
-    const english = shape(en);
-    for (const [path, form] of shape(tr)) {
-      expect(form, `tr.${path} does not take the arguments en.${path} does`).toBe(
-        english.get(path),
+    for (const { language, catalogue } of TRANSLATIONS) {
+      expect([...shape(catalogue).keys()].sort(), `${language} has different keys`).toEqual(
+        english,
       );
     }
   });
 
+  it("keep every placeholder a sentence was written around", () => {
+    const english = shape(en);
+    for (const { language, catalogue } of TRANSLATIONS) {
+      for (const [path, form] of shape(catalogue)) {
+        expect(
+          form,
+          `${language}.${path} does not take the arguments en.${path} does`,
+        ).toBe(english.get(path));
+      }
+    }
+  });
+
   it("leave nothing blank", () => {
-    for (const [path, value] of Object.entries(flatten(tr))) {
-      expect(value.trim(), `tr.${path} is empty`).not.toBe("");
+    for (const { language, catalogue } of TRANSLATIONS) {
+      for (const [path, value] of Object.entries(flatten(catalogue))) {
+        expect(value.trim(), `${language}.${path} is empty`).not.toBe("");
+      }
     }
   });
 
@@ -60,7 +79,7 @@ describe("catalogues", () => {
     // The three platforms name this strip three different things, and the copy is written
     // around the noun. A catalogue that returned the same word for all three would read as
     // "Menu bar" on a machine that has no menu bar.
-    for (const catalogue of [en, tr]) {
+    for (const catalogue of [en, ...TRANSLATIONS.map((entry) => entry.catalogue)]) {
       const surfaces = PLATFORMS.map((platform) => catalogue.settings.trayTitle(platform));
       expect(new Set(surfaces).size, `${surfaces.join(", ")} are not three distinct names`).toBe(
         PLATFORMS.length,
@@ -77,8 +96,10 @@ describe("catalogues", () => {
   it("say the same thing about the same provider", () => {
     // Product names are not translated. A "Codex" that became something else in one catalogue
     // would stop matching what the user sees in their own terminal.
-    for (const id of Object.keys(en.provider) as ProviderId[]) {
-      expect(tr.provider[id]).toBe(en.provider[id]);
+    for (const { language, catalogue } of TRANSLATIONS) {
+      for (const id of Object.keys(en.provider) as ProviderId[]) {
+        expect(catalogue.provider[id], `${language} renamed ${id}`).toBe(en.provider[id]);
+      }
     }
   });
 });
@@ -99,6 +120,9 @@ describe("locale resolution", () => {
     expect(languageFor("tr")).toBe("tr");
     expect(catalogueFor("tr")).toBe(tr);
     expect(catalogueFor("en")).toBe(en);
+    for (const language of LANGUAGES) {
+      expect(languageFor(language)).toBe(language);
+    }
   });
 
   it("returns the same object every time, so a selector does not thrash", () => {
@@ -109,7 +133,9 @@ describe("locale resolution", () => {
 
   it("leaves the number and date conventions to the system unless a language was picked", () => {
     expect(intlLocale("system")).toBeUndefined();
-    expect(intlLocale("tr")).toBe("tr");
+    for (const language of LANGUAGES) {
+      expect(intlLocale(language)).toBe(language);
+    }
   });
 
   it("has a catalogue for every language it advertises", () => {

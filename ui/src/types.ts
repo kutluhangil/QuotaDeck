@@ -340,7 +340,7 @@ export type TrayMode = "glyph" | "compact" | "strip";
  * Stored in the backend rather than only here because the notifications are raised from the
  * read loop, which runs whether or not the panel has ever been opened.
  */
-export type Locale = "system" | "en" | "tr";
+export type Locale = "system" | "en" | "tr" | "de" | "es";
 
 export interface Settings {
   trayMode: TrayMode;

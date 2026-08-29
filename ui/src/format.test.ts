@@ -46,6 +46,12 @@ describe("formatPercent", () => {
     // catalogue, which is why this goes through Intl rather than a template string.
     expect(formatPercent(76, "en")).toBe("76%");
     expect(formatPercent(76, "tr")).toBe("%76");
+    // German and Spanish both keep a non-breaking space before the sign; the point is that the
+    // sign is placed by `Intl` rather than concatenated by us.
+    for (const locale of ["de", "es"] as const) {
+      expect(formatPercent(76, locale)).toContain("76");
+      expect(formatPercent(76, locale)).toContain("%");
+    }
   });
 
   it("keeps whole numbers, because the providers report whole numbers", () => {
