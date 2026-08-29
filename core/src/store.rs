@@ -11,7 +11,7 @@ use redb::{Database, ReadableTable, TableDefinition};
 
 use crate::cursor::FileCursor;
 use crate::error::Result;
-use crate::types::{Bucket, ProviderId};
+use crate::types::{Bucket, ProviderId, ProviderInstanceId};
 
 const CURSORS: TableDefinition<&str, &[u8]> = TableDefinition::new("cursors");
 const BUCKETS: TableDefinition<(&str, i64), &[u8]> = TableDefinition::new("buckets");
@@ -177,11 +177,11 @@ impl BatchedStore {
     /// Queue one provider's versioned engine checkpoint.
     pub fn push_provider_checkpoint(
         &mut self,
-        provider: ProviderId,
+        instance: &ProviderInstanceId,
         checkpoint: Vec<u8>,
     ) -> Result<()> {
         self.push(Delta::Meta {
-            key: provider_checkpoint_key(provider),
+            key: provider_checkpoint_key(instance),
             value: checkpoint,
         })
     }
@@ -190,10 +190,10 @@ impl BatchedStore {
     /// to flush it before a multi-provider transition is ready to commit.
     pub fn stage_provider_checkpoint(
         &mut self,
-        provider: ProviderId,
+        instance: &ProviderInstanceId,
         checkpoint: Vec<u8>,
     ) -> Result<()> {
-        let key = provider_checkpoint_key(provider);
+        let key = provider_checkpoint_key(instance);
         if let Some(Delta::Meta {
             value: pending_value,
             ..
@@ -211,20 +211,23 @@ impl BatchedStore {
     }
 
     /// Cancel only a queued replacement. The last committed checkpoint remains untouched.
-    pub fn cancel_staged_provider_checkpoint(&mut self, provider: ProviderId) {
-        let key = provider_checkpoint_key(provider);
+    pub fn cancel_staged_provider_checkpoint(&mut self, instance: &ProviderInstanceId) {
+        let key = provider_checkpoint_key(instance);
         self.pending.retain(
             |delta| !matches!(delta, Delta::Meta { key: pending_key, .. } if pending_key == &key),
         );
     }
 
-    pub fn load_provider_checkpoint(&self, provider: ProviderId) -> Result<Option<Vec<u8>>> {
-        self.read_meta(&provider_checkpoint_key(provider))
+    pub fn load_provider_checkpoint(
+        &self,
+        instance: &ProviderInstanceId,
+    ) -> Result<Option<Vec<u8>>> {
+        self.read_meta(&provider_checkpoint_key(instance))
     }
 
     /// Delete one provider's persisted checkpoint immediately and cancel a queued replacement.
-    pub fn delete_provider_checkpoint(&mut self, provider: ProviderId) -> Result<()> {
-        let key = provider_checkpoint_key(provider);
+    pub fn delete_provider_checkpoint(&mut self, instance: &ProviderInstanceId) -> Result<()> {
+        let key = provider_checkpoint_key(instance);
         let txn = self.db.begin_write()?;
         {
             let mut meta = txn.open_table(META)?;
@@ -247,8 +250,13 @@ impl BatchedStore {
     }
 }
 
-fn provider_checkpoint_key(provider: ProviderId) -> String {
-    format!("{PROVIDER_CHECKPOINT_PREFIX}{}", provider.key())
+/// Where one instance's checkpoint lives.
+///
+/// A default instance keys on the bare provider key, which is byte-for-byte what releases
+/// before instances existed wrote. That is the whole migration: an existing checkpoint is
+/// already the default instance's checkpoint, and nothing has to be rewritten or re-read.
+fn provider_checkpoint_key(instance: &ProviderInstanceId) -> String {
+    format!("{PROVIDER_CHECKPOINT_PREFIX}{}", instance.key())
 }
 
 impl Drop for BatchedStore {
@@ -444,22 +452,28 @@ mod tests {
         let path = scratch("provider-checkpoint.redb");
         let mut store = BatchedStore::open(&path).expect("open");
         store
-            .push_provider_checkpoint(ProviderId::Codex, b"codex-state".to_vec())
+            .push_provider_checkpoint(
+                &ProviderInstanceId::default_for(ProviderId::Codex),
+                b"codex-state".to_vec(),
+            )
             .expect("push codex checkpoint");
         store
-            .push_provider_checkpoint(ProviderId::ClaudeCode, b"claude-state".to_vec())
+            .push_provider_checkpoint(
+                &ProviderInstanceId::default_for(ProviderId::ClaudeCode),
+                b"claude-state".to_vec(),
+            )
             .expect("push claude checkpoint");
         store.flush().expect("flush");
 
         assert_eq!(
             store
-                .load_provider_checkpoint(ProviderId::Codex)
+                .load_provider_checkpoint(&ProviderInstanceId::default_for(ProviderId::Codex))
                 .expect("load codex"),
             Some(b"codex-state".to_vec())
         );
         assert_eq!(
             store
-                .load_provider_checkpoint(ProviderId::ClaudeCode)
+                .load_provider_checkpoint(&ProviderInstanceId::default_for(ProviderId::ClaudeCode))
                 .expect("load claude"),
             Some(b"claude-state".to_vec())
         );
@@ -470,22 +484,27 @@ mod tests {
         let path = scratch("staged-provider.redb");
         let mut store = BatchedStore::open(&path).expect("open");
         store
-            .stage_provider_checkpoint(ProviderId::ClaudeCode, b"replacement".to_vec())
+            .stage_provider_checkpoint(
+                &ProviderInstanceId::default_for(ProviderId::ClaudeCode),
+                b"replacement".to_vec(),
+            )
             .expect("stage checkpoint");
         assert_eq!(store.pending_len(), 1);
         assert_eq!(
             store
-                .load_provider_checkpoint(ProviderId::ClaudeCode)
+                .load_provider_checkpoint(&ProviderInstanceId::default_for(ProviderId::ClaudeCode))
                 .expect("load before flush"),
             None
         );
 
-        store.cancel_staged_provider_checkpoint(ProviderId::ClaudeCode);
+        store.cancel_staged_provider_checkpoint(&ProviderInstanceId::default_for(
+            ProviderId::ClaudeCode,
+        ));
         assert_eq!(store.pending_len(), 0);
         store.flush().expect("empty flush");
         assert_eq!(
             store
-                .load_provider_checkpoint(ProviderId::ClaudeCode)
+                .load_provider_checkpoint(&ProviderInstanceId::default_for(ProviderId::ClaudeCode))
                 .expect("load after cancel"),
             None
         );
@@ -498,27 +517,39 @@ mod tests {
             .expect("open")
             .with_limits(10_000, Duration::from_secs(3600));
         store
-            .push_provider_checkpoint(ProviderId::Codex, b"codex-persisted".to_vec())
+            .push_provider_checkpoint(
+                &ProviderInstanceId::default_for(ProviderId::Codex),
+                b"codex-persisted".to_vec(),
+            )
             .expect("push codex");
         store
-            .push_provider_checkpoint(ProviderId::ClaudeCode, b"claude-persisted".to_vec())
+            .push_provider_checkpoint(
+                &ProviderInstanceId::default_for(ProviderId::ClaudeCode),
+                b"claude-persisted".to_vec(),
+            )
             .expect("push claude");
         store.flush().expect("persist both");
 
         store
-            .push_provider_checkpoint(ProviderId::Codex, b"codex-pending".to_vec())
+            .push_provider_checkpoint(
+                &ProviderInstanceId::default_for(ProviderId::Codex),
+                b"codex-pending".to_vec(),
+            )
             .expect("queue codex replacement");
         store
-            .push_provider_checkpoint(ProviderId::ClaudeCode, b"claude-pending".to_vec())
+            .push_provider_checkpoint(
+                &ProviderInstanceId::default_for(ProviderId::ClaudeCode),
+                b"claude-pending".to_vec(),
+            )
             .expect("queue claude replacement");
         assert_eq!(store.pending_len(), 2);
 
         store
-            .delete_provider_checkpoint(ProviderId::ClaudeCode)
+            .delete_provider_checkpoint(&ProviderInstanceId::default_for(ProviderId::ClaudeCode))
             .expect("delete claude only");
         assert_eq!(
             store
-                .load_provider_checkpoint(ProviderId::ClaudeCode)
+                .load_provider_checkpoint(&ProviderInstanceId::default_for(ProviderId::ClaudeCode))
                 .expect("load deleted"),
             None,
             "persisted checkpoint is deleted immediately"
@@ -528,7 +559,7 @@ mod tests {
         store.flush().expect("flush surviving provider");
         assert_eq!(
             store
-                .load_provider_checkpoint(ProviderId::Codex)
+                .load_provider_checkpoint(&ProviderInstanceId::default_for(ProviderId::Codex))
                 .expect("load codex"),
             Some(b"codex-pending".to_vec()),
             "unrelated provider checkpoint survives and still advances"

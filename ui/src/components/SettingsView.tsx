@@ -8,7 +8,15 @@ import { addRoot, MAX_ADDITIONAL_ROOTS, removeRoot } from "../roots";
 import type { AddRootFailure } from "../roots";
 import { useDeck, useLocale, useStrings } from "../store";
 import { DEFAULT_THRESHOLDS, thresholdsFor } from "../types";
-import type { Locale, ProviderId, ProviderPlans, RetentionDays, Settings, TrayMode } from "../types";
+import type {
+  Locale,
+  ProviderId,
+  ProviderInstanceId,
+  ProviderPlans,
+  RetentionDays,
+  Settings,
+  TrayMode,
+} from "../types";
 import { StatuslineCard } from "./StatuslineCard";
 
 /**
@@ -92,7 +100,7 @@ function ProviderGroup() {
   const moveProvider = useDeck((state) => state.moveProvider);
   const moveButtons = useRef(new Map<string, HTMLButtonElement>());
 
-  async function move(provider: ProviderId, direction: -1 | 1) {
+  async function move(provider: ProviderInstanceId, direction: -1 | 1) {
     await moveProvider(provider, direction);
     window.requestAnimationFrame(() => {
       const current = useDeck.getState().providerCatalogue;
@@ -155,6 +163,121 @@ function ProviderGroup() {
 }
 
 /**
+ * Separate accounts: several copies of one tool, each with its own quota.
+ *
+ * The opposite of the group below it. Additional log folders fold several folders into one
+ * quota; this splits one tool into several. Both live here, next to each other, because the
+ * difference is exactly what people get wrong.
+ *
+ * Typed, not chosen: the app cannot see a second login, only a second set of logs, so the user
+ * names the account and then points it at the folder it writes to.
+ */
+function InstanceGroup() {
+  const strings = useStrings();
+  const catalogue = useDeck((state) => state.providerCatalogue);
+  const plans = useDeck((state) => state.plans);
+  const addInstance = useDeck((state) => state.addInstance);
+  const removeInstance = useDeck((state) => state.removeInstance);
+  const busy = useDeck((state) => state.settingsAction !== null);
+  const tools = Array.from(new Set(catalogue.map((entry) => entry.provider)));
+  const [provider, setProvider] = useState<ProviderId | null>(null);
+  const [name, setName] = useState("");
+  const [label, setLabel] = useState("");
+  const [refused, setRefused] = useState(false);
+  const named = catalogue.filter((entry) => entry.id.includes("#"));
+  const chosen = provider ?? tools[0];
+
+  function add() {
+    if (chosen === undefined) return;
+    // The same shape the backend enforces, checked here so a typo is refused where it was made.
+    if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(name.trim())) {
+      setRefused(true);
+      return;
+    }
+    setRefused(false);
+    const trimmed = label.trim();
+    void addInstance(chosen, name.trim(), trimmed === "" ? null : trimmed).then(() => {
+      setName("");
+      setLabel("");
+    });
+  }
+
+  if (tools.length === 0) return null;
+
+  return (
+    <fieldset className="settings__group" disabled={busy}>
+      <legend className="type-label settings__legend">{strings.settings.instancesTitle}</legend>
+      <p className="type-caption settings__hint">{strings.settings.instancesHint}</p>
+      {named.length === 0 ? (
+        <p className="type-caption settings__hint">{strings.settings.instancesEmpty}</p>
+      ) : (
+        <ul className="settings__roots">
+          {named.map((entry) => (
+            <li key={entry.id} className="settings__root">
+              <span className="type-body settings__root-path">
+                {entry.label ?? entry.id} · {entry.displayName}
+              </span>
+              <button
+                type="button"
+                className="settings__move"
+                aria-label={strings.settings.instancesRemove(entry.label ?? entry.id)}
+                onClick={() => void removeInstance(entry.id)}
+              >
+                ×
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="settings__row">
+        <select
+          className="settings__text"
+          aria-label={strings.settings.instancesTool}
+          value={chosen}
+          onChange={(event) => setProvider(event.target.value as ProviderId)}
+        >
+          {tools.map((tool) => (
+            <option key={tool} value={tool}>
+              {strings.provider[tool]}
+            </option>
+          ))}
+        </select>
+        <input
+          type="text"
+          className="settings__text"
+          value={name}
+          placeholder={strings.settings.instancesNamePlaceholder}
+          aria-label={strings.settings.instancesNamePlaceholder}
+          spellCheck={false}
+          onChange={(event) => {
+            setName(event.target.value);
+            setRefused(false);
+          }}
+        />
+        <input
+          type="text"
+          className="settings__text"
+          value={label}
+          placeholder={strings.settings.instancesLabelPlaceholder}
+          aria-label={strings.settings.instancesLabelPlaceholder}
+          onChange={(event) => setLabel(event.target.value)}
+        />
+        <button type="button" className="settings__button" onClick={add}>
+          <span className="type-body">{strings.settings.instancesAdd}</span>
+        </button>
+      </div>
+      {refused && (
+        <p className="type-caption settings__error" role="alert">
+          {strings.settings.instancesInvalidName}
+        </p>
+      )}
+      {/* Referenced so the tier list stays loaded before the first account is added. */}
+      <span hidden>{plans.length}</span>
+    </fieldset>
+  );
+}
+
+/**
  * Extra log folders for one tool.
  *
  * A typed path rather than a folder picker. The picker this app already owns is the macOS
@@ -163,7 +286,13 @@ function ProviderGroup() {
  * have, to reach a feature most people will never open. What arrives here is checked twice: the
  * shape below, and existence and readability in the shell, which a webview cannot know.
  */
-function LogFolderGroup({ provider, displayName }: { provider: ProviderId; displayName: string }) {
+function LogFolderGroup({
+  provider,
+  displayName,
+}: {
+  provider: ProviderInstanceId;
+  displayName: string;
+}) {
   const strings = useStrings();
   const supported = useDeck((state) => state.additionalRootsSupported);
   const roots = useDeck((state) => state.settings.additionalRoots[provider] ?? EMPTY_ROOTS);
@@ -263,11 +392,20 @@ function rootRefusal(strings: Catalogue, reason: AddRootFailure): string {
  * subscriptions, so a tier drives an estimate — and an estimate the user never asked for reads
  * as a measurement. Nothing is picked on their behalf.
  */
-function PlanGroup({ entry }: { entry: ProviderPlans }) {
+function PlanGroup({
+  instance,
+  entry,
+  name,
+}: {
+  instance: ProviderInstanceId;
+  entry: ProviderPlans;
+  name: string;
+}) {
   const strings = useStrings();
-  const chosen = useDeck((state) => state.settings.plans[entry.provider]);
+  // Per instance, not per tool: two copies of one provider can sit on different tiers, and a
+  // shared tier would put one of them behind a ceiling nobody bought.
+  const chosen = useDeck((state) => state.settings.plans[instance]);
   const setPlan = useDeck((state) => state.setPlan);
-  const name = strings.provider[entry.provider];
   const busy = useDeck((state) => state.settingsAction !== null);
 
   return (
@@ -277,9 +415,9 @@ function PlanGroup({ entry }: { entry: ProviderPlans }) {
         <label className="settings__chip">
           <input
             type="radio"
-            name={`plan-${entry.provider}`}
+            name={`plan-${instance}`}
             checked={chosen === undefined}
-            onChange={() => setPlan(entry.provider, null)}
+            onChange={() => setPlan(instance, null)}
           />
           <span className="type-body">{strings.settings.planNone}</span>
         </label>
@@ -287,10 +425,10 @@ function PlanGroup({ entry }: { entry: ProviderPlans }) {
           <label key={plan.id} className="settings__chip">
             <input
               type="radio"
-              name={`plan-${entry.provider}`}
+              name={`plan-${instance}`}
               value={plan.id}
               checked={chosen === plan.id}
-              onChange={() => setPlan(entry.provider, plan.id)}
+              onChange={() => setPlan(instance, plan.id)}
             />
             <span className="type-body">{plan.label}</span>
           </label>
@@ -313,11 +451,10 @@ function PlanGroup({ entry }: { entry: ProviderPlans }) {
  * decides when a number the app already has is worth interrupting for, and the operating
  * system asks its own permission before the first interruption.
  */
-function AlertGroup({ provider }: { provider: ProviderId }) {
+function AlertGroup({ provider, name }: { provider: ProviderInstanceId; name: string }) {
   const strings = useStrings();
   const chosen = useDeck((state) => thresholdsFor(state.settings, provider));
   const toggleThreshold = useDeck((state) => state.toggleThreshold);
-  const name = strings.provider[provider];
   const busy = useDeck((state) => state.settingsAction !== null);
 
   return (
@@ -609,23 +746,44 @@ export function SettingsView({ now }: { now: number }) {
       <AccessGroup />
       <DemoGroup />
 
+      <InstanceGroup />
+
       {/* One per enabled tool, under the list that enables them: a folder added to a tool
           nobody reads would be a setting with no effect. */}
       {catalogue
         .filter((entry) => entry.enabled)
         .map((entry) => (
-          <LogFolderGroup key={entry.id} provider={entry.id} displayName={entry.displayName} />
+          <LogFolderGroup
+            key={entry.id}
+            provider={entry.id}
+            displayName={entry.label ?? entry.displayName}
+          />
         ))}
 
-      {plans.map((entry) => (
-        <PlanGroup key={entry.provider} entry={entry} />
-      ))}
+      {/* One tier picker per instance that has tiers to pick, named as the card is named. */}
+      {catalogue.flatMap((instance) => {
+        const entry = plans.find((candidate) => candidate.provider === instance.provider);
+        return entry === undefined
+          ? []
+          : [
+              <PlanGroup
+                key={instance.id}
+                instance={instance.id}
+                entry={entry}
+                name={instance.label ?? strings.provider[instance.provider]}
+              />,
+            ];
+      })}
 
       <MuteGroup now={now} />
       {/* Only tools that actually reported something. Offering to warn about a limit that
           does not exist would be an empty promise. */}
       {alerting.map((snapshot) => (
-        <AlertGroup key={snapshot.id} provider={snapshot.id} />
+        <AlertGroup
+          key={snapshot.instance}
+          provider={snapshot.instance}
+          name={snapshot.label ?? strings.provider[snapshot.id]}
+        />
       ))}
 
       <StatuslineCard now={now} />

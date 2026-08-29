@@ -133,22 +133,22 @@ function ProviderPanel({
   // with no history, and a selector that returns one hands zustand a new snapshot on every
   // render.
   const history = useHistory();
-  const hours = historyFor(history, snapshot.id);
+  const hours = historyFor(history, snapshot.instance);
   const sum = totals(inRange(hours, historyRange));
   const cells = dailyCells(inRange(hours, historyRange), heatmapDays, historyRange.to - 1);
-  const models = foldBreakdown(modelsFor(history, snapshot.id), historyRange);
-  const modelsDropped = modelsDroppedFor(history, snapshot.id);
-  const agents = foldBreakdown(agentsFor(history, snapshot.id), historyRange);
-  const agentsDropped = agentsDroppedFor(history, snapshot.id);
-  const projects = foldBreakdown(projectsFor(history, snapshot.id), historyRange);
-  const projectsDropped = projectsDroppedFor(history, snapshot.id);
+  const models = foldBreakdown(modelsFor(history, snapshot.instance), historyRange);
+  const modelsDropped = modelsDroppedFor(history, snapshot.instance);
+  const agents = foldBreakdown(agentsFor(history, snapshot.instance), historyRange);
+  const agentsDropped = agentsDroppedFor(history, snapshot.instance);
+  const projects = foldBreakdown(projectsFor(history, snapshot.instance), historyRange);
+  const projectsDropped = projectsDroppedFor(history, snapshot.instance);
   // Shortened against the rows actually on screen, so two directories sharing a last segment
   // never draw as one project.
   const projectNames = shortenPaths(
     projects.map((row) => row.label).filter((label): label is string => label !== null),
   );
 
-  const name = strings.provider[snapshot.id];
+  const name = snapshot.label ?? strings.provider[snapshot.id];
   const headline = worstWindow(snapshot.windows);
   const headlinePace = headline === null ? null : paceFor(snapshot, headline);
   const level = headline?.usedPercent == null ? null : levelFor(headline.usedPercent);
@@ -157,7 +157,7 @@ function ProviderPanel({
     <article className="board__card" aria-labelledby={nameId}>
       <header className="board__card-head">
         <h2 className="type-label board__name" id={nameId}>
-          <span className="card__dot" data-hue={identityHue(snapshot.id)} aria-hidden="true" />
+          <span className="card__dot" data-hue={identityHue(snapshot.instance)} aria-hidden="true" />
           {name}
         </h2>
         <span className="card__head-right">
@@ -456,7 +456,7 @@ export function Dashboard() {
           <div className="board__grid">
             {reporting.map((snapshot) => (
               <ProviderPanel
-                key={snapshot.id}
+                key={snapshot.instance}
                 snapshot={snapshot}
                 health={visibleProviderHealth(snapshot, deck.health)}
                 historyRange={selectedRange}

@@ -16,7 +16,7 @@
 use std::sync::{Mutex, OnceLock};
 
 use quotadeck_core::horizon;
-use quotadeck_core::types::ProviderId;
+use quotadeck_core::types::ProviderInstanceId;
 use tauri::image::Image;
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
@@ -60,12 +60,16 @@ fn menu_model(
     language: Language,
 ) -> quotadeck_core::error::Result<TrayMenuModel> {
     let mut items = vec![TrayMenuItem::Open(language.tray_open().into())];
-    for provider in settings.ordered_provider_ids(&quotadeck_providers::ids())? {
-        if !settings.is_provider_enabled(provider) {
+    for instance in settings.instance_ids(&quotadeck_providers::ids())? {
+        if !settings.is_instance_enabled(&instance) {
             continue;
         }
+        let label = settings.label_for(&instance);
         items.push(TrayMenuItem::Summary(summary_label(
-            state, provider, language,
+            state,
+            &instance,
+            label.as_deref(),
+            language,
         )));
     }
     items.push(TrayMenuItem::Dashboard(language.tray_dashboard().into()));
@@ -75,12 +79,25 @@ fn menu_model(
     Ok(TrayMenuModel { items })
 }
 
-fn summary_label(state: &DeckState, provider: ProviderId, language: Language) -> String {
-    let name = provider_name(provider);
+/// One line per instance.
+///
+/// A named instance shows the name the user gave it; a default one shows the tool's name. Two
+/// lines reading "Codex" would be a menu nobody can act on.
+fn summary_label(
+    state: &DeckState,
+    instance: &ProviderInstanceId,
+    label: Option<&str>,
+    language: Language,
+) -> String {
+    let name = match label {
+        Some(label) => label.to_string(),
+        None if instance.is_default() => provider_name(instance.provider).to_string(),
+        None => instance.key(),
+    };
     let percent = state
         .providers
         .iter()
-        .find(|snapshot| snapshot.id == provider)
+        .find(|snapshot| &snapshot.instance == instance)
         .and_then(|snapshot| {
             snapshot
                 .windows
@@ -91,7 +108,7 @@ fn summary_label(state: &DeckState, provider: ProviderId, language: Language) ->
     let health = state
         .health
         .iter()
-        .find(|health| health.provider == provider);
+        .find(|health| &health.provider == instance);
     match health.map(|health| health.state) {
         Some(HealthState::Healthy) => percent
             .map(|value| format!("{name} — {:.0}%", value))
@@ -420,6 +437,8 @@ mod tests {
     fn snapshot(id: ProviderId, percent: f32) -> ProviderSnapshot {
         ProviderSnapshot {
             id,
+            instance: ProviderInstanceId::default_for(id),
+            label: None,
             installed: true,
             windows: vec![QuotaWindow {
                 limit_id: id.key().into(),
@@ -454,9 +473,10 @@ mod tests {
             snapshot(ProviderId::ClaudeCode, 81.0),
             snapshot(ProviderId::Codex, 72.0),
         ];
-        let mut codex = ProviderHealth::new(ProviderId::Codex);
+        let mut codex = ProviderHealth::new(ProviderInstanceId::default_for(ProviderId::Codex));
         codex.state = HealthState::Stale;
-        let mut claude = ProviderHealth::new(ProviderId::ClaudeCode);
+        let mut claude =
+            ProviderHealth::new(ProviderInstanceId::default_for(ProviderId::ClaudeCode));
         claude.state = HealthState::Healthy;
         state.health = vec![claude, codex];
 
@@ -484,11 +504,11 @@ mod tests {
         state.health = vec![
             ProviderHealth {
                 state: HealthState::Error,
-                ..ProviderHealth::new(ProviderId::ClaudeCode)
+                ..ProviderHealth::new(ProviderInstanceId::default_for(ProviderId::ClaudeCode))
             },
             ProviderHealth {
                 state: HealthState::Unavailable,
-                ..ProviderHealth::new(ProviderId::Codex)
+                ..ProviderHealth::new(ProviderInstanceId::default_for(ProviderId::Codex))
             },
         ];
         let model = menu_model(&state, &settings, Language::Tr).expect("menu model");
@@ -510,10 +530,15 @@ mod tests {
         state.providers = vec![snapshot(ProviderId::ClaudeCode, 42.0)];
         state.health = vec![ProviderHealth {
             state: HealthState::Rebuilding,
-            ..ProviderHealth::new(ProviderId::ClaudeCode)
+            ..ProviderHealth::new(ProviderInstanceId::default_for(ProviderId::ClaudeCode))
         }];
 
-        let label = summary_label(&state, ProviderId::ClaudeCode, Language::En);
+        let label = summary_label(
+            &state,
+            &ProviderInstanceId::default_for(ProviderId::ClaudeCode),
+            None,
+            Language::En,
+        );
         assert_eq!(label, "Claude Code — Rebuilding");
     }
 }

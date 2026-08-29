@@ -22,6 +22,8 @@ function pace(limitId: string, windowMinutes: number): PaceForecast {
 function snapshot(paces: PaceForecast[]): ProviderSnapshot {
   return {
     id: "claude-code",
+    instance: "claude-code",
+    label: null,
     installed: true,
     windows: [],
     today: { input: 0, output: 0, cacheRead: 0, cacheCreation: 0, reasoning: 0 },

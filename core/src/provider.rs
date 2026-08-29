@@ -187,6 +187,11 @@ pub fn snapshot_with_windows(
     let pace = crate::pace::forecasts(index.bucket_series(), now, &windows);
     ProviderSnapshot {
         id,
+        // A provider module knows nothing about instances: it is handed one index and reports
+        // what is in it. The engine, which owns the instance, stamps the real identity on the
+        // way out. Keeping it out of the trait is what keeps "a new provider is one file".
+        instance: crate::types::ProviderInstanceId::default_for(id),
+        label: None,
         installed: true,
         today: index.rolling(now, chrono::Duration::days(1)),
         today_cost: index.rolling_cost(now, chrono::Duration::days(1)),

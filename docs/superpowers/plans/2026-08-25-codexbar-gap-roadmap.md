@@ -373,18 +373,20 @@
 - Modify: UI types, settings, cards, history, and exports.
 
 **Interfaces:**
-- `ProviderInstanceId { provider: ProviderId, key: String }`.
+- `ProviderInstanceId { provider: ProviderId, name: Option<String> }`, written as one string
+  (`codex`, `codex#work`) so every stored map key, IPC field and TypeScript record key stays a
+  string and the pre-instance spelling keeps its meaning.
 - Every instance owns roots, checkpoint, plan, alert thresholds, health, snapshot label, and history.
 
-- [ ] RED: test two instances with colliding session/request IDs, independent checkpoints, plans, alerts, health, order, export rows, and delete/disable behavior.
-- [ ] GREEN: migrate the existing provider-only settings/checkpoints to a `default` instance without data loss.
-- [ ] Keep extra-home/disc roots unavailable in App Store builds until multiple security-scoped bookmarks are implemented and tested.
+- [x] RED: test two instances with colliding session/request IDs, independent checkpoints, plans, alerts, health, order, export rows, and delete/disable behavior.
+- [x] GREEN: migrate the existing provider-only settings/checkpoints to a `default` instance without data loss. — free, not converted: a default instance's key **is** the bare provider key, so stored settings and checkpoints are already the default instance's.
+- [x] Keep extra-home/disc roots unavailable in App Store builds until multiple security-scoped bookmarks are implemented and tested. — additional folders **and** named instances are both refused there, since a named instance reads only folders it was given.
 
 ### Task 7.3: Verify, commit, and push
 
-- [ ] Run sandbox bookmark, checkpoint migration, real-log, and perf suites.
-- [ ] Commit with `feat(providers): support isolated local account instances`.
-- [ ] Push separately.
+- [x] Run sandbox bookmark, checkpoint migration, real-log, and perf suites.
+- [x] Commit with `feat(providers): support isolated local account instances`.
+- [x] Push separately.
 
 ## Phase 8 — German and Spanish localization
 

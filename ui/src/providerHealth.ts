@@ -5,10 +5,10 @@ export type VisibleProviderHealth = Omit<ProviderHealth, "state"> & {
 };
 
 export function visibleProviderHealth(
-  snapshot: Pick<ProviderSnapshot, "id">,
+  snapshot: Pick<ProviderSnapshot, "instance">,
   health: ProviderHealth[],
 ): VisibleProviderHealth | null {
-  const match = health.find((entry) => entry.provider === snapshot.id);
+  const match = health.find((entry) => entry.provider === snapshot.instance);
   if (
     match === undefined ||
     (match.state !== "rebuilding" &&

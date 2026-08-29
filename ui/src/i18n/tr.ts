@@ -266,6 +266,18 @@ export const tr: Catalogue = {
     rootsInvalidDuplicate: "Bu klasör zaten listede.",
     rootsInvalidTooMany: (limit) => `Araç başına en fazla ${limit} ek klasör.`,
 
+    instancesTitle: "Ayrı hesaplar",
+    instancesHint:
+      "Aynı aracın ikinci girişinin kendi limiti vardır. Ayrı takip etmek için ekle; kendi planı, eşikleri ve geçmişi olur. Yalnızca aşağıda verdiğin günlük klasörlerini okur — birinciden hiçbir şey kopyalanmaz, onunla hiçbir şey paylaşılmaz.",
+    instancesEmpty: "Ayrı hesap yok.",
+    instancesTool: "Araç",
+    instancesNamePlaceholder: "kisa-ad",
+    instancesLabelPlaceholder: "Kartta görünecek ad",
+    instancesAdd: "Hesap ekle",
+    instancesRemove: (name) => `${name} hesabını kaldır`,
+    instancesInvalidName:
+      "Küçük harf, rakam ve tire kullan — bu, hesabın saklandığı anahtar olur.",
+
     languageTitle: "Dil",
     languageSystem: "Sistemle aynı",
     languageEnglish: "English",

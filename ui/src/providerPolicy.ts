@@ -1,14 +1,14 @@
 import type {
   ProviderDescriptor,
-  ProviderId,
+  ProviderInstanceId,
   ProviderPolicyOutcome,
   Settings,
 } from "./types";
 
 export function providerPolicySettings(
   settings: Settings,
-  disabledProviders: ProviderId[],
-  providerOrder: ProviderId[],
+  disabledProviders: ProviderInstanceId[],
+  providerOrder: ProviderInstanceId[],
 ): Settings {
   return { ...settings, disabledProviders: [...disabledProviders], providerOrder: [...providerOrder] };
 }

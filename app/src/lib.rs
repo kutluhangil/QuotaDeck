@@ -27,7 +27,9 @@ use quotadeck_core::discovery::RootAccess;
 use quotadeck_core::engine::{CheckpointRestoreError, ProviderEngine, RestoreForRetention};
 use quotadeck_core::error::{Error, Result};
 use quotadeck_core::store::BatchedStore;
-use quotadeck_core::types::{PlanOption, ProviderId, ProviderSnapshot, UnavailableReason};
+use quotadeck_core::types::{
+    PlanOption, ProviderId, ProviderInstanceId, ProviderSnapshot, UnavailableReason,
+};
 use quotadeck_core::watcher::{DebouncedWatcher, DEFAULT_DEBOUNCE};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager};
@@ -150,6 +152,8 @@ pub fn run() -> Result<()> {
             set_provider_policy,
             set_additional_roots,
             additional_roots_supported,
+            add_instance,
+            remove_instance,
             set_plan,
             set_alert_thresholds,
             set_mute,
@@ -242,28 +246,35 @@ fn current_settings(deck: tauri::State<'_, Deck>) -> Settings {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProviderDescriptor {
-    pub id: ProviderId,
+    /// The instance key: `codex`, or `codex#work`. The panel's identity for this row.
+    pub id: ProviderInstanceId,
+    /// Which tool it is, for the localised name and the plan list.
+    pub provider: ProviderId,
     pub display_name: &'static str,
+    /// What the user called this instance, where they named one.
+    pub label: Option<String>,
     pub supports_measured: bool,
     pub enabled: bool,
 }
 
 fn provider_catalogue_for(settings: &Settings) -> Result<Vec<ProviderDescriptor>> {
-    let ordered = settings.ordered_provider_ids(&quotadeck_providers::ids())?;
+    let ordered = settings.instance_ids(&quotadeck_providers::ids())?;
     ordered
         .into_iter()
-        .map(|id| {
-            let provider = quotadeck_providers::by_id(id).ok_or_else(|| {
+        .map(|instance| {
+            let provider = quotadeck_providers::by_id(instance.provider).ok_or_else(|| {
                 Error::Invalid(format!(
                     "compiled provider registry has no implementation for key {:?}",
-                    id.key()
+                    instance.provider.key()
                 ))
             })?;
             Ok(ProviderDescriptor {
-                id,
+                provider: instance.provider,
                 display_name: provider.display_name(),
+                label: settings.label_for(&instance),
                 supports_measured: provider.supports_measured(),
-                enabled: settings.is_provider_enabled(id),
+                enabled: settings.is_instance_enabled(&instance),
+                id: instance,
             })
         })
         .collect()
@@ -302,19 +313,19 @@ fn provider_plans() -> Vec<ProviderPlans> {
 #[tauri::command]
 fn set_plan(
     deck: tauri::State<'_, Deck>,
-    provider: ProviderId,
+    provider: ProviderInstanceId,
     plan_id: Option<String>,
 ) -> std::result::Result<Settings, String> {
-    deck.set_plan(provider, plan_id).map_err(|e| e.to_string())
+    deck.set_plan(&provider, plan_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 fn set_alert_thresholds(
     deck: tauri::State<'_, Deck>,
-    provider: ProviderId,
+    provider: ProviderInstanceId,
     thresholds: Vec<u8>,
 ) -> std::result::Result<Settings, String> {
-    deck.set_alert_thresholds(provider, thresholds)
+    deck.set_alert_thresholds(&provider, thresholds)
         .map_err(|e| e.to_string())
 }
 
@@ -336,7 +347,7 @@ fn set_provider_policy(
 #[tauri::command]
 fn set_additional_roots(
     deck: tauri::State<'_, Deck>,
-    provider: ProviderId,
+    provider: ProviderInstanceId,
     roots: Vec<PathBuf>,
 ) -> std::result::Result<ProviderPolicyOutcome, String> {
     if sandbox::sandboxed() {
@@ -345,7 +356,43 @@ fn set_additional_roots(
                 .into(),
         );
     }
-    deck.set_additional_roots(provider, roots)
+    deck.set_additional_roots(&provider, roots)
+        .map_err(|error| error.to_string())
+}
+
+/// Declare a named instance of a tool, or rename one.
+///
+/// A separate quota with its own checkpoint, plan, thresholds, health and history. Nothing is
+/// inherited from the tool's default instance: reusing its cursors would file one account's
+/// usage under another, which is the mistake instances exist to prevent.
+#[tauri::command]
+fn add_instance(
+    deck: tauri::State<'_, Deck>,
+    provider: ProviderId,
+    name: String,
+    label: Option<String>,
+) -> std::result::Result<ProviderPolicyOutcome, String> {
+    if sandbox::sandboxed() {
+        // A separate account is a separate folder, and this build can only reach the one the
+        // user granted. Allowing the account without the folder would create a card that can
+        // never report anything.
+        return Err(
+            "this build reads the home folder through a single grant and cannot open a second one; separate accounts are unavailable here"
+                .into(),
+        );
+    }
+    let instance = ProviderInstanceId::new(provider, name.trim())?;
+    deck.add_instance(&instance, label.map(|label| label.trim().to_string()))
+        .map_err(|error| error.to_string())
+}
+
+/// Remove a named instance and every setting keyed to it.
+#[tauri::command]
+fn remove_instance(
+    deck: tauri::State<'_, Deck>,
+    provider: ProviderInstanceId,
+) -> std::result::Result<ProviderPolicyOutcome, String> {
+    deck.remove_instance(&provider)
         .map_err(|error| error.to_string())
 }
 
@@ -901,9 +948,9 @@ fn persist_managed_checkpoint(
     }
 
     if let Some(rebuild) = managed.retention_rebuild.as_mut() {
-        let provider_id = managed.engine.provider().id();
+        let instance = managed.engine.instance().clone();
         let checkpoint = managed.engine.checkpoint()?;
-        store.push_provider_checkpoint(provider_id, checkpoint)?;
+        store.push_provider_checkpoint(&instance, checkpoint)?;
         store.flush()?;
         managed.engine.mark_checkpoint_queued();
         let committed = CheckpointPersistence::RetentionCommitted {
@@ -915,8 +962,8 @@ fn persist_managed_checkpoint(
     }
 
     if managed.engine.checkpoint_dirty() {
-        let provider_id = managed.engine.provider().id();
-        store.push_provider_checkpoint(provider_id, managed.engine.checkpoint()?)?;
+        let instance = managed.engine.instance().clone();
+        store.push_provider_checkpoint(&instance, managed.engine.checkpoint()?)?;
         managed.engine.mark_checkpoint_queued();
         return Ok(CheckpointPersistence::Queued);
     }
@@ -950,15 +997,12 @@ fn apply_retention_change(
 
     let settings = deck.settings();
     if requested.days() > effective.days() {
-        let mut replacements: HashMap<ProviderId, Box<dyn quotadeck_core::provider::Provider>> =
-            quotadeck_providers::all()
-                .into_iter()
-                .map(|provider| (provider.id(), provider))
-                .collect();
         let mut next = Vec::with_capacity(engines.len());
         for mut managed in std::mem::take(engines) {
             let provider_id = managed.provider().id();
-            if !settings.is_provider_enabled(provider_id) {
+            let instance = managed.engine.instance().clone();
+            let label = managed.engine.label().cloned();
+            if !settings.is_instance_enabled(&instance) {
                 // A disabled provider is not read. Keep its complete checkpoint-backed engine
                 // intact and mark the rebuild for the first enabled pass; replacing it with an
                 // empty engine here would make a later retention decrease persist an empty
@@ -970,14 +1014,16 @@ fn apply_retention_change(
                 next.push(managed);
                 continue;
             }
-            let provider = replacements.remove(&provider_id).ok_or_else(|| {
+            let provider = quotadeck_providers::by_id(provider_id).ok_or_else(|| {
                 Error::Invalid(format!(
                     "compiled provider registry has no replacement for retention change provider {:?}",
                     provider_id.key()
                 ))
             })?;
+            let mut engine = ProviderEngine::with_retention(provider, requested.duration());
+            engine.set_instance(instance, label)?;
             next.push(ManagedEngine {
-                engine: ProviderEngine::with_retention(provider, requested.duration()),
+                engine,
                 retention_rebuild: Some(RetentionRebuild {
                     from_days: effective.into(),
                     to_days: requested.into(),
@@ -998,16 +1044,15 @@ fn apply_retention_change(
         return Ok(RetentionTransition::RebuildStarted);
     }
 
-    let mut replacements: HashMap<ProviderId, Box<dyn quotadeck_core::provider::Provider>> =
-        quotadeck_providers::all()
-            .into_iter()
-            .map(|provider| (provider.id(), provider))
-            .collect();
     let mut shortened = Vec::with_capacity(engines.len());
     let mut staged = Vec::with_capacity(engines.len());
     for managed in engines.iter() {
         let provider_id = managed.provider().id();
-        let provider = replacements.remove(&provider_id).ok_or_else(|| {
+        let instance = managed.engine.instance().clone();
+        // Looked up per engine rather than drained from one map: several engines can share a
+        // provider, one per instance, and a map would hand the implementation to the first of
+        // them and nothing to the rest.
+        let provider = quotadeck_providers::by_id(provider_id).ok_or_else(|| {
             Error::Invalid(format!(
                 "compiled provider registry has no replacement for retention change provider {:?}",
                 provider_id.key()
@@ -1037,18 +1082,20 @@ fn apply_retention_change(
                 provider_id.key()
             )));
         };
-        staged.push((provider_id, engine.checkpoint()?));
+        let mut engine = *engine;
+        engine.set_instance(instance.clone(), managed.engine.label().cloned())?;
+        staged.push((instance, engine.checkpoint()?));
         shortened.push(ManagedEngine {
-            engine: *engine,
+            engine,
             retention_rebuild: None,
         });
     }
-    for (provider, checkpoint) in &staged {
-        store.stage_provider_checkpoint(*provider, checkpoint.clone())?;
+    for (instance, checkpoint) in &staged {
+        store.stage_provider_checkpoint(instance, checkpoint.clone())?;
     }
     if let Err(error) = store.flush() {
-        for (provider, _) in &staged {
-            store.cancel_staged_provider_checkpoint(*provider);
+        for (instance, _) in &staged {
+            store.cancel_staged_provider_checkpoint(instance);
         }
         return Err(Error::Invalid(format!(
             "retention decrease to {} days could not flush replacement checkpoints: {error}",
@@ -1123,7 +1170,7 @@ fn spawn_read_loop(app: AppHandle, deck: Deck) -> Result<ReadLoopControl> {
     std::fs::create_dir_all(&data_dir).map_err(|error| Error::io(&data_dir, error))?;
     let mut store = BatchedStore::open(data_dir.join(STORE_FILE))?;
     let requested_retention = deck.settings().retention_days;
-    let restored = restore_engines(&mut store, requested_retention)?;
+    let restored = restore_engines(&mut store, &deck.settings(), requested_retention)?;
     let mut engines = restored.engines;
     let mut state = deck.state();
     state.health = restored.health;
@@ -1413,28 +1460,37 @@ struct RestoredProvider {
     retention_rebuild: Option<RetentionRebuild>,
 }
 
-fn restore_engines(store: &mut BatchedStore, requested: RetentionDays) -> Result<RestoredEngines> {
-    let mut replacements: HashMap<ProviderId, Box<dyn quotadeck_core::provider::Provider>> =
-        quotadeck_providers::all()
-            .into_iter()
-            .map(|provider| (provider.id(), provider))
-            .collect();
+/// One engine per configured instance, restored from its own checkpoint.
+///
+/// Instances, not providers: a default instance keys on the bare provider key, so an install
+/// that predates this reads back exactly the checkpoint it wrote, and a named instance starts
+/// from nothing rather than inheriting somebody else's cursors.
+fn restore_engines(
+    store: &mut BatchedStore,
+    settings: &Settings,
+    requested: RetentionDays,
+) -> Result<RestoredEngines> {
     let mut engines = Vec::new();
     let mut health = Vec::new();
     let now = Utc::now();
 
-    for provider in quotadeck_providers::all() {
-        let provider_id = provider.id();
-        let replacement = replacements.remove(&provider_id).ok_or_else(|| {
-            Error::Invalid(format!(
-                "compiled provider registry did not produce a replacement instance for {:?}",
-                provider_id.key()
-            ))
-        })?;
-        let checkpoint = match store.load_provider_checkpoint(provider_id) {
+    for instance in settings.instance_ids(&quotadeck_providers::ids())? {
+        let provider_id = instance.provider;
+        let label = settings.label_for(&instance);
+        let fresh = || {
+            quotadeck_providers::by_id(provider_id).ok_or_else(|| {
+                Error::Invalid(format!(
+                    "compiled provider registry has no implementation for key {:?}",
+                    provider_id.key()
+                ))
+            })
+        };
+        let provider = fresh()?;
+        let replacement = fresh()?;
+        let checkpoint = match store.load_provider_checkpoint(&instance) {
             Ok(checkpoint) => checkpoint,
             Err(error) => {
-                let mut provider_health = ProviderHealth::new(provider_id);
+                let mut provider_health = ProviderHealth::new(instance.clone());
                 provider_health.record_failure(
                     now,
                     format!(
@@ -1443,8 +1499,10 @@ fn restore_engines(store: &mut BatchedStore, requested: RetentionDays) -> Result
                     ),
                     false,
                 );
+                let mut engine = ProviderEngine::with_retention(provider, requested.duration());
+                engine.set_instance(instance, label)?;
                 engines.push(ManagedEngine {
-                    engine: ProviderEngine::with_retention(provider, requested.duration()),
+                    engine,
                     retention_rebuild: None,
                 });
                 health.push(provider_health);
@@ -1455,12 +1513,15 @@ fn restore_engines(store: &mut BatchedStore, requested: RetentionDays) -> Result
             provider,
             replacement,
             checkpoint,
-            || store.delete_provider_checkpoint(provider_id),
+            || store.delete_provider_checkpoint(&instance),
+            &instance,
             now,
             requested,
         );
+        let mut engine = restored.engine;
+        engine.set_instance(instance, label)?;
         engines.push(ManagedEngine {
-            engine: restored.engine,
+            engine,
             retention_rebuild: restored.retention_rebuild,
         });
         if let Some(provider_health) = restored.health {
@@ -1495,6 +1556,7 @@ fn restore_provider_from_checkpoint(
     replacement: Box<dyn quotadeck_core::provider::Provider>,
     checkpoint: Option<Vec<u8>>,
     delete_checkpoint: impl FnOnce() -> Result<()>,
+    instance: &ProviderInstanceId,
     now: chrono::DateTime<Utc>,
     requested: RetentionDays,
 ) -> RestoredProvider {
@@ -1517,7 +1579,7 @@ fn restore_provider_from_checkpoint(
             provider,
             previous_retention,
         }) => {
-            let mut health = ProviderHealth::new(provider_id);
+            let mut health = ProviderHealth::new(instance.clone());
             health.record_rebuilding(now);
             RestoredProvider {
                 engine: ProviderEngine::with_retention(provider, requested.duration()),
@@ -1529,7 +1591,7 @@ fn restore_provider_from_checkpoint(
             }
         }
         Err(CheckpointRestoreError::PricingRevisionMismatch { .. }) => {
-            let mut health = ProviderHealth::new(provider_id);
+            let mut health = ProviderHealth::new(instance.clone());
             match delete_checkpoint() {
                 Ok(()) => health.record_rebuilding(now),
                 Err(error) => health.record_failure(
@@ -1548,7 +1610,7 @@ fn restore_provider_from_checkpoint(
             }
         }
         Err(CheckpointRestoreError::Invalid(error)) => {
-            let mut health = ProviderHealth::new(provider_id);
+            let mut health = ProviderHealth::new(instance.clone());
             health.record_failure(
                 now,
                 format!(
@@ -1620,11 +1682,11 @@ fn mark_refresh_failed(app: &AppHandle, deck: &Deck, generation: u64, error: &Er
 /// second bookmark, resolved and started before every pass. Until that exists and is tested,
 /// honouring the setting there would produce a folder that is configured, shown, and silently
 /// unreadable — which is worse than a folder the build says it cannot use.
-fn additional_roots_for(settings: &Settings, id: ProviderId) -> Vec<PathBuf> {
+fn additional_roots_for(settings: &Settings, instance: &ProviderInstanceId) -> Vec<PathBuf> {
     if sandbox::sandboxed() {
         return Vec::new();
     }
-    settings.additional_roots_for(id).to_vec()
+    settings.additional_roots_for(instance).to_vec()
 }
 
 fn sync_watches(
@@ -1635,9 +1697,9 @@ fn sync_watches(
 ) -> Result<()> {
     let desired: HashSet<PathBuf> = engines
         .iter()
-        .filter(|managed| settings.is_provider_enabled(managed.engine.provider().id()))
+        .filter(|managed| settings.is_instance_enabled(managed.engine.instance()))
         .flat_map(|managed| {
-            let id = managed.engine.provider().id();
+            let id = managed.engine.instance();
             // The engine learns its extra roots on the next refresh; the watcher must not wait
             // for that, or a folder added in the settings screen would stay unwatched until
             // something else woke the loop.
@@ -1729,15 +1791,15 @@ fn apply_provider_policy_sync_requests(
 fn ordered_enabled_engine_ids(
     settings: &Settings,
     engines: &[ProviderEngine],
-) -> Result<Vec<ProviderId>> {
-    let available: HashSet<ProviderId> = engines
+) -> Result<Vec<ProviderInstanceId>> {
+    let available: HashSet<ProviderInstanceId> = engines
         .iter()
-        .map(|engine| engine.provider().id())
+        .map(|engine| engine.instance().clone())
         .collect();
     Ok(settings
-        .ordered_provider_ids(&quotadeck_providers::ids())?
+        .instance_ids(&quotadeck_providers::ids())?
         .into_iter()
-        .filter(|id| settings.is_provider_enabled(*id) && available.contains(id))
+        .filter(|id| settings.is_instance_enabled(id) && available.contains(id))
         .collect())
 }
 
@@ -1759,28 +1821,28 @@ enum PublishOutcome {
 enum PendingCheckpoint {
     Normal {
         engine_index: usize,
-        provider: ProviderId,
+        provider: ProviderInstanceId,
         bytes: Vec<u8>,
     },
     RetentionReplacement {
         engine_index: usize,
-        provider: ProviderId,
+        provider: ProviderInstanceId,
         bytes: Vec<u8>,
     },
 }
 
-fn checked_managed_engine(
-    engines: &mut [ManagedEngine],
+fn checked_managed_engine<'a>(
+    engines: &'a mut [ManagedEngine],
     engine_index: usize,
-    provider: ProviderId,
-) -> Result<&mut ManagedEngine> {
+    provider: &ProviderInstanceId,
+) -> Result<&'a mut ManagedEngine> {
     let engine = engines.get_mut(engine_index).ok_or_else(|| {
         Error::Invalid(format!(
             "read loop engine index {engine_index} disappeared before checkpointing provider key {:?}",
             provider.key()
         ))
     })?;
-    if engine.provider().id() != provider {
+    if engine.instance() != provider {
         return Err(Error::Invalid(format!(
             "read loop engine index {engine_index} changed from provider key {:?} before checkpoint commit",
             provider.key()
@@ -1801,15 +1863,15 @@ fn publish(
     let (settings, policy_revision) = deck.provider_policy_snapshot();
     let previous = deck.state();
     let previous_refresh_generation = previous.refresh_generation;
-    let previous_snapshots: HashMap<ProviderId, ProviderSnapshot> = previous
+    let previous_snapshots: HashMap<ProviderInstanceId, ProviderSnapshot> = previous
         .providers
         .into_iter()
-        .map(|snapshot| (snapshot.id, snapshot))
+        .map(|snapshot| (snapshot.instance.clone(), snapshot))
         .collect();
-    let previous_health: HashMap<ProviderId, ProviderHealth> = previous
+    let previous_health: HashMap<ProviderInstanceId, ProviderHealth> = previous
         .health
         .into_iter()
-        .map(|health| (health.provider, health))
+        .map(|health| (health.provider.clone(), health))
         .collect();
     let mut providers = Vec::with_capacity(engines.len());
     let mut health = Vec::with_capacity(engines.len());
@@ -1819,46 +1881,47 @@ fn publish(
     let mut retention_errors = Vec::new();
     let history_from = now - settings.retention_days.duration();
 
-    let ordered = settings.ordered_provider_ids(&quotadeck_providers::ids())?;
-    for provider_id in ordered {
+    let ordered = settings.instance_ids(&quotadeck_providers::ids())?;
+    for instance in ordered {
+        let provider_id = instance.provider;
         let mut provider_health = previous_health
-            .get(&provider_id)
+            .get(&instance)
             .cloned()
-            .unwrap_or_else(|| ProviderHealth::new(provider_id));
-        if !settings.is_provider_enabled(provider_id) {
+            .unwrap_or_else(|| ProviderHealth::new(instance.clone()));
+        if !settings.is_instance_enabled(&instance) {
             provider_health.record_disabled();
             health.push(provider_health);
             continue;
         }
         if !provider_health.retry_due(now, pass.manual) {
             providers.push(provider_snapshot_after_failure(
-                previous_snapshots.get(&provider_id),
-                provider_id,
+                previous_snapshots.get(&instance),
+                &instance,
+                settings.label_for(&instance),
             ));
             health.push(provider_health);
             continue;
         }
         let engine_index = engines
             .iter()
-            .position(|engine| engine.provider().id() == provider_id)
+            .position(|engine| engine.instance() == &instance)
             .ok_or_else(|| {
                 Error::Invalid(format!(
-                    "read loop has no engine for compiled provider key {:?}",
-                    provider_id.key()
+                    "read loop has no engine for configured instance {instance}"
                 ))
             })?;
         let engine = &mut engines[engine_index];
         // Picked up every tick, so a plan chosen in the panel shows on the next refresh
         // without re-reading a byte of log.
-        let engine_provider_id = engine.provider().id();
-        engine.set_config(settings.config_for(engine_provider_id));
-        engine.set_additional_roots(additional_roots_for(&settings, engine_provider_id));
+        engine.set_config(settings.config_for(&instance));
+        engine.set_additional_roots(additional_roots_for(&settings, &instance));
 
         match engine.access() {
             RootAccess::Readable => {}
             RootAccess::Missing => {
-                providers.push(ProviderSnapshot::unavailable(
-                    engine.provider().id(),
+                providers.push(ProviderSnapshot::unavailable_instance(
+                    instance.clone(),
+                    settings.label_for(&instance),
                     UnavailableReason::NotInstalled,
                 ));
                 provider_health.record_unavailable(now, "provider is not installed".into());
@@ -1874,8 +1937,9 @@ fn publish(
             RootAccess::Denied => {
                 // The tool is there; we just cannot read it yet. Saying "not installed"
                 // would send the user to reinstall something they already have.
-                providers.push(ProviderSnapshot::unavailable(
-                    engine.provider().id(),
+                providers.push(ProviderSnapshot::unavailable_instance(
+                    instance.clone(),
+                    settings.label_for(&instance),
                     UnavailableReason::PermissionDenied,
                 ));
                 provider_health
@@ -1902,19 +1966,19 @@ fn publish(
                     if pass.max_files.is_none() {
                         checkpoints.push(PendingCheckpoint::RetentionReplacement {
                             engine_index,
-                            provider: engine.provider().id(),
+                            provider: engine.instance().clone(),
                             bytes: engine.checkpoint()?,
                         });
                     }
                 } else if engine.checkpoint_dirty() {
                     checkpoints.push(PendingCheckpoint::Normal {
                         engine_index,
-                        provider: engine.provider().id(),
+                        provider: engine.instance().clone(),
                         bytes: engine.checkpoint()?,
                     });
                 }
                 history.push(ProviderHistory {
-                    id: engine.provider().id(),
+                    id: engine.instance().clone(),
                     hours: quotadeck_core::history::hours(
                         engine.index().bucket_series(),
                         history_from,
@@ -1966,7 +2030,7 @@ fn publish(
                         provider_id.key()
                     ));
                 }
-                let previous_snapshot = previous_snapshots.get(&provider_id);
+                let previous_snapshot = previous_snapshots.get(&instance);
                 provider_health.record_failure(
                     now,
                     error,
@@ -1974,7 +2038,8 @@ fn publish(
                 );
                 providers.push(provider_snapshot_after_failure(
                     previous_snapshot,
-                    engine.provider().id(),
+                    &instance,
+                    settings.label_for(&instance),
                 ));
                 health.push(provider_health);
             }
@@ -2014,8 +2079,8 @@ fn publish(
                     provider,
                     bytes,
                 } => {
-                    store.push_provider_checkpoint(provider, bytes)?;
-                    let engine = checked_managed_engine(engines, engine_index, provider)?;
+                    store.push_provider_checkpoint(&provider, bytes)?;
+                    let engine = checked_managed_engine(engines, engine_index, &provider)?;
                     engine.mark_checkpoint_queued();
                 }
                 PendingCheckpoint::RetentionReplacement {
@@ -2023,7 +2088,7 @@ fn publish(
                     provider,
                     bytes,
                 } => {
-                    store.stage_provider_checkpoint(provider, bytes)?;
+                    store.stage_provider_checkpoint(&provider, bytes)?;
                     retention_commits.push((engine_index, provider));
                 }
             }
@@ -2031,14 +2096,14 @@ fn publish(
         if !retention_commits.is_empty() {
             if let Err(error) = store.flush() {
                 for (_, provider) in &retention_commits {
-                    store.cancel_staged_provider_checkpoint(*provider);
+                    store.cancel_staged_provider_checkpoint(provider);
                 }
                 return Err(Error::Invalid(format!(
                     "retention rebuild checkpoints could not be flushed: {error}"
                 )));
             }
             for (engine_index, provider) in retention_commits {
-                let engine = checked_managed_engine(engines, engine_index, provider)?;
+                let engine = checked_managed_engine(engines, engine_index, &provider)?;
                 engine.mark_checkpoint_queued();
                 let rebuild = engine.retention_rebuild.take().ok_or_else(|| {
                     Error::Invalid(format!(
@@ -2138,12 +2203,17 @@ mod provider_policy_tests {
 
         let catalogue = provider_catalogue_for(&settings).expect("provider catalogue");
         assert_eq!(
-            catalogue.iter().map(|entry| entry.id).collect::<Vec<_>>(),
-            vec![
+            catalogue
+                .iter()
+                .map(|entry| entry.id.clone())
+                .collect::<Vec<_>>(),
+            [
                 ProviderId::CopilotCli,
                 ProviderId::ClaudeCode,
                 ProviderId::Codex
             ]
+            .map(ProviderInstanceId::default_for)
+            .to_vec()
         );
         assert_eq!(catalogue.len(), quotadeck_providers::all().len());
         assert!(!catalogue[2].enabled);
@@ -2166,7 +2236,7 @@ mod provider_policy_tests {
 
         assert_eq!(
             ordered_enabled_engine_ids(&settings, &engines).expect("enabled engine order"),
-            vec![ProviderId::Codex]
+            vec![ProviderInstanceId::default_for(ProviderId::Codex)]
         );
     }
 }
@@ -2213,6 +2283,7 @@ mod checkpoint_restore_tests {
                 deleted = true;
                 Ok(())
             },
+            &ProviderInstanceId::default_for(ProviderId::ClaudeCode),
             now,
             RetentionDays::Days32,
         );
@@ -2231,6 +2302,7 @@ mod checkpoint_restore_tests {
             claude_provider(),
             Some(checkpoint_with_revision(0)),
             || Err(Error::Store("injected checkpoint delete failure".into())),
+            &ProviderInstanceId::default_for(ProviderId::ClaudeCode),
             Utc::now(),
             RetentionDays::Days32,
         );
@@ -2250,7 +2322,8 @@ mod checkpoint_restore_tests {
     #[test]
     fn bounded_rebuild_success_stays_rebuilding_until_unbounded_success() {
         let first = Utc::now();
-        let mut health = ProviderHealth::new(ProviderId::ClaudeCode);
+        let mut health =
+            ProviderHealth::new(ProviderInstanceId::default_for(ProviderId::ClaudeCode));
         health.record_rebuilding(first);
 
         record_successful_provider_pass(&mut health, first, true, true, String::new());
@@ -2271,7 +2344,10 @@ mod checkpoint_restore_tests {
             .checkpoint()
             .expect("old checkpoint");
         store
-            .push_provider_checkpoint(ProviderId::ClaudeCode, old.clone())
+            .push_provider_checkpoint(
+                &ProviderInstanceId::default_for(ProviderId::ClaudeCode),
+                old.clone(),
+            )
             .expect("queue old checkpoint");
         store.flush().expect("flush old checkpoint");
 
@@ -2290,7 +2366,7 @@ mod checkpoint_restore_tests {
         );
         assert_eq!(
             store
-                .load_provider_checkpoint(ProviderId::ClaudeCode)
+                .load_provider_checkpoint(&ProviderInstanceId::default_for(ProviderId::ClaudeCode))
                 .expect("load old checkpoint"),
             Some(old),
             "a bounded pass must not replace the last complete checkpoint"
@@ -2306,7 +2382,7 @@ mod checkpoint_restore_tests {
         );
         assert!(managed.retention_rebuild.is_none());
         let saved = store
-            .load_provider_checkpoint(ProviderId::ClaudeCode)
+            .load_provider_checkpoint(&ProviderInstanceId::default_for(ProviderId::ClaudeCode))
             .expect("load full checkpoint")
             .expect("full checkpoint exists");
         let restored = ProviderEngine::restore_for_retention(

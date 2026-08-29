@@ -13,7 +13,9 @@ use quotadeck_core::error::{Error, Result};
 use quotadeck_core::history::HistoryPoint;
 use quotadeck_core::paths;
 use quotadeck_core::provider::ProviderConfig;
-use quotadeck_core::types::{ProviderId, ProviderSnapshot, QuotaWindow, UnavailableReason};
+use quotadeck_core::types::{
+    ProviderId, ProviderInstanceId, ProviderSnapshot, QuotaWindow, UnavailableReason,
+};
 use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::i18n::Locale;
@@ -112,7 +114,7 @@ pub enum HealthState {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProviderHealth {
-    pub provider: ProviderId,
+    pub provider: ProviderInstanceId,
     pub state: HealthState,
     pub last_attempt_at: Option<DateTime<Utc>>,
     pub last_success_at: Option<DateTime<Utc>>,
@@ -122,7 +124,7 @@ pub struct ProviderHealth {
 }
 
 impl ProviderHealth {
-    pub fn new(provider: ProviderId) -> Self {
+    pub fn new(provider: ProviderInstanceId) -> Self {
         ProviderHealth {
             provider,
             state: HealthState::Unavailable,
@@ -188,11 +190,16 @@ impl ProviderHealth {
 
 pub(crate) fn provider_snapshot_after_failure(
     previous: Option<&ProviderSnapshot>,
-    provider: ProviderId,
+    instance: &ProviderInstanceId,
+    label: Option<String>,
 ) -> ProviderSnapshot {
-    previous
-        .cloned()
-        .unwrap_or_else(|| ProviderSnapshot::unavailable(provider, UnavailableReason::ReadError))
+    previous.cloned().unwrap_or_else(|| {
+        ProviderSnapshot::unavailable_instance(
+            instance.clone(),
+            label,
+            UnavailableReason::ReadError,
+        )
+    })
 }
 
 /// One provider's retained usage, folded to the hour.
@@ -203,7 +210,9 @@ pub(crate) fn provider_snapshot_after_failure(
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProviderHistory {
-    pub id: ProviderId,
+    /// Which instance this history belongs to. Two instances of one tool keep separate
+    /// histories; folding them would report a total neither of them spent.
+    pub id: ProviderInstanceId,
     /// Hours carrying usage, oldest first. Empty hours are omitted; the dashboard lays out
     /// the calendar itself, in the viewer's own zone.
     pub hours: Vec<HistoryPoint>,
@@ -333,7 +342,40 @@ pub struct Settings {
     ///
     /// Absolute paths only, deduplicated, in the order the user added them.
     pub additional_roots: BTreeMap<String, Vec<PathBuf>>,
+    /// Named instances, keyed by instance key (`codex#work`).
+    ///
+    /// Default instances are not listed: every compiled provider has one whether or not this
+    /// map mentions it, and listing them would create a second spelling for an identity that
+    /// already has one.
+    pub instances: BTreeMap<String, InstanceConfig>,
     pub retention_days: RetentionDays,
+}
+
+/// What the user chose about one named instance.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InstanceConfig {
+    /// The name on the card. `None` falls back to the tool's name plus the instance key, which
+    /// is worse to read but never wrong.
+    #[serde(default)]
+    pub label: Option<String>,
+}
+
+/// Parse one stored instance key, naming the field it came from.
+fn parse_instance(
+    key: &str,
+    field: &str,
+    compiled: &BTreeSet<ProviderId>,
+) -> Result<ProviderInstanceId> {
+    let instance = ProviderInstanceId::parse(key)
+        .map_err(|error| Error::Invalid(format!("{field} contains {key:?}: {error}")))?;
+    if !compiled.contains(&instance.provider) {
+        return Err(Error::Invalid(format!(
+            "{field} contains unknown provider key {:?}",
+            instance.provider.key()
+        )));
+    }
+    Ok(instance)
 }
 
 /// Thresholds a provider raises at unless the user changed them (blueprint §9, Phase 7).
@@ -351,6 +393,7 @@ impl Default for Settings {
             demo: false,
             disabled_providers: BTreeSet::new(),
             additional_roots: BTreeMap::new(),
+            instances: BTreeMap::new(),
             provider_order: quotadeck_providers::ids()
                 .into_iter()
                 .map(|id| id.key().to_string())
@@ -373,6 +416,7 @@ struct SettingsDocument {
     disabled_providers: BTreeSet<String>,
     provider_order: Vec<String>,
     additional_roots: BTreeMap<String, Vec<PathBuf>>,
+    instances: BTreeMap<String, InstanceConfig>,
     retention_days: RetentionDays,
 }
 
@@ -390,6 +434,7 @@ impl Default for SettingsDocument {
             disabled_providers: settings.disabled_providers,
             provider_order: settings.provider_order,
             additional_roots: settings.additional_roots,
+            instances: settings.instances,
             retention_days: settings.retention_days,
         }
     }
@@ -414,12 +459,13 @@ impl<'de> Deserialize<'de> for Settings {
             disabled_providers: document.disabled_providers,
             provider_order: document.provider_order,
             additional_roots: document.additional_roots,
+            instances: document.instances,
             retention_days: document.retention_days,
         };
         let ordered = settings
-            .ordered_provider_ids(&quotadeck_providers::ids())
+            .instance_ids(&quotadeck_providers::ids())
             .map_err(D::Error::custom)?;
-        settings.provider_order = ordered.into_iter().map(|id| id.key().to_string()).collect();
+        settings.provider_order = ordered.iter().map(ProviderInstanceId::key).collect();
         // The same folder twice is one folder. Collapsed here rather than at read time so the
         // list the settings screen renders is the list that is scanned.
         for roots in settings.additional_roots.values_mut() {
@@ -440,31 +486,64 @@ pub(crate) struct RetentionChangeRequest {
 }
 
 impl Settings {
-    pub fn is_provider_enabled(&self, id: ProviderId) -> bool {
-        !self.disabled_providers.contains(id.key())
+    pub fn is_instance_enabled(&self, instance: &ProviderInstanceId) -> bool {
+        !self.disabled_providers.contains(&instance.key())
     }
 
     /// Resolve the saved policy against this build's registry.
     ///
-    /// A saved partial order is valid: providers compiled by a later release are appended in
-    /// registry order. Unknown and duplicate keys are rejected with the persisted JSON path.
-    pub fn ordered_provider_ids(&self, registry: &[ProviderId]) -> Result<Vec<ProviderId>> {
-        let known: BTreeMap<&str, ProviderId> = registry.iter().map(|id| (id.key(), *id)).collect();
+    /// Returns every instance this build will run, in the user's order: each compiled
+    /// provider's default instance, plus every named instance they declared. A saved partial
+    /// order is valid — instances this release added are appended in registry order. Unknown
+    /// and duplicate keys are rejected with the persisted JSON path.
+    ///
+    /// Every stored key here is an *instance* key, and a default instance's key is the bare
+    /// provider key. That is what lets a settings file written before instances existed load
+    /// unchanged and mean exactly what it meant.
+    pub fn instance_ids(&self, registry: &[ProviderId]) -> Result<Vec<ProviderInstanceId>> {
+        let compiled: BTreeSet<ProviderId> = registry.iter().copied().collect();
 
-        for key in &self.disabled_providers {
-            if !known.contains_key(key.as_str()) {
+        // Declared instances first: the sets below are validated against them, so a key naming
+        // an instance nobody declared is caught rather than silently ignored.
+        let mut declared: Vec<ProviderInstanceId> = registry
+            .iter()
+            .copied()
+            .map(ProviderInstanceId::default_for)
+            .collect();
+        for key in self.instances.keys() {
+            let instance = parse_instance(key, "settings.instances", &compiled)?;
+            if instance.is_default() {
                 return Err(Error::Invalid(format!(
-                    "settings.disabledProviders contains unknown provider key {key:?}"
+                    "settings.instances contains {key:?}, which is a provider's default instance; it exists already and cannot be declared"
                 )));
+            }
+            declared.push(instance);
+        }
+        let known: BTreeSet<String> = declared.iter().map(ProviderInstanceId::key).collect();
+
+        for (field, keys) in [
+            (
+                "settings.disabledProviders",
+                self.disabled_providers.iter().collect::<Vec<_>>(),
+            ),
+            ("settings.plans", self.plans.keys().collect()),
+            ("settings.alerts", self.alerts.keys().collect()),
+            (
+                "settings.additionalRoots",
+                self.additional_roots.keys().collect(),
+            ),
+        ] {
+            for key in keys {
+                parse_instance(key, field, &compiled)?;
+                if !known.contains(key.as_str()) {
+                    return Err(Error::Invalid(format!(
+                        "{field} names instance {key:?}, which is not declared in settings.instances"
+                    )));
+                }
             }
         }
 
         for (key, roots) in &self.additional_roots {
-            if !known.contains_key(key.as_str()) {
-                return Err(Error::Invalid(format!(
-                    "settings.additionalRoots contains unknown provider key {key:?}"
-                )));
-            }
             for root in roots {
                 // A relative path means a different folder depending on where the app was
                 // launched from, which is not a folder anybody chose.
@@ -477,49 +556,62 @@ impl Settings {
             }
         }
 
+        let by_key: BTreeMap<String, ProviderInstanceId> = declared
+            .iter()
+            .map(|instance| (instance.key(), instance.clone()))
+            .collect();
         let mut seen = BTreeSet::new();
-        let mut ordered = Vec::with_capacity(registry.len());
+        let mut ordered = Vec::with_capacity(declared.len());
         for key in &self.provider_order {
-            let Some(id) = known.get(key.as_str()).copied() else {
+            let Some(instance) = by_key.get(key.as_str()) else {
+                parse_instance(key, "settings.providerOrder", &compiled)?;
                 return Err(Error::Invalid(format!(
-                    "settings.providerOrder contains unknown provider key {key:?}"
+                    "settings.providerOrder names instance {key:?}, which is not declared in settings.instances"
                 )));
             };
-            if !seen.insert(key.as_str()) {
+            if !seen.insert(key.clone()) {
                 return Err(Error::Invalid(format!(
                     "settings.providerOrder contains duplicate provider key {key:?}"
                 )));
             }
-            ordered.push(id);
+            ordered.push(instance.clone());
         }
-        for id in registry {
-            if seen.insert(id.key()) {
-                ordered.push(*id);
+        for instance in declared {
+            if seen.insert(instance.key()) {
+                ordered.push(instance);
             }
         }
         Ok(ordered)
     }
 
-    /// Extra log folders configured for this provider, or nothing.
+    /// What the user called one instance. `None` on a default instance, whose name on screen is
+    /// the tool's own.
+    pub fn label_for(&self, instance: &ProviderInstanceId) -> Option<String> {
+        self.instances
+            .get(&instance.key())
+            .and_then(|config| config.label.clone())
+    }
+
+    /// Extra log folders configured for this instance, or nothing.
     ///
     /// Nothing is the honest default: a folder the user never named is not a folder this app
     /// may read, and guessing one would be the same class of mistake as guessing a plan.
-    pub fn additional_roots_for(&self, id: ProviderId) -> &[PathBuf] {
+    pub fn additional_roots_for(&self, instance: &ProviderInstanceId) -> &[PathBuf] {
         self.additional_roots
-            .get(id.key())
+            .get(&instance.key())
             .map_or(&[], Vec::as_slice)
     }
 
-    pub fn config_for(&self, id: ProviderId) -> ProviderConfig {
+    pub fn config_for(&self, instance: &ProviderInstanceId) -> ProviderConfig {
         ProviderConfig {
-            plan_id: self.plans.get(id.key()).cloned(),
+            plan_id: self.plans.get(&instance.key()).cloned(),
         }
     }
 
-    /// Percentages this provider raises a notification at.
-    pub fn thresholds_for(&self, id: ProviderId) -> Vec<u8> {
+    /// Percentages this instance raises a notification at.
+    pub fn thresholds_for(&self, instance: &ProviderInstanceId) -> Vec<u8> {
         self.alerts
-            .get(id.key())
+            .get(&instance.key())
             .cloned()
             .unwrap_or_else(|| DEFAULT_THRESHOLDS.to_vec())
     }
@@ -567,7 +659,7 @@ impl Settings {
     /// variables, so they remain safe when the workspace test runner executes in parallel.
     pub fn save_to(&self, path: impl AsRef<std::path::Path>) -> Result<()> {
         let path = path.as_ref();
-        self.ordered_provider_ids(&quotadeck_providers::ids())?;
+        self.instance_ids(&quotadeck_providers::ids())?;
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).map_err(|e| Error::io(parent, e))?;
         }
@@ -982,8 +1074,8 @@ impl Deck {
     }
 
     fn apply_provider_policy_to_cached_data(&self, settings: &Settings) -> Result<()> {
-        let order = settings.ordered_provider_ids(&quotadeck_providers::ids())?;
-        let positions: BTreeMap<ProviderId, usize> = order
+        let order = settings.instance_ids(&quotadeck_providers::ids())?;
+        let positions: BTreeMap<ProviderInstanceId, usize> = order
             .into_iter()
             .enumerate()
             .map(|(position, id)| (id, position))
@@ -992,13 +1084,16 @@ impl Deck {
         let mut state = self.state();
         state
             .providers
-            .retain(|snapshot| settings.is_provider_enabled(snapshot.id));
-        state
-            .providers
-            .sort_by_key(|snapshot| positions.get(&snapshot.id).copied().unwrap_or(usize::MAX));
+            .retain(|snapshot| settings.is_instance_enabled(&snapshot.instance));
+        state.providers.sort_by_key(|snapshot| {
+            positions
+                .get(&snapshot.instance)
+                .copied()
+                .unwrap_or(usize::MAX)
+        });
         let mut history = self.history();
 
-        history.retain(|entry| settings.is_provider_enabled(entry.id));
+        history.retain(|entry| settings.is_instance_enabled(&entry.id));
         history.sort_by_key(|entry| positions.get(&entry.id).copied().unwrap_or(usize::MAX));
         self.set_published_view(history, state);
         Ok(())
@@ -1015,9 +1110,8 @@ impl Deck {
             move |settings| {
                 settings.disabled_providers = disabled_providers;
                 settings.provider_order = provider_order;
-                let ordered = settings.ordered_provider_ids(&registry)?;
-                settings.provider_order =
-                    ordered.into_iter().map(|id| id.key().to_string()).collect();
+                let ordered = settings.instance_ids(&registry)?;
+                settings.provider_order = ordered.iter().map(ProviderInstanceId::key).collect();
                 Ok(())
             },
             save,
@@ -1039,10 +1133,10 @@ impl Deck {
     /// which is why the UI never calls it that.
     pub fn set_additional_roots(
         &self,
-        provider: ProviderId,
+        instance: &ProviderInstanceId,
         roots: Vec<PathBuf>,
     ) -> Result<ProviderPolicyOutcome> {
-        let next = self.set_additional_roots_with(provider, roots, Settings::save)?;
+        let next = self.set_additional_roots_with(instance, roots, Settings::save)?;
         // Same reconciliation the enable/order controls use: the watch set changed, and the
         // read loop must be told before the call returns or a folder added here would stay
         // unwatched until something else happened to wake it.
@@ -1066,10 +1160,11 @@ impl Deck {
 
     fn set_additional_roots_with(
         &self,
-        provider: ProviderId,
+        instance: &ProviderInstanceId,
         roots: Vec<PathBuf>,
         save: impl FnOnce(&Settings) -> Result<()>,
     ) -> Result<Settings> {
+        let key = instance.key();
         self.update_settings_result_with(
             move |settings| {
                 let mut accepted: Vec<PathBuf> = Vec::with_capacity(roots.len());
@@ -1110,11 +1205,9 @@ impl Deck {
                     )));
                 }
                 if accepted.is_empty() {
-                    settings.additional_roots.remove(provider.key());
+                    settings.additional_roots.remove(&key);
                 } else {
-                    settings
-                        .additional_roots
-                        .insert(provider.key().to_string(), accepted);
+                    settings.additional_roots.insert(key, accepted);
                 }
                 Ok(())
             },
@@ -1122,14 +1215,123 @@ impl Deck {
         )
     }
 
+    /// How many instances one provider may have.
+    ///
+    /// A ceiling rather than none: every instance is an engine, a checkpoint and a set of
+    /// watches, and a settings file that quietly asked for fifty would degrade the whole app
+    /// rather than fail at the point the fiftieth was added.
+    pub const MAX_INSTANCES_PER_PROVIDER: usize = 8;
+
+    /// Declare a new named instance of a provider, or rename one that exists.
+    ///
+    /// A separate quota: its own checkpoint, plan, thresholds, health and history. Nothing is
+    /// copied from the default instance — inheriting its cursors would attribute one account's
+    /// usage to another, which is the exact mistake this feature exists to prevent.
+    pub fn add_instance(
+        &self,
+        instance: &ProviderInstanceId,
+        label: Option<String>,
+    ) -> Result<ProviderPolicyOutcome> {
+        self.change_instances(|settings| {
+            if instance.is_default() {
+                return Err(Error::Invalid(format!(
+                    "{instance} is a provider's default instance; it exists already and cannot be added"
+                )));
+            }
+            let existing = settings
+                .instances
+                .keys()
+                .filter_map(|key| ProviderInstanceId::parse(key).ok())
+                .filter(|declared| declared.provider == instance.provider)
+                .count();
+            if !settings.instances.contains_key(&instance.key())
+                && existing + 1 >= Self::MAX_INSTANCES_PER_PROVIDER
+            {
+                return Err(Error::Invalid(format!(
+                    "at most {} instances of one tool are supported",
+                    Self::MAX_INSTANCES_PER_PROVIDER
+                )));
+            }
+            settings
+                .instances
+                .insert(instance.key(), InstanceConfig { label });
+            Ok(())
+        })
+    }
+
+    /// Remove a named instance and everything keyed to it.
+    ///
+    /// Its persisted checkpoint is not deleted here: the read loop owns the store, and a
+    /// checkpoint for an instance nobody declares is never restored. It is dead weight, not a
+    /// leak of somebody else's numbers, and re-adding the same name deliberately picks it back
+    /// up rather than re-reading every log from the beginning.
+    pub fn remove_instance(&self, instance: &ProviderInstanceId) -> Result<ProviderPolicyOutcome> {
+        self.change_instances(|settings| {
+            if instance.is_default() {
+                return Err(Error::Invalid(format!(
+                    "{instance} is a provider's default instance and cannot be removed; disable the tool instead"
+                )));
+            }
+            let key = instance.key();
+            if settings.instances.remove(&key).is_none() {
+                return Err(Error::Invalid(format!("no such instance: {instance}")));
+            }
+            settings.plans.remove(&key);
+            settings.alerts.remove(&key);
+            settings.additional_roots.remove(&key);
+            settings.disabled_providers.remove(&key);
+            settings.provider_order.retain(|entry| entry != &key);
+            Ok(())
+        })
+    }
+
+    /// Save an instance-list change and wait for the read loop to reconcile its engines.
+    fn change_instances(
+        &self,
+        apply: impl FnOnce(&mut Settings) -> Result<()>,
+    ) -> Result<ProviderPolicyOutcome> {
+        let registry = quotadeck_providers::ids();
+        let next = self.update_settings_result_with(
+            move |settings| {
+                apply(settings)?;
+                let ordered = settings.instance_ids(&registry)?;
+                settings.provider_order = ordered.iter().map(ProviderInstanceId::key).collect();
+                Ok(())
+            },
+            Settings::save,
+        )?;
+        self.apply_provider_policy_to_cached_data(&next)?;
+        let revision = self
+            .provider_policy_revision
+            .fetch_add(1, Ordering::Release)
+            + 1;
+        let warning = self
+            .wait_for_provider_policy_sync(revision)
+            .err()
+            .map(|error| {
+                let warning = error.to_string();
+                eprintln!("quotadeck: {warning}");
+                warning
+            });
+        Ok(ProviderPolicyOutcome {
+            settings: next,
+            warning,
+        })
+    }
+
     /// Record the tier the user picked for one provider, or clear it.
-    pub fn set_plan(&self, provider: ProviderId, plan_id: Option<String>) -> Result<Settings> {
+    pub fn set_plan(
+        &self,
+        instance: &ProviderInstanceId,
+        plan_id: Option<String>,
+    ) -> Result<Settings> {
+        let key = instance.key();
         self.update_settings(|settings| match plan_id {
             Some(id) => {
-                settings.plans.insert(provider.key().to_string(), id);
+                settings.plans.insert(key, id);
             }
             None => {
-                settings.plans.remove(provider.key());
+                settings.plans.remove(&key);
             }
         })
     }
@@ -1137,13 +1339,12 @@ impl Deck {
     /// Record which percentages one provider warns at. An empty list turns it off.
     pub fn set_alert_thresholds(
         &self,
-        provider: ProviderId,
+        instance: &ProviderInstanceId,
         thresholds: Vec<u8>,
     ) -> Result<Settings> {
+        let key = instance.key();
         self.update_settings(|settings| {
-            settings
-                .alerts
-                .insert(provider.key().to_string(), thresholds);
+            settings.alerts.insert(key, thresholds);
         })
     }
 
@@ -1269,6 +1470,8 @@ mod tests {
     fn snapshot(percents: &[f32]) -> ProviderSnapshot {
         ProviderSnapshot {
             id: ProviderId::Codex,
+            instance: ProviderInstanceId::default_for(ProviderId::Codex),
+            label: None,
             installed: true,
             windows: percents
                 .iter()
@@ -1382,7 +1585,7 @@ mod tests {
             "a default tier would put an unrequested percentage in front of the user"
         );
         assert!(settings
-            .config_for(ProviderId::ClaudeCode)
+            .config_for(&ProviderInstanceId::default_for(ProviderId::ClaudeCode))
             .plan_id
             .is_none());
         assert!(settings.disabled_providers.is_empty());
@@ -1426,9 +1629,12 @@ mod tests {
         assert!(stored.disabled_providers.is_empty());
         assert_eq!(
             stored
-                .ordered_provider_ids(&quotadeck_providers::ids())
+                .instance_ids(&quotadeck_providers::ids())
                 .expect("legacy provider order"),
             quotadeck_providers::ids()
+                .into_iter()
+                .map(ProviderInstanceId::default_for)
+                .collect::<Vec<_>>()
         );
         assert_eq!(stored.retention_days, RetentionDays::Days32);
     }
@@ -1527,16 +1733,20 @@ mod tests {
         )
         .expect("partial settings");
 
-        assert!(!stored.is_provider_enabled(ProviderId::ClaudeCode));
+        assert!(
+            !stored.is_instance_enabled(&ProviderInstanceId::default_for(ProviderId::ClaudeCode))
+        );
         assert_eq!(
             stored
-                .ordered_provider_ids(&quotadeck_providers::ids())
+                .instance_ids(&quotadeck_providers::ids())
                 .expect("partial provider order"),
-            vec![
+            [
                 ProviderId::Codex,
                 ProviderId::ClaudeCode,
                 ProviderId::CopilotCli
             ]
+            .map(ProviderInstanceId::default_for)
+            .to_vec()
         );
     }
 
@@ -1572,12 +1782,12 @@ mod tests {
         .expect("valid additional roots");
 
         assert_eq!(
-            settings.additional_roots_for(ProviderId::Codex),
+            settings.additional_roots_for(&ProviderInstanceId::default_for(ProviderId::Codex)),
             [PathBuf::from("/tmp/one"), PathBuf::from("/tmp/two")]
         );
         // A provider the user never configured has none, not a default folder.
         assert!(settings
-            .additional_roots_for(ProviderId::ClaudeCode)
+            .additional_roots_for(&ProviderInstanceId::default_for(ProviderId::ClaudeCode))
             .is_empty());
     }
 
@@ -1599,6 +1809,103 @@ mod tests {
         assert!(relative.to_string().contains("logs"));
     }
 
+    fn work_codex() -> ProviderInstanceId {
+        ProviderInstanceId::new(ProviderId::Codex, "work").expect("a valid instance name")
+    }
+
+    #[test]
+    fn two_instances_of_one_tool_keep_separate_plans_thresholds_and_folders() {
+        let work = work_codex();
+        let default = ProviderInstanceId::default_for(ProviderId::Codex);
+        let settings: Settings = serde_json::from_str(
+            r#"{
+                "instances": {"codex#work": {"label": "Work"}},
+                "plans": {"codex#work": "pro"},
+                "alerts": {"codex": [50], "codex#work": [95]},
+                "additionalRoots": {"codex#work": ["/tmp"]}
+            }"#,
+        )
+        .expect("two instances of one tool");
+
+        assert_eq!(settings.config_for(&work).plan_id.as_deref(), Some("pro"));
+        assert_eq!(settings.config_for(&default).plan_id, None);
+        assert_eq!(settings.thresholds_for(&work), vec![95]);
+        assert_eq!(settings.thresholds_for(&default), vec![50]);
+        assert_eq!(
+            settings.additional_roots_for(&work),
+            [PathBuf::from("/tmp")]
+        );
+        assert!(settings.additional_roots_for(&default).is_empty());
+        assert_eq!(settings.label_for(&work).as_deref(), Some("Work"));
+        assert_eq!(settings.label_for(&default), None);
+    }
+
+    #[test]
+    fn a_named_instance_can_be_disabled_and_ordered_without_touching_the_default_one() {
+        let settings: Settings = serde_json::from_str(
+            r#"{
+                "instances": {"codex#work": {"label": "Work"}},
+                "disabledProviders": ["codex#work"],
+                "providerOrder": ["codex#work", "codex"]
+            }"#,
+        )
+        .expect("instance policy");
+
+        assert!(!settings.is_instance_enabled(&work_codex()));
+        assert!(settings.is_instance_enabled(&ProviderInstanceId::default_for(ProviderId::Codex)));
+        let ordered = settings
+            .instance_ids(&quotadeck_providers::ids())
+            .expect("instance order");
+        assert_eq!(ordered[0], work_codex());
+        assert_eq!(
+            ordered[1],
+            ProviderInstanceId::default_for(ProviderId::Codex)
+        );
+    }
+
+    #[test]
+    fn a_key_naming_an_undeclared_instance_is_refused_rather_than_read_as_the_default() {
+        // Otherwise a typo in one field would silently apply to the tool's real quota.
+        let error = serde_json::from_str::<Settings>(r#"{"plans":{"codex#typo":"pro"}}"#)
+            .expect_err("an undeclared instance must fail");
+        let message = error.to_string();
+        assert!(message.contains("settings.plans"), "{message}");
+        assert!(message.contains("codex#typo"), "{message}");
+
+        let reserved = serde_json::from_str::<Settings>(r#"{"instances":{"codex":{"label":"x"}}}"#)
+            .expect_err("declaring a default instance must fail");
+        assert!(reserved.to_string().contains("default instance"));
+    }
+
+    #[test]
+    fn removing_an_instance_takes_everything_keyed_to_it() {
+        let deck = Deck::new().expect("create deck");
+        let work = work_codex();
+        deck.add_instance(&work, Some("Work".into()))
+            .expect("declare the instance");
+        deck.set_plan(&work, Some("pro".into()))
+            .expect("set a plan");
+        deck.set_alert_thresholds(&work, vec![95])
+            .expect("set thresholds");
+
+        let after = deck.remove_instance(&work).expect("remove the instance");
+        assert!(!after.settings.instances.contains_key(&work.key()));
+        assert!(!after.settings.plans.contains_key(&work.key()));
+        assert!(!after.settings.alerts.contains_key(&work.key()));
+        assert!(!after.settings.provider_order.contains(&work.key()));
+        // The tool's own quota is untouched by removing a second copy of it.
+        assert!(after
+            .settings
+            .is_instance_enabled(&ProviderInstanceId::default_for(ProviderId::Codex)));
+
+        assert!(deck.remove_instance(&work).is_err(), "removed twice");
+        assert!(
+            deck.remove_instance(&ProviderInstanceId::default_for(ProviderId::Codex))
+                .is_err(),
+            "a default instance must not be removable"
+        );
+    }
+
     #[test]
     fn setting_additional_log_folders_refuses_a_path_that_is_not_a_readable_folder() {
         let deck = Deck::new().expect("create deck");
@@ -1609,7 +1916,11 @@ mod tests {
         let _ = std::fs::remove_dir_all(&missing);
 
         let error = deck
-            .set_additional_roots_with(ProviderId::Codex, vec![missing.clone()], |_| Ok(()))
+            .set_additional_roots_with(
+                &ProviderInstanceId::default_for(ProviderId::Codex),
+                vec![missing.clone()],
+                |_| Ok(()),
+            )
             .expect_err("a missing folder must be refused");
         let message = error.to_string();
         assert!(
@@ -1620,7 +1931,7 @@ mod tests {
         // Refused means unchanged, not partially applied.
         assert!(deck
             .settings()
-            .additional_roots_for(ProviderId::Codex)
+            .additional_roots_for(&ProviderInstanceId::default_for(ProviderId::Codex))
             .is_empty());
     }
 
@@ -1633,19 +1944,23 @@ mod tests {
 
         let settings = deck
             .set_additional_roots_with(
-                ProviderId::Codex,
+                &ProviderInstanceId::default_for(ProviderId::Codex),
                 vec![folder.clone(), folder.clone()],
                 |_| Ok(()),
             )
             .expect("an existing folder is accepted");
         assert_eq!(
-            settings.additional_roots_for(ProviderId::Codex),
+            settings.additional_roots_for(&ProviderInstanceId::default_for(ProviderId::Codex)),
             std::slice::from_ref(&folder)
         );
 
         // An empty list removes the provider's entry rather than storing an empty one.
         let cleared = deck
-            .set_additional_roots_with(ProviderId::Codex, Vec::new(), |_| Ok(()))
+            .set_additional_roots_with(
+                &ProviderInstanceId::default_for(ProviderId::Codex),
+                Vec::new(),
+                |_| Ok(()),
+            )
             .expect("clearing is accepted");
         assert!(!cleared
             .additional_roots
@@ -1677,6 +1992,7 @@ mod tests {
         let deck = Deck::new().expect("create deck");
         let mut claude = snapshot(&[70.0]);
         claude.id = ProviderId::ClaudeCode;
+        claude.instance = ProviderInstanceId::default_for(ProviderId::ClaudeCode);
         let codex = snapshot(&[40.0]);
         deck.set_state(DeckState {
             providers: vec![claude, codex],
@@ -1690,7 +2006,7 @@ mod tests {
         });
         deck.set_history(vec![
             ProviderHistory {
-                id: ProviderId::ClaudeCode,
+                id: ProviderInstanceId::default_for(ProviderId::ClaudeCode),
                 hours: Vec::new(),
                 models: Vec::new(),
                 models_dropped: 0,
@@ -1700,7 +2016,7 @@ mod tests {
                 agents_dropped: 0,
             },
             ProviderHistory {
-                id: ProviderId::Codex,
+                id: ProviderInstanceId::default_for(ProviderId::Codex),
                 hours: Vec::new(),
                 models: Vec::new(),
                 models_dropped: 0,
@@ -1730,9 +2046,9 @@ mod tests {
         assert_eq!(
             deck.history()
                 .iter()
-                .map(|provider| provider.id)
+                .map(|provider| provider.id.clone())
                 .collect::<Vec<_>>(),
-            vec![ProviderId::Codex]
+            vec![ProviderInstanceId::default_for(ProviderId::Codex)]
         );
         assert_eq!(
             deck.state().headline().map(|(provider, _)| provider.id),
@@ -1802,7 +2118,9 @@ mod tests {
             .recv_timeout(std::time::Duration::from_secs(2))
             .expect("policy setter must not deadlock behind watcher sync")
             .expect("save provider policy");
-        assert!(!outcome.settings.is_provider_enabled(ProviderId::ClaudeCode));
+        assert!(!outcome
+            .settings
+            .is_instance_enabled(&ProviderInstanceId::default_for(ProviderId::ClaudeCode)));
         assert!(outcome.warning.is_none());
         assert_eq!(
             *watched.lock().expect("watched roots lock"),
@@ -1871,7 +2189,9 @@ mod tests {
             )
             .expect("a post-save watcher failure must be a warning");
 
-        assert!(!outcome.settings.is_provider_enabled(ProviderId::ClaudeCode));
+        assert!(!outcome
+            .settings
+            .is_instance_enabled(&ProviderInstanceId::default_for(ProviderId::ClaudeCode)));
         assert_eq!(outcome.settings, deck.settings());
         assert!(
             outcome
@@ -1887,7 +2207,7 @@ mod tests {
         let first = DateTime::from_timestamp(1_785_715_200, 0).expect("valid instant");
         let failed = first + chrono::Duration::seconds(30);
         let recovered = failed + chrono::Duration::seconds(20);
-        let mut health = ProviderHealth::new(ProviderId::Codex);
+        let mut health = ProviderHealth::new(ProviderInstanceId::default_for(ProviderId::Codex));
 
         health.record_success(first);
         health.record_failure(failed, "could not read codex log".into(), true);
@@ -1927,17 +2247,20 @@ mod tests {
     #[test]
     fn provider_health_distinguishes_disabled_unavailable_and_first_error() {
         let at = DateTime::from_timestamp(1_785_715_200, 0).expect("valid instant");
-        let mut disabled = ProviderHealth::new(ProviderId::ClaudeCode);
+        let mut disabled =
+            ProviderHealth::new(ProviderInstanceId::default_for(ProviderId::ClaudeCode));
         disabled.record_disabled();
         assert_eq!(disabled.state, HealthState::Disabled);
         assert!(disabled.last_attempt_at.is_none());
 
-        let mut unavailable = ProviderHealth::new(ProviderId::Codex);
+        let mut unavailable =
+            ProviderHealth::new(ProviderInstanceId::default_for(ProviderId::Codex));
         unavailable.record_unavailable(at, "provider root is not readable".into());
         assert_eq!(unavailable.state, HealthState::Unavailable);
         assert_eq!(unavailable.last_attempt_at, Some(at));
 
-        let mut error = ProviderHealth::new(ProviderId::CopilotCli);
+        let mut error =
+            ProviderHealth::new(ProviderInstanceId::default_for(ProviderId::CopilotCli));
         error.record_failure(at, "provider parser failed".into(), false);
         assert_eq!(error.state, HealthState::Error);
     }
@@ -1945,7 +2268,8 @@ mod tests {
     #[test]
     fn rebuilding_is_explicit_until_a_full_success_or_failure() {
         let at = Utc::now();
-        let mut health = ProviderHealth::new(ProviderId::ClaudeCode);
+        let mut health =
+            ProviderHealth::new(ProviderInstanceId::default_for(ProviderId::ClaudeCode));
         health.record_rebuilding(at);
         assert_eq!(health.state, HealthState::Rebuilding);
         assert_eq!(health.last_attempt_at, Some(at));
@@ -1967,12 +2291,20 @@ mod tests {
     #[test]
     fn a_failed_provider_attempt_keeps_the_last_successful_snapshot() {
         let previous = snapshot(&[72.0]);
-        let preserved = provider_snapshot_after_failure(Some(&previous), ProviderId::Codex);
+        let preserved = provider_snapshot_after_failure(
+            Some(&previous),
+            &ProviderInstanceId::default_for(ProviderId::Codex),
+            None,
+        );
         assert_eq!(preserved.id, previous.id);
         assert_eq!(preserved.windows.len(), previous.windows.len());
         assert_eq!(preserved.windows[0].used_percent, Some(72.0));
 
-        let first_failure = provider_snapshot_after_failure(None, ProviderId::ClaudeCode);
+        let first_failure = provider_snapshot_after_failure(
+            None,
+            &ProviderInstanceId::default_for(ProviderId::ClaudeCode),
+            None,
+        );
         assert_eq!(first_failure.id, ProviderId::ClaudeCode);
         assert_eq!(
             first_failure.unavailable,
@@ -1984,7 +2316,7 @@ mod tests {
     fn global_update_time_can_advance_without_changing_provider_success_time() {
         let success = DateTime::from_timestamp(1_785_715_200, 0).expect("valid instant");
         let attempted = success + chrono::Duration::minutes(1);
-        let mut health = ProviderHealth::new(ProviderId::Codex);
+        let mut health = ProviderHealth::new(ProviderInstanceId::default_for(ProviderId::Codex));
         health.record_success(success);
         health.record_failure(attempted, "temporary failure".into(), true);
         let state = DeckState {
@@ -2078,7 +2410,7 @@ mod tests {
         let json = serde_json::to_string(&settings).expect("serialise settings");
         assert_eq!(
             json,
-            r#"{"trayMode":"compact","theme":"dark","locale":"system","plans":{"claude-code":"max-20x"},"alerts":{"codex":[85,95]},"mutedUntil":null,"demo":false,"disabledProviders":[],"providerOrder":["claude-code","codex","copilot-cli"],"additionalRoots":{},"retentionDays":32}"#
+            r#"{"trayMode":"compact","theme":"dark","locale":"system","plans":{"claude-code":"max-20x"},"alerts":{"codex":[85,95]},"mutedUntil":null,"demo":false,"disabledProviders":[],"providerOrder":["claude-code","codex","copilot-cli"],"additionalRoots":{},"instances":{},"retentionDays":32}"#
         );
     }
 
@@ -2099,13 +2431,16 @@ mod tests {
 
         assert_eq!(
             settings
-                .config_for(ProviderId::ClaudeCode)
+                .config_for(&ProviderInstanceId::default_for(ProviderId::ClaudeCode))
                 .plan_id
                 .as_deref(),
             Some("pro")
         );
         // One provider's tier must never leak into another's estimate.
-        assert!(settings.config_for(ProviderId::Codex).plan_id.is_none());
+        assert!(settings
+            .config_for(&ProviderInstanceId::default_for(ProviderId::Codex))
+            .plan_id
+            .is_none());
     }
 
     #[test]

@@ -8,7 +8,7 @@ import { formatClock } from "./format";
 import { identityHue } from "./identity";
 import { visibleProviderHealth } from "./providerHealth";
 import { reportPanelHeight, useDeck, useDeckState, useLocale, useStrings } from "./store";
-import { awaitingSetup, type ProviderId, type ProviderSnapshot } from "./types";
+import { awaitingSetup, type ProviderInstanceId, type ProviderSnapshot } from "./types";
 
 function hasReading(snapshot: ProviderSnapshot): boolean {
   return snapshot.windows.some((window) => window.usedPercent !== null);
@@ -35,8 +35,8 @@ function FilterChips({
   onPick,
 }: {
   snapshots: ProviderSnapshot[];
-  filter: ProviderId | "all";
-  onPick: (filter: ProviderId | "all") => void;
+  filter: ProviderInstanceId | "all";
+  onPick: (filter: ProviderInstanceId | "all") => void;
 }) {
   const strings = useStrings();
   if (snapshots.length < 2) return null;
@@ -53,14 +53,18 @@ function FilterChips({
       </button>
       {snapshots.map((snapshot) => (
         <button
-          key={snapshot.id}
+          key={snapshot.instance}
           type="button"
           className="type-caption filters__chip"
-          aria-pressed={filter === snapshot.id}
-          onClick={() => onPick(snapshot.id)}
+          aria-pressed={filter === snapshot.instance}
+          onClick={() => onPick(snapshot.instance)}
         >
-          <span className="card__dot" data-hue={identityHue(snapshot.id)} aria-hidden="true" />
-          {strings.provider[snapshot.id]}
+          <span
+            className="card__dot"
+            data-hue={identityHue(snapshot.instance)}
+            aria-hidden="true"
+          />
+          {snapshot.label ?? strings.provider[snapshot.id]}
         </button>
       ))}
     </div>
@@ -150,8 +154,8 @@ export function App() {
    * A narrowing to a tool that has since stopped reporting would empty the panel and leave
    * no visible reason why. The chip for it is gone by then, so the filter goes with it.
    */
-  const narrowed = active.some((snapshot) => snapshot.id === filter) ? filter : "all";
-  const shown = narrowed === "all" ? active : active.filter((s) => s.id === narrowed);
+  const narrowed = active.some((snapshot) => snapshot.instance === filter) ? filter : "all";
+  const shown = narrowed === "all" ? active : active.filter((s) => s.instance === narrowed);
   /*
    * Asked for before anything else. Without the grant every provider root is unreadable, and
    * the panel would report three working tools as broken instead of asking for the one thing
@@ -237,7 +241,7 @@ export function App() {
             <FilterChips snapshots={active} filter={narrowed} onPick={setFilter} />
             {shown.map((snapshot) => (
               <ProviderCard
-                key={snapshot.id}
+                key={snapshot.instance}
                 snapshot={snapshot}
                 health={visibleProviderHealth(snapshot, deck.health)}
                 now={now}

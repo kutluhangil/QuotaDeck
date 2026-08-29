@@ -119,7 +119,7 @@ export function ProviderCard({
   const strings: Catalogue = useStrings();
   const locale: Locale = useLocale();
   const nameId = useId();
-  const name = strings.provider[snapshot.id];
+  const name = snapshot.label ?? strings.provider[snapshot.id];
   const headline = worstWindow(snapshot.windows);
   const rows = sortedWindows(snapshot.windows);
   const pace = headline === null ? null : paceFor(snapshot, headline);
@@ -140,7 +140,7 @@ export function ProviderCard({
     <article className="card" aria-labelledby={nameId}>
       <header className="card__head">
         <h2 className="type-label card__name" id={nameId}>
-          <span className="card__dot" data-hue={identityHue(snapshot.id)} aria-hidden="true" />
+          <span className="card__dot" data-hue={identityHue(snapshot.instance)} aria-hidden="true" />
           {name}
         </h2>
         <span className="card__head-right">

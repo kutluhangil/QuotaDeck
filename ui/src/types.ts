@@ -18,6 +18,24 @@ export const PROVIDER_IDS = [
 
 export type ProviderId = (typeof PROVIDER_IDS)[number];
 
+/**
+ * One isolated copy of a tool: its own quota, checkpoint, plan, thresholds and history.
+ *
+ * A bare provider key (`"codex"`) is that tool's default instance; `"codex#work"` is a named
+ * one. It is a string rather than a structure so it stays usable as a `Record` key and as the
+ * identity of a rendered row, exactly as the backend stores it.
+ *
+ * This — not `ProviderId` — is what identifies a card, a history entry or a settings entry.
+ * `ProviderId` survives for what belongs to the tool itself: its localised name and its plans.
+ */
+export type ProviderInstanceId = string;
+
+/** Which tool an instance key belongs to. */
+export function providerOf(instance: ProviderInstanceId): ProviderId {
+  const key = instance.split("#", 1)[0] as ProviderId;
+  return key;
+}
+
 export type UnavailableReason =
   | "not-installed"
   | "no-logs-found"
@@ -88,7 +106,12 @@ export interface PaceForecast {
 }
 
 export interface ProviderSnapshot {
+  /** Which tool it is, for the localised name and the plan list. */
   id: ProviderId;
+  /** Which copy of it — the identity everything else is keyed by. */
+  instance: ProviderInstanceId;
+  /** What the user called this instance, where they named one. */
+  label: string | null;
   installed: boolean;
   windows: QuotaWindow[];
   today: TokenRollup;
@@ -147,7 +170,7 @@ export interface BreakdownPoint {
  * the calendar itself, in the viewer's own zone.
  */
 export interface ProviderHistory {
-  id: ProviderId;
+  id: ProviderInstanceId;
   hours: HistoryPoint[];
   /** The same hours split by the model that produced the usage. */
   models: BreakdownPoint[];
@@ -281,7 +304,7 @@ export type HealthState =
   | "unavailable";
 
 export interface ProviderHealth {
-  provider: ProviderId;
+  provider: ProviderInstanceId;
   state: HealthState;
   lastAttemptAt: string | null;
   lastSuccessAt: string | null;
@@ -327,14 +350,14 @@ export interface Settings {
    * Chosen tier per provider, keyed by provider id. A provider absent from this map has no
    * tier picked, and therefore gets no estimated window at all.
    */
-  plans: Partial<Record<ProviderId, string>>;
+  plans: Partial<Record<ProviderInstanceId, string>>;
   /**
    * Usage percentages each provider warns at. Unlike `plans`, a provider absent from this map
    * takes `DEFAULT_THRESHOLDS` rather than nothing — a quota tracker that never warns is not
    * doing its job, and the operating system asks for its own consent before the first one.
    * An empty list is how the user turns a provider off.
    */
-  alerts: Partial<Record<ProviderId, number[]>>;
+  alerts: Partial<Record<ProviderInstanceId, number[]>>;
   /** ISO-8601. Nothing is raised before this instant. */
   mutedUntil: string | null;
   /**
@@ -342,22 +365,36 @@ export interface Settings {
    * asked for is indistinguishable from a wrong reading.
    */
   demo: boolean;
-  disabledProviders: ProviderId[];
-  providerOrder: ProviderId[];
+  disabledProviders: ProviderInstanceId[];
+  providerOrder: ProviderInstanceId[];
   /**
    * Extra log folders per provider, on top of the ones the tool declares. Folded into the same
    * quota identity — this is "additional log folders", not multiple accounts. A provider absent
    * from this map has none; the app never guesses a folder.
    */
-  additionalRoots: Partial<Record<ProviderId, string[]>>;
+  additionalRoots: Partial<Record<ProviderInstanceId, string[]>>;
+  /** Named instances, keyed by instance key. Default instances are never listed. */
+  instances: Partial<Record<ProviderInstanceId, { label: string | null }>>;
   retentionDays: RetentionDays;
 }
 
 export interface ProviderDescriptor {
-  id: ProviderId;
+  /** The instance key. The panel's identity for this row. */
+  id: ProviderInstanceId;
+  /** Which tool it is. */
+  provider: ProviderId;
   displayName: string;
+  /** What the user called this instance, where they named one. */
+  label: string | null;
   supportsMeasured: boolean;
   enabled: boolean;
+}
+
+/** The name to put on a card: the user's own, or the tool's. */
+export function instanceName(
+  descriptor: { label: string | null; displayName: string },
+): string {
+  return descriptor.label ?? descriptor.displayName;
 }
 
 export interface ProviderPolicyOutcome {
@@ -368,8 +405,8 @@ export interface ProviderPolicyOutcome {
 /** Mirrors `DEFAULT_THRESHOLDS` in `app/src/deck.rs`. */
 export const DEFAULT_THRESHOLDS = [70, 85, 95];
 
-export function thresholdsFor(settings: Settings, provider: ProviderId): number[] {
-  return settings.alerts[provider] ?? DEFAULT_THRESHOLDS;
+export function thresholdsFor(settings: Settings, instance: ProviderInstanceId): number[] {
+  return settings.alerts[instance] ?? DEFAULT_THRESHOLDS;
 }
 
 export function totalTokens(rollup: TokenRollup): number {

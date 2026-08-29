@@ -71,6 +71,8 @@ export function demoDeck(): DeckState {
 
   const codex: ProviderSnapshot = {
     id: "codex",
+    instance: "codex",
+    label: null,
     installed: true,
     windows: [
       {
@@ -119,6 +121,8 @@ export function demoDeck(): DeckState {
 
   const claude: ProviderSnapshot = {
     id: "claude-code",
+    instance: "claude-code",
+    label: null,
     installed: true,
     windows: [
       {
@@ -172,6 +176,8 @@ export function demoDeck(): DeckState {
 
   const copilot: ProviderSnapshot = {
     id: "copilot-cli",
+    instance: "copilot-cli",
+    label: null,
     installed: true,
     windows: [],
     today: { input: 0, output: 0, cacheRead: 0, cacheCreation: 0, reasoning: 0 },

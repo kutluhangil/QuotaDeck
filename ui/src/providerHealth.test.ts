@@ -7,6 +7,8 @@ import type { ProviderHealth, ProviderSnapshot } from "./types";
 
 const snapshot: ProviderSnapshot = {
   id: "codex",
+  instance: "codex",
+  label: null,
   installed: true,
   windows: [
     {
@@ -71,5 +73,36 @@ describe("provider health presentation", () => {
     const other = { ...health("error"), provider: "claude-code" as const };
     expect(visibleProviderHealth(snapshot, [other])).toBeNull();
     expect(visibleProviderHealth(snapshot, [other, health("error")])?.state).toBe("error");
+  });
+});
+
+describe("instances", () => {
+  it("matches health to the instance, not to the tool", () => {
+    // Two copies of one tool. The default one is fine; the named one cannot be read. Matching
+    // on the tool would paint both cards with whichever entry happened to come first.
+    const work: ProviderSnapshot = { ...snapshot, instance: "codex#work", label: "Work" };
+    const health: ProviderHealth[] = [
+      {
+        provider: "codex",
+        state: "healthy",
+        lastAttemptAt: null,
+        lastSuccessAt: null,
+        consecutiveFailures: 0,
+        lastError: null,
+        nextRetryAt: null,
+      },
+      {
+        provider: "codex#work",
+        state: "error",
+        lastAttemptAt: null,
+        lastSuccessAt: null,
+        consecutiveFailures: 2,
+        lastError: "the log directory could not be read",
+        nextRetryAt: null,
+      },
+    ];
+
+    expect(visibleProviderHealth(snapshot, health)).toBeNull();
+    expect(visibleProviderHealth(work, health)?.state).toBe("error");
   });
 });

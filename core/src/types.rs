@@ -57,6 +57,164 @@ impl ProviderId {
             ProviderId::Antigravity => "antigravity",
         }
     }
+
+    /// Every id this build declares, in the order the enum lists them.
+    pub const ALL: [ProviderId; 16] = [
+        ProviderId::ClaudeCode,
+        ProviderId::Codex,
+        ProviderId::CopilotCli,
+        ProviderId::Kimi,
+        ProviderId::GeminiCli,
+        ProviderId::Qwen,
+        ProviderId::OpenCode,
+        ProviderId::Amp,
+        ProviderId::Droid,
+        ProviderId::Codebuff,
+        ProviderId::Hermes,
+        ProviderId::PiAgent,
+        ProviderId::Goose,
+        ProviderId::Kilo,
+        ProviderId::OpenClaw,
+        ProviderId::Antigravity,
+    ];
+
+    /// The inverse of [`ProviderId::key`].
+    ///
+    /// Declared, not compiled: an id this build has no implementation for still parses, and the
+    /// layer that needs an implementation is the one that refuses it. Keeping the two apart is
+    /// what lets a stored key from a later release produce "this build cannot read that tool"
+    /// rather than "that is not a tool".
+    pub fn from_key(key: &str) -> Option<Self> {
+        ProviderId::ALL.into_iter().find(|id| id.key() == key)
+    }
+}
+
+/// The name of the instance every provider has whether or not the user ever asked for one.
+///
+/// Reserved: it is written as the bare provider key, never as `codex#default`, so that a
+/// settings file or checkpoint from before instances existed keeps meaning exactly what it
+/// meant. Two spellings of one identity would mean two checkpoints for one set of logs.
+pub const DEFAULT_INSTANCE: &str = "default";
+
+/// One isolated copy of a provider: its own roots, checkpoint, plan, thresholds and history.
+///
+/// This — not [`ProviderId`] — is the unit of accounting. A person with a work Codex login and
+/// a personal one has two quotas, and folding them together would report a limit neither of
+/// them has. Additional log folders are the opposite feature: several folders, one quota.
+///
+/// Written as a single string so every stored map, IPC payload and TypeScript record key stays
+/// a string: `codex` for the default instance, `codex#work` for a named one.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct ProviderInstanceId {
+    pub provider: ProviderId,
+    /// `None` for the default instance, so there is exactly one way to spell it.
+    name: Option<String>,
+}
+
+impl ProviderInstanceId {
+    pub fn default_for(provider: ProviderId) -> Self {
+        ProviderInstanceId {
+            provider,
+            name: None,
+        }
+    }
+
+    /// A named instance, or the reason the name cannot be used.
+    ///
+    /// Names are kebab-case and lowercase because the key is a map key, a file-name component
+    /// and an IPC field at once; a name that differs only in case would collide on a
+    /// case-insensitive filesystem while looking distinct everywhere else.
+    pub fn new(provider: ProviderId, name: &str) -> std::result::Result<Self, String> {
+        if name == DEFAULT_INSTANCE {
+            return Err(format!(
+                "instance name {DEFAULT_INSTANCE:?} is reserved; the default instance is written as the bare provider key"
+            ));
+        }
+        if name.is_empty() {
+            return Err("an instance name cannot be empty".into());
+        }
+        let shaped = name
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+            && !name.starts_with('-')
+            && !name.ends_with('-');
+        if !shaped {
+            return Err(format!(
+                "instance name {name:?} must be lowercase letters, digits and inner hyphens"
+            ));
+        }
+        Ok(ProviderInstanceId {
+            provider,
+            name: Some(name.to_string()),
+        })
+    }
+
+    /// Read a stored key back. A bare provider key is that provider's default instance.
+    pub fn parse(key: &str) -> std::result::Result<Self, String> {
+        let (provider_key, name) = match key.split_once('#') {
+            Some((provider, name)) => (provider, Some(name)),
+            None => (key, None),
+        };
+        let provider = ProviderId::from_key(provider_key)
+            .ok_or_else(|| format!("unknown provider key {provider_key:?}"))?;
+        match name {
+            None => Ok(ProviderInstanceId::default_for(provider)),
+            Some(name) => ProviderInstanceId::new(provider, name),
+        }
+    }
+
+    pub fn is_default(&self) -> bool {
+        self.name.is_none()
+    }
+
+    pub fn name(&self) -> Option<&str> {
+        self.name.as_deref()
+    }
+
+    /// The stored spelling: `codex`, or `codex#work`.
+    pub fn key(&self) -> String {
+        match &self.name {
+            None => self.provider.key().to_string(),
+            Some(name) => format!("{}#{name}", self.provider.key()),
+        }
+    }
+
+    /// The same identity as a single path component.
+    ///
+    /// `#` is legal in a POSIX file name and illegal in nothing this app writes, but it is a
+    /// shell metacharacter and a URL fragment marker, and a checkpoint path that needs quoting
+    /// is a path somebody will eventually fail to quote.
+    pub fn file_stem(&self) -> String {
+        match &self.name {
+            None => self.provider.key().to_string(),
+            Some(name) => format!("{}-{name}", self.provider.key()),
+        }
+    }
+}
+
+impl std::fmt::Display for ProviderInstanceId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.key())
+    }
+}
+
+impl Serialize for ProviderInstanceId {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> std::result::Result<S::Ok, S::Error> {
+        serializer.serialize_str(&self.key())
+    }
+}
+
+impl<'de> Deserialize<'de> for ProviderInstanceId {
+    fn deserialize<D: serde::Deserializer<'de>>(
+        deserializer: D,
+    ) -> std::result::Result<Self, D::Error> {
+        use serde::de::Error as _;
+        let key = String::deserialize(deserializer)?;
+        ProviderInstanceId::parse(&key).map_err(D::Error::custom)
+    }
 }
 
 /// How much a number can be trusted. Rendered as a visible badge; an estimate is never
@@ -435,6 +593,16 @@ pub struct PaceForecast {
 #[serde(rename_all = "camelCase")]
 pub struct ProviderSnapshot {
     pub id: ProviderId,
+    /// Which copy of that provider this is. The unit of accounting: two instances of one tool
+    /// are two quotas, and everything keyed per tool — checkpoints, plans, thresholds, health,
+    /// history, export rows — is keyed by this rather than by [`ProviderSnapshot::id`].
+    ///
+    /// `#[serde(default)]` is not offered on purpose: a snapshot is produced fresh every pass
+    /// and never restored from disk, so there is no older shape to be lenient about.
+    pub instance: ProviderInstanceId,
+    /// What the user called this instance, where they named one. `None` on a default instance,
+    /// whose name on screen is the tool's own.
+    pub label: Option<String>,
     pub installed: bool,
     pub windows: Vec<QuotaWindow>,
     pub today: TokenRollup,
@@ -461,9 +629,21 @@ pub struct ProviderSnapshot {
 }
 
 impl ProviderSnapshot {
+    /// An unreadable default instance. Named instances go through
+    /// [`ProviderSnapshot::unavailable_instance`].
     pub fn unavailable(id: ProviderId, reason: UnavailableReason) -> Self {
+        Self::unavailable_instance(ProviderInstanceId::default_for(id), None, reason)
+    }
+
+    pub fn unavailable_instance(
+        instance: ProviderInstanceId,
+        label: Option<String>,
+        reason: UnavailableReason,
+    ) -> Self {
         ProviderSnapshot {
-            id,
+            id: instance.provider,
+            instance,
+            label,
             installed: !matches!(reason, UnavailableReason::NotInstalled),
             windows: Vec::new(),
             today: TokenRollup::default(),
@@ -475,6 +655,89 @@ impl ProviderSnapshot {
             read_error: None,
             burst: None,
         }
+    }
+}
+
+#[cfg(test)]
+mod instance_tests {
+    use super::*;
+
+    #[test]
+    fn a_bare_provider_key_is_that_provider_s_default_instance() {
+        let parsed = ProviderInstanceId::parse("codex").expect("a bare key parses");
+        assert_eq!(parsed.provider, ProviderId::Codex);
+        assert!(parsed.is_default());
+        assert_eq!(parsed.key(), "codex");
+        // Which is what makes every settings file written before instances existed load as-is.
+        assert_eq!(parsed, ProviderInstanceId::default_for(ProviderId::Codex));
+    }
+
+    #[test]
+    fn a_named_instance_round_trips_through_its_key() {
+        let instance = ProviderInstanceId::new(ProviderId::Codex, "work").expect("a valid name");
+        assert_eq!(instance.key(), "codex#work");
+        assert!(!instance.is_default());
+        assert_eq!(ProviderInstanceId::parse("codex#work"), Ok(instance));
+    }
+
+    #[test]
+    fn an_unknown_provider_or_a_malformed_name_is_refused_by_name() {
+        for key in ["planned-provider", "planned-provider#work"] {
+            let error = ProviderInstanceId::parse(key).expect_err("unknown provider");
+            assert!(error.contains("planned-provider"), "{error}");
+        }
+        for name in [
+            "",
+            "with space",
+            "UPPER",
+            "has#hash",
+            "-leading",
+            "trailing-",
+        ] {
+            let error = ProviderInstanceId::new(ProviderId::Codex, name)
+                .expect_err("malformed instance name");
+            assert!(error.contains("instance"), "{name:?}: {error}");
+        }
+    }
+
+    #[test]
+    fn the_reserved_default_name_cannot_be_written_out_as_a_second_instance() {
+        // Otherwise `codex` and `codex#default` would be two names for one thing, and the
+        // second would quietly own a separate checkpoint.
+        let error = ProviderInstanceId::new(ProviderId::Codex, DEFAULT_INSTANCE)
+            .expect_err("the reserved name is refused");
+        assert!(error.contains(DEFAULT_INSTANCE), "{error}");
+        assert_eq!(
+            ProviderInstanceId::parse("codex#default"),
+            Err(format!(
+                "instance name {DEFAULT_INSTANCE:?} is reserved; the default instance is written as the bare provider key"
+            ))
+        );
+    }
+
+    #[test]
+    fn instances_serialise_as_their_key_so_stored_maps_stay_readable() {
+        let instance = ProviderInstanceId::new(ProviderId::ClaudeCode, "personal").expect("valid");
+        let json = serde_json::to_string(&instance).expect("serialise");
+        assert_eq!(json, "\"claude-code#personal\"");
+        assert_eq!(
+            serde_json::from_str::<ProviderInstanceId>(&json).expect("deserialise"),
+            instance
+        );
+    }
+
+    #[test]
+    fn a_checkpoint_file_name_is_derived_from_the_key_without_a_path_separator() {
+        assert_eq!(
+            ProviderInstanceId::default_for(ProviderId::Codex).file_stem(),
+            "codex"
+        );
+        assert_eq!(
+            ProviderInstanceId::new(ProviderId::Codex, "work")
+                .expect("valid")
+                .file_stem(),
+            "codex-work"
+        );
     }
 }
 

@@ -14,6 +14,7 @@ import type {
   ProviderHistory,
   ProviderDescriptor,
   ProviderId,
+  ProviderInstanceId,
   ProviderPolicyOutcome,
   RefreshReceipt,
   ProviderPlans,
@@ -71,23 +72,25 @@ interface DeckStore {
    * choice, and a panel that opened tomorrow still hiding two of three tools would read as a
    * panel that had lost them.
    */
-  filter: ProviderId | "all";
+  filter: ProviderInstanceId | "all";
   setView: (view: "panel" | "settings") => void;
-  setFilter: (filter: ProviderId | "all") => void;
+  setFilter: (filter: ProviderInstanceId | "all") => void;
   setTrayMode: (mode: TrayMode) => void;
   setTheme: (theme: Settings["theme"]) => void;
   setLocale: (locale: Locale) => void;
   setDemo: (demo: boolean) => void;
   setRetentionDays: (days: RetentionDays) => Promise<void>;
-  setAdditionalRoots: (provider: ProviderId, roots: string[]) => Promise<void>;
+  setAdditionalRoots: (provider: ProviderInstanceId, roots: string[]) => Promise<void>;
+  addInstance: (provider: ProviderId, name: string, label: string | null) => Promise<void>;
+  removeInstance: (provider: ProviderInstanceId) => Promise<void>;
   setStartup: (enabled: boolean) => void;
   /** Open the system folder panel. Resolves once the user has answered it. */
   requestAccess: () => Promise<void>;
   forgetAccess: () => Promise<void>;
-  setPlan: (provider: ProviderId, planId: string | null) => void;
-  toggleThreshold: (provider: ProviderId, threshold: number) => void;
-  setProviderEnabled: (provider: ProviderId, enabled: boolean) => Promise<void>;
-  moveProvider: (provider: ProviderId, direction: -1 | 1) => Promise<void>;
+  setPlan: (provider: ProviderInstanceId, planId: string | null) => void;
+  toggleThreshold: (provider: ProviderInstanceId, threshold: number) => void;
+  setProviderEnabled: (provider: ProviderInstanceId, enabled: boolean) => Promise<void>;
+  moveProvider: (provider: ProviderInstanceId, direction: -1 | 1) => Promise<void>;
   /** `null` lifts the mute; otherwise the number of minutes to stay quiet for. */
   setMute: (minutes: number | null) => void;
   installStatusline: () => Promise<void>;
@@ -127,6 +130,30 @@ const emptyDeck: DeckState = {
   retention: { requestedDays: 32, effectiveDays: 32, rebuilding: false, error: null },
 };
 
+/**
+ * Fold an instance-list change back into the panel.
+ *
+ * The catalogue is refetched rather than patched: adding or removing an instance changes which
+ * rows exist, and a catalogue rebuilt from the settings alone would have no display name for a
+ * row the shell has just created.
+ */
+async function applyInstanceOutcome(
+  set: (partial: Partial<DeckStore>) => void,
+  outcome: Awaited<ReturnType<typeof call<ProviderPolicyOutcome>>>,
+): Promise<void> {
+  if (!outcome.ok) {
+    set({ settingsError: outcome.error, settingsAction: null });
+    return;
+  }
+  const catalogue = await call<ProviderDescriptor[]>("provider_catalogue", {});
+  set({
+    settings: outcome.value.settings,
+    providerCatalogue: catalogue.ok ? catalogue.value : undefined,
+    settingsError: outcome.value.warning ?? (catalogue.ok ? null : catalogue.error),
+    settingsAction: null,
+  });
+}
+
 export const useDeck = create<DeckStore>((set, get) => ({
   deck: emptyDeck,
   history: [],
@@ -140,6 +167,7 @@ export const useDeck = create<DeckStore>((set, get) => ({
     demo: false,
     disabledProviders: [],
     additionalRoots: {},
+    instances: {},
     providerOrder: ["claude-code", "codex", "copilot-cli"],
     retentionDays: 32,
   },
@@ -253,6 +281,29 @@ export const useDeck = create<DeckStore>((set, get) => ({
         settingsAction: null,
       });
     } else set({ settingsError: outcome.error, settingsAction: null });
+  },
+
+  /**
+   * Declare a second copy of a tool, or rename one.
+   *
+   * A separate quota. Nothing is inherited from the tool's own instance — the backend refuses
+   * to reuse its cursors, because filing one account's usage under another is the mistake this
+   * feature exists to prevent.
+   */
+  addInstance: async (provider, name, label) => {
+    if (get().settingsAction !== null) return;
+    if (!inShell) return;
+    set({ settingsError: null, settingsAction: "instances" });
+    const outcome = await call<ProviderPolicyOutcome>("add_instance", { provider, name, label });
+    await applyInstanceOutcome(set, outcome);
+  },
+
+  removeInstance: async (provider) => {
+    if (get().settingsAction !== null) return;
+    if (!inShell) return;
+    set({ settingsError: null, settingsAction: "instances" });
+    const outcome = await call<ProviderPolicyOutcome>("remove_instance", { provider });
+    await applyInstanceOutcome(set, outcome);
   },
 
   setPlan: (provider, planId) => {
@@ -571,9 +622,30 @@ export const useDeck = create<DeckStore>((set, get) => ({
         history: demoHistory(),
         plans: demoPlans(),
         providerCatalogue: [
-          { id: "claude-code", displayName: "Claude Code", supportsMeasured: true, enabled: true },
-          { id: "codex", displayName: "Codex", supportsMeasured: true, enabled: true },
-          { id: "copilot-cli", displayName: "Copilot CLI", supportsMeasured: false, enabled: true },
+          {
+            id: "claude-code",
+            provider: "claude-code",
+            displayName: "Claude Code",
+            label: null,
+            supportsMeasured: true,
+            enabled: true,
+          },
+          {
+            id: "codex",
+            provider: "codex",
+            displayName: "Codex",
+            label: null,
+            supportsMeasured: true,
+            enabled: true,
+          },
+          {
+            id: "copilot-cli",
+            provider: "copilot-cli",
+            displayName: "Copilot CLI",
+            label: null,
+            supportsMeasured: false,
+            enabled: true,
+          },
         ],
         statusline: demoStatusline(),
         // A browser has nothing to grant, and leaving this null would hold the panel on a

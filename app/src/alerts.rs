@@ -84,9 +84,9 @@ impl Alerts {
         let mut alerts = Vec::new();
 
         for snapshot in &state.providers {
-            let thresholds = settings.thresholds_for(snapshot.id);
+            let thresholds = settings.thresholds_for(&snapshot.instance);
             let provider_healthy = state.health.iter().any(|health| {
-                health.provider == snapshot.id && health.state == HealthState::Healthy
+                health.provider == snapshot.instance && health.state == HealthState::Healthy
             });
             for window in &snapshot.windows {
                 let Some(percent) = window.used_percent else {
@@ -251,6 +251,7 @@ mod tests {
     use super::*;
     use crate::deck::{HealthState, ProviderHealth, DEFAULT_THRESHOLDS};
     use crate::i18n::Locale;
+    use quotadeck_core::types::ProviderInstanceId;
     use quotadeck_core::types::{
         CostRange, PaceForecast, PaceRisk, ProviderSnapshot, TokenRollup, WindowKind,
     };
@@ -285,6 +286,8 @@ mod tests {
         DeckState {
             providers: vec![ProviderSnapshot {
                 id: ProviderId::Codex,
+                instance: ProviderInstanceId::default_for(ProviderId::Codex),
+                label: None,
                 installed: true,
                 windows,
                 today: TokenRollup::default(),
@@ -329,7 +332,7 @@ mod tests {
         }];
         state.health = vec![ProviderHealth {
             state: health_state,
-            ..ProviderHealth::new(ProviderId::Codex)
+            ..ProviderHealth::new(ProviderInstanceId::default_for(ProviderId::Codex))
         }];
         state
     }
@@ -826,7 +829,7 @@ mod tests {
     fn the_defaults_are_the_thresholds_the_blueprint_specifies() {
         assert_eq!(DEFAULT_THRESHOLDS, [70, 85, 95]);
         assert_eq!(
-            Settings::default().thresholds_for(ProviderId::Codex),
+            Settings::default().thresholds_for(&ProviderInstanceId::default_for(ProviderId::Codex)),
             vec![70, 85, 95]
         );
     }

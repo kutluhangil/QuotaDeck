@@ -21,7 +21,7 @@ use std::fmt::Write as _;
 use chrono::{DateTime, SecondsFormat, TimeZone, Utc};
 use quotadeck_core::breakdown::BreakdownPoint;
 use quotadeck_core::error::{Error, Result};
-use quotadeck_core::types::{CostRange, ProviderId, ProviderSnapshot, TokenRollup};
+use quotadeck_core::types::{CostRange, ProviderInstanceId, ProviderSnapshot, TokenRollup};
 use serde::{Deserialize, Serialize};
 
 use crate::deck::{DeckState, ProviderHealth, ProviderHistory, RetentionState};
@@ -69,7 +69,9 @@ pub struct HistoryRange {
 pub struct ExportRequest {
     pub format: ExportFormat,
     pub range: HistoryRange,
-    pub provider: Option<ProviderId>,
+    /// One instance, or every enabled one. Named by instance because two instances of a tool
+    /// are two quotas, and exporting them together would report a figure neither one spent.
+    pub provider: Option<ProviderInstanceId>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -148,6 +150,7 @@ pub fn to_csv(history: &[ProviderHistory]) -> Result<String> {
 
     for provider in history {
         let key = provider.id.key();
+        let key = key.as_str();
         for point in &provider.hours {
             write_row(
                 &mut out,
@@ -218,19 +221,24 @@ pub fn prepare(
     let to = effective_range.to.timestamp();
 
     let mut filtered_state = state.clone();
-    if let Some(provider) = request.provider {
+    if let Some(provider) = request.provider.as_ref() {
         filtered_state
             .providers
-            .retain(|snapshot| snapshot.id == provider);
+            .retain(|snapshot| &snapshot.instance == provider);
         filtered_state
             .health
-            .retain(|health| health.provider == provider);
+            .retain(|health| &health.provider == provider);
     }
     let filtered_history: Vec<_> = history
         .iter()
-        .filter(|entry| request.provider.is_none_or(|provider| entry.id == provider))
+        .filter(|entry| {
+            request
+                .provider
+                .as_ref()
+                .is_none_or(|provider| &entry.id == provider)
+        })
         .map(|entry| ProviderHistory {
-            id: entry.id,
+            id: entry.id.clone(),
             hours: entry
                 .hours
                 .iter()
@@ -410,6 +418,8 @@ mod tests {
     fn snapshot(percent: Option<f32>) -> ProviderSnapshot {
         ProviderSnapshot {
             id: ProviderId::ClaudeCode,
+            instance: ProviderInstanceId::default_for(ProviderId::ClaudeCode),
+            label: None,
             installed: true,
             windows: vec![QuotaWindow {
                 limit_id: "claude".into(),
@@ -434,7 +444,7 @@ mod tests {
 
     fn history() -> ProviderHistory {
         ProviderHistory {
-            id: ProviderId::ClaudeCode,
+            id: ProviderInstanceId::default_for(ProviderId::ClaudeCode),
             hours: vec![HistoryPoint {
                 start: HOUR,
                 tokens: tokens(300),
@@ -521,7 +531,7 @@ mod tests {
             updated_at: at,
             scanning: false,
             health: vec![ProviderHealth {
-                provider: ProviderId::ClaudeCode,
+                provider: ProviderInstanceId::default_for(ProviderId::ClaudeCode),
                 state: HealthState::Error,
                 last_attempt_at: Some(at),
                 last_success_at: None,
@@ -550,6 +560,66 @@ mod tests {
         );
         // How far back the numbers go is part of reading them.
         assert_eq!(parsed["retention"]["effectiveDays"], 30);
+    }
+
+    #[test]
+    fn export_rows_name_the_instance_so_two_copies_of_one_tool_stay_apart() {
+        let work = ProviderInstanceId::new(ProviderId::ClaudeCode, "work").expect("valid");
+        let mut second = history();
+        second.id = work.clone();
+
+        let csv = to_csv(&[history(), second]).expect("serialise both instances");
+        let header = csv.lines().next().expect("a header");
+        let providers: Vec<String> = csv
+            .lines()
+            .skip(1)
+            .map(|row| column(row, "provider", header))
+            .collect();
+
+        assert!(providers.contains(&"claude-code".to_string()));
+        assert!(providers.contains(&"claude-code#work".to_string()));
+    }
+
+    #[test]
+    fn an_export_narrowed_to_one_instance_leaves_the_other_out() {
+        let work = ProviderInstanceId::new(ProviderId::ClaudeCode, "work").expect("valid");
+        let mut default_snapshot = snapshot(Some(42.0));
+        let mut work_snapshot = snapshot(Some(10.0));
+        work_snapshot.instance = work.clone();
+        default_snapshot.instance = ProviderInstanceId::default_for(ProviderId::ClaudeCode);
+        let mut work_history = history();
+        work_history.id = work.clone();
+
+        let state = DeckState {
+            providers: vec![default_snapshot, work_snapshot],
+            updated_at: Utc.timestamp_opt(HOUR, 0).single().expect("valid instant"),
+            scanning: false,
+            health: Vec::new(),
+            refreshing: false,
+            refresh_generation: 0,
+            refresh_error: None,
+            retention: Default::default(),
+        };
+        let prepared = prepare(
+            &state,
+            &[history(), work_history],
+            &ExportRequest {
+                format: ExportFormat::Json,
+                range: HistoryRange {
+                    from: Utc.timestamp_opt(HOUR - 3600, 0).single().expect("valid"),
+                    to: Utc.timestamp_opt(HOUR + 3600, 0).single().expect("valid"),
+                },
+                provider: Some(work.clone()),
+            },
+        )
+        .expect("narrowed export");
+
+        let parsed: serde_json::Value =
+            serde_json::from_str(&prepared.text).expect("the export is JSON");
+        assert_eq!(parsed["providers"].as_array().map(Vec::len), Some(1));
+        assert_eq!(parsed["providers"][0]["instance"], "claude-code#work");
+        assert_eq!(parsed["history"].as_array().map(Vec::len), Some(1));
+        assert_eq!(parsed["history"][0]["id"], "claude-code#work");
     }
 
     #[test]
@@ -801,7 +871,7 @@ mod tests {
             cost: priced(0.2),
         }];
         let mut other = first.clone();
-        other.id = ProviderId::Codex;
+        other.id = ProviderInstanceId::default_for(ProviderId::Codex);
         let mut state = deck(Some(42.0), false);
         state.updated_at = Utc
             .timestamp_opt(HOUR + 7_200, 0)
@@ -813,7 +883,7 @@ mod tests {
                 from: Utc.timestamp_opt(HOUR, 0).single().expect("from"),
                 to: Utc.timestamp_opt(HOUR + 3_600, 0).single().expect("to"),
             },
-            provider: Some(ProviderId::ClaudeCode),
+            provider: Some(ProviderInstanceId::default_for(ProviderId::ClaudeCode)),
         };
 
         let prepared = prepare(&state, &[first, other], &request).expect("prepare filtered CSV");

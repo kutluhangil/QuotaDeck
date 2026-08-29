@@ -30,7 +30,7 @@ use quotadeck_core::engine::ProviderEngine;
 use quotadeck_core::horizon;
 use quotadeck_core::provider::ProviderConfig;
 use quotadeck_core::types::{
-    Confidence, ProviderSnapshot, QuotaWindow, UnavailableReason, WindowKind,
+    Confidence, ProviderInstanceId, ProviderSnapshot, QuotaWindow, UnavailableReason, WindowKind,
 };
 
 /// The command itself could not be carried out: unreadable settings, an unknown provider key,
@@ -76,11 +76,11 @@ fn main() -> ExitCode {
 /// Empty inside the App Sandbox, matching the panel: the store build reaches the home directory
 /// through exactly one security-scoped bookmark, and a folder outside it would be configured,
 /// listed, and unreadable.
-fn additional_roots(settings: &Settings, id: quotadeck_core::types::ProviderId) -> Vec<PathBuf> {
+fn additional_roots(settings: &Settings, instance: &ProviderInstanceId) -> Vec<PathBuf> {
     if quotadeck_app::sandbox::sandboxed() {
         return Vec::new();
     }
-    settings.additional_roots_for(id).to_vec()
+    settings.additional_roots_for(instance).to_vec()
 }
 
 /// Load the settings or say, on stderr, why they could not be read.
@@ -123,11 +123,11 @@ fn config_validate() -> ExitCode {
         Ok(settings) => settings,
         Err(code) => return code,
     };
-    match settings.ordered_provider_ids(&quotadeck_providers::ids()) {
+    match settings.instance_ids(&quotadeck_providers::ids()) {
         Ok(ordered) => {
             let enabled = ordered
                 .iter()
-                .filter(|id| settings.is_provider_enabled(**id))
+                .filter(|id| settings.is_instance_enabled(id))
                 .count();
             println!(
                 "settings are valid: {} provider(s) known, {enabled} enabled",
@@ -162,7 +162,7 @@ fn resolve_export_request(
     let provider = args
         .provider
         .as_deref()
-        .map(|key| explicit_provider(settings, key, "--provider").map(|provider| provider.id()))
+        .map(|key| explicit_instance(settings, key, "--provider").map(|(instance, _)| instance))
         .transpose()?;
     Ok(export::ExportRequest {
         format: args.format.unwrap_or(export::ExportFormat::Json),
@@ -171,42 +171,69 @@ fn resolve_export_request(
     })
 }
 
-fn explicit_provider(
+/// An instance and the parser that reads it.
+type SelectedInstance = (
+    ProviderInstanceId,
+    Box<dyn quotadeck_core::provider::Provider>,
+);
+
+/// One instance named on the command line, with its implementation.
+///
+/// A key is an instance key: `codex` is that tool's default instance, `codex#work` a named one.
+/// An instance nobody declared is refused by name rather than silently read as the default.
+fn explicit_instance(
     settings: &Settings,
     key: &str,
     command: &str,
-) -> Result<Box<dyn quotadeck_core::provider::Provider>, String> {
-    let provider = quotadeck_providers::by_key(key).ok_or_else(|| {
-        format!("unknown provider: {key}; run `quotadeckctl providers` to see them")
-    })?;
-    if !settings.is_provider_enabled(provider.id()) {
+) -> Result<
+    (
+        ProviderInstanceId,
+        Box<dyn quotadeck_core::provider::Provider>,
+    ),
+    String,
+> {
+    let declared = settings
+        .instance_ids(&quotadeck_providers::ids())
+        .map_err(|error| format!("provider settings are invalid: {error}"))?;
+    let instance = declared
+        .into_iter()
+        .find(|instance| instance.key() == key)
+        .ok_or_else(|| {
+            format!("unknown provider: {key}; run `quotadeckctl providers` to see them")
+        })?;
+    if !settings.is_instance_enabled(&instance) {
         return Err(format!(
             "provider {key:?} is disabled in settings; enable it before using {command}"
         ));
     }
-    Ok(provider)
+    let provider = quotadeck_providers::by_id(instance.provider).ok_or_else(|| {
+        format!("unknown provider: {key}; run `quotadeckctl providers` to see them")
+    })?;
+    Ok((instance, provider))
 }
 
-fn selected_providers(
+fn selected_instances(
     settings: &Settings,
     only: Option<&str>,
-) -> Result<Vec<Box<dyn quotadeck_core::provider::Provider>>, String> {
+) -> Result<Vec<SelectedInstance>, String> {
     if let Some(key) = only {
-        explicit_provider(settings, key, "--provider")?;
+        explicit_instance(settings, key, "--provider")?;
     }
     let ordered = settings
-        .ordered_provider_ids(&quotadeck_providers::ids())
+        .instance_ids(&quotadeck_providers::ids())
         .map_err(|error| format!("provider settings are invalid: {error}"))?;
-    let providers = ordered
+    let selected = ordered
         .into_iter()
-        .filter(|id| settings.is_provider_enabled(*id))
-        .filter(|id| only.is_none_or(|key| key == id.key()))
-        .filter_map(quotadeck_providers::by_id)
+        .filter(|instance| settings.is_instance_enabled(instance))
+        .filter(|instance| only.is_none_or(|key| key == instance.key()))
+        .filter_map(|instance| {
+            quotadeck_providers::by_id(instance.provider).map(|provider| (instance, provider))
+        })
         .collect::<Vec<_>>();
-    if providers.is_empty() {
+    if selected.is_empty() {
         return Err("every compiled provider is disabled in settings".into());
     }
-    Ok(providers)
+    Ok(selected)
 }
 
 /// Read every provider this machine has and write the result to stdout.
@@ -232,8 +259,15 @@ fn export(args: &cli::ExportArgs) -> ExitCode {
         }
     };
 
-    let providers = match selected_providers(&settings, request.provider.map(|id| id.key())) {
-        Ok(providers) => providers,
+    let selected = match selected_instances(
+        &settings,
+        request
+            .provider
+            .as_ref()
+            .map(ProviderInstanceId::key)
+            .as_deref(),
+    ) {
+        Ok(selected) => selected,
         Err(error) => {
             eprintln!("{error}");
             return ExitCode::FAILURE;
@@ -241,29 +275,34 @@ fn export(args: &cli::ExportArgs) -> ExitCode {
     };
 
     let history_from = now - settings.retention_days.duration();
-    let mut snapshots = Vec::with_capacity(providers.len());
-    let mut history = Vec::with_capacity(providers.len());
+    let mut snapshots = Vec::with_capacity(selected.len());
+    let mut history = Vec::with_capacity(selected.len());
     // This process reads every provider exactly once, so health here is that single attempt
     // rather than the running record the tray keeps. It is still written out: a tool that could
     // not be read must not be indistinguishable from one that was idle.
-    let mut health = Vec::with_capacity(providers.len());
+    let mut health = Vec::with_capacity(selected.len());
 
-    for provider in providers {
-        let id = provider.id();
-        let mut reading = ProviderHealth::new(id);
+    for (id, provider) in selected {
+        let label = settings.label_for(&id);
+        let mut reading = ProviderHealth::new(id.clone());
         reading.last_attempt_at = Some(now);
         let mut engine =
             ProviderEngine::with_retention(provider, settings.retention_days.duration());
-        engine.set_config(settings.config_for(id));
-        engine.set_additional_roots(additional_roots(&settings, id));
+        if let Err(error) = engine.set_instance(id.clone(), label.clone()) {
+            eprintln!("{error}");
+            return ExitCode::from(EXIT_USAGE);
+        }
+        engine.set_config(settings.config_for(&id));
+        engine.set_additional_roots(additional_roots(&settings, &id));
 
         match engine.access() {
             RootAccess::Readable => {}
             RootAccess::Missing => {
                 reading.state = HealthState::Unavailable;
                 health.push(reading);
-                snapshots.push(ProviderSnapshot::unavailable(
+                snapshots.push(ProviderSnapshot::unavailable_instance(
                     id,
+                    label,
                     UnavailableReason::NotInstalled,
                 ));
                 continue;
@@ -273,8 +312,9 @@ fn export(args: &cli::ExportArgs) -> ExitCode {
                 reading.consecutive_failures = 1;
                 reading.last_error = Some("the log directory could not be read from here".into());
                 health.push(reading);
-                snapshots.push(ProviderSnapshot::unavailable(
+                snapshots.push(ProviderSnapshot::unavailable_instance(
                     id,
+                    label,
                     UnavailableReason::PermissionDenied,
                 ));
                 continue;
@@ -290,8 +330,9 @@ fn export(args: &cli::ExportArgs) -> ExitCode {
             reading.consecutive_failures = 1;
             reading.last_error = Some(e.to_string());
             health.push(reading);
-            snapshots.push(ProviderSnapshot::unavailable(
+            snapshots.push(ProviderSnapshot::unavailable_instance(
                 id,
+                label,
                 UnavailableReason::ReadError,
             ));
             continue;
@@ -301,7 +342,7 @@ fn export(args: &cli::ExportArgs) -> ExitCode {
         health.push(reading);
 
         history.push(ProviderHistory {
-            id,
+            id: id.clone(),
             hours: quotadeck_core::history::hours(
                 engine.index().bucket_series(),
                 history_from,
@@ -389,8 +430,8 @@ fn tray_preview(key: &str) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    let provider = match explicit_provider(&settings, key, "tray") {
-        Ok(provider) => provider,
+    let (instance, provider) = match explicit_instance(&settings, key, "tray") {
+        Ok(selected) => selected,
         Err(error) => {
             eprintln!("{error}");
             return ExitCode::FAILURE;
@@ -398,7 +439,11 @@ fn tray_preview(key: &str) -> ExitCode {
     };
 
     let mut engine = ProviderEngine::new(provider);
-    engine.set_additional_roots(additional_roots(&settings, engine.provider().id()));
+    if let Err(error) = engine.set_instance(instance.clone(), settings.label_for(&instance)) {
+        eprintln!("{error}");
+        return ExitCode::from(EXIT_USAGE);
+    }
+    engine.set_additional_roots(additional_roots(&settings, &instance));
     if let Err(e) = engine.refresh(None) {
         eprintln!("scan failed: {e}");
         return ExitCode::FAILURE;
@@ -484,10 +529,9 @@ fn guard() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    for provider in quotadeck_providers::all()
-        .into_iter()
-        .filter(|provider| settings.is_provider_enabled(provider.id()))
-    {
+    for provider in quotadeck_providers::all().into_iter().filter(|provider| {
+        settings.is_instance_enabled(&ProviderInstanceId::default_for(provider.id()))
+    }) {
         for root in provider.discover_roots() {
             let state = match access(&root) {
                 RootAccess::Readable => "readable",
@@ -513,7 +557,7 @@ fn providers() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    let ordered = match settings.ordered_provider_ids(&quotadeck_providers::ids()) {
+    let ordered = match settings.instance_ids(&quotadeck_providers::ids()) {
         Ok(ordered) => ordered,
         Err(error) => {
             eprintln!("provider settings are invalid: {error}");
@@ -521,18 +565,21 @@ fn providers() -> ExitCode {
         }
     };
     for id in ordered {
-        let Some(provider) = quotadeck_providers::by_id(id) else {
+        let Some(provider) = quotadeck_providers::by_id(id.provider) else {
             eprintln!(
                 "compiled provider registry has no implementation for key {:?}",
-                id.key()
+                id.provider.key()
             );
             return ExitCode::FAILURE;
         };
-        if !settings.is_provider_enabled(id) {
+        if !settings.is_instance_enabled(&id) {
             println!("{:<14} {:<9} disabled", id.key(), "disabled");
             continue;
         }
-        let roots = provider.discover_roots();
+        let roots = quotadeck_core::discovery::resolve_roots(
+            &provider.discover_roots(),
+            &additional_roots(&settings, &id),
+        );
         let status = if roots.is_empty() {
             "not installed".to_string()
         } else {
@@ -547,7 +594,12 @@ fn providers() -> ExitCode {
         } else {
             "derived"
         };
-        println!("{:<14} {:<9} {}", provider.id().key(), level, status);
+        // The instance key, not the provider key: two instances of one tool are two rows,
+        // and printing the tool's name twice would make them indistinguishable.
+        println!("{:<14} {:<9} {}", id.key(), level, status);
+        if let Some(label) = settings.label_for(&id) {
+            println!("{:<24} name {label}", "");
+        }
         for plan in provider.plans() {
             println!(
                 "{:<24} plan {} - {}",
@@ -639,7 +691,7 @@ fn status(key: Option<&str>, plan_id: Option<String>) -> ExitCode {
         Ok(settings) => settings,
         Err(code) => return code,
     };
-    let selected = match selected_providers(&settings, key) {
+    let selected = match selected_instances(&settings, key) {
         Ok(selected) => selected,
         Err(error) => {
             eprintln!("{error}");
@@ -648,21 +700,21 @@ fn status(key: Option<&str>, plan_id: Option<String>) -> ExitCode {
     };
 
     let mut code = ExitCode::SUCCESS;
-    for (index, provider) in selected.into_iter().enumerate() {
+    for (index, (instance, provider)) in selected.into_iter().enumerate() {
         if index > 0 {
             println!();
         }
-        // An explicit plan belongs to the one provider it was passed with; the parser refuses
-        // `--plan` without `--provider`, so this can only ever apply to a named tool.
+        // An explicit plan belongs to the one instance it was passed with; the parser refuses
+        // `--plan` without `--provider`, so this can only ever apply to a named one.
         let plan = key.and(plan_id.clone()).or_else(|| {
             settings
-                .plans
-                .get(provider.id().key())
+                .config_for(&instance)
+                .plan_id
                 .filter(|_| key.is_none())
-                .cloned()
         });
-        let extra = additional_roots(&settings, provider.id());
-        if !status_provider(provider, plan, extra) {
+        let extra = additional_roots(&settings, &instance);
+        let label = settings.label_for(&instance);
+        if !status_provider(provider, instance, label, plan, extra) {
             code = ExitCode::from(EXIT_USAGE);
         }
     }
@@ -673,10 +725,16 @@ fn status(key: Option<&str>, plan_id: Option<String>) -> ExitCode {
 /// makes the whole command fail.
 fn status_provider(
     provider: Box<dyn quotadeck_core::provider::Provider>,
+    instance: ProviderInstanceId,
+    label: Option<String>,
     plan_id: Option<String>,
     additional: Vec<PathBuf>,
 ) -> bool {
     let mut engine = ProviderEngine::new(provider);
+    if let Err(error) = engine.set_instance(instance, label) {
+        eprintln!("{error}");
+        return false;
+    }
     engine.set_additional_roots(additional);
     let roots = engine.roots();
     if roots.is_empty() {
@@ -932,7 +990,7 @@ mod provider_policy_tests {
             ..Settings::default()
         };
 
-        let error = match explicit_provider(&settings, "codex", "--provider") {
+        let error = match explicit_instance(&settings, "codex", "--provider") {
             Ok(_) => panic!("disabled provider must not be selected"),
             Err(error) => error,
         };
@@ -949,16 +1007,13 @@ mod provider_policy_tests {
             ..Settings::default()
         };
 
-        let selected = selected_providers(&settings, None).expect("enabled providers");
+        let selected = selected_instances(&settings, None).expect("enabled providers");
         assert_eq!(
             selected
                 .iter()
-                .map(|provider| provider.id())
+                .map(|(instance, _)| instance.key())
                 .collect::<Vec<_>>(),
-            vec![
-                quotadeck_core::types::ProviderId::CopilotCli,
-                quotadeck_core::types::ProviderId::Codex
-            ]
+            vec!["copilot-cli".to_string(), "codex".to_string()]
         );
     }
 
@@ -986,7 +1041,9 @@ mod provider_policy_tests {
         assert_eq!(request.format, export::ExportFormat::Csv);
         assert_eq!(
             request.provider,
-            Some(quotadeck_core::types::ProviderId::Codex)
+            Some(ProviderInstanceId::default_for(
+                quotadeck_core::types::ProviderId::Codex
+            ))
         );
         assert_eq!(request.range.from, now - Duration::days(90));
         assert_eq!(request.range.to, now);

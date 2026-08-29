@@ -18,7 +18,7 @@ use crate::error::Result;
 use crate::events::{EventIndex, ParsedEvent};
 use crate::provider::{LineSource, Provider, ProviderConfig};
 use crate::reader::LineReader;
-use crate::types::ProviderSnapshot;
+use crate::types::{ProviderInstanceId, ProviderSnapshot};
 
 /// Default history kept in memory: long enough for a 30-day window plus a margin.
 pub const DEFAULT_RETENTION_DAYS: i64 = 32;
@@ -63,6 +63,11 @@ impl RefreshReport {
 
 pub struct ProviderEngine {
     provider: Box<dyn Provider>,
+    /// Which copy of this provider the engine is reading for. Owns the checkpoint, the cursors
+    /// and the index, so two instances of one tool never see each other's sessions.
+    instance: ProviderInstanceId,
+    /// What the user named this instance, carried onto every snapshot.
+    label: Option<String>,
     cursors: HashMap<PathBuf, FileCursor>,
     index: EventIndex,
     reader: LineReader,
@@ -126,8 +131,11 @@ impl ProviderEngine {
     }
 
     pub fn with_retention(provider: Box<dyn Provider>, retention: ChronoDuration) -> Self {
+        let instance = ProviderInstanceId::default_for(provider.id());
         ProviderEngine {
             provider,
+            instance,
+            label: None,
             cursors: HashMap::new(),
             index: EventIndex::new(retention),
             reader: LineReader::default(),
@@ -144,6 +152,35 @@ impl ProviderEngine {
 
     pub fn provider(&self) -> &dyn Provider {
         self.provider.as_ref()
+    }
+
+    pub fn instance(&self) -> &ProviderInstanceId {
+        &self.instance
+    }
+
+    pub fn label(&self) -> Option<&String> {
+        self.label.as_ref()
+    }
+
+    /// Bind this engine to a named instance of the same provider.
+    ///
+    /// Refused across providers: the index, the cursors and the checkpoint are all built from
+    /// one provider's parser, and re-labelling them as another tool's would silently attribute
+    /// one tool's usage to another.
+    pub fn set_instance(
+        &mut self,
+        instance: ProviderInstanceId,
+        label: Option<String>,
+    ) -> Result<()> {
+        if instance.provider != self.provider.id() {
+            return Err(crate::Error::Invalid(format!(
+                "instance {instance} cannot be bound to a {} engine",
+                self.provider.id().key()
+            )));
+        }
+        self.instance = instance;
+        self.label = label;
+        Ok(())
     }
 
     /// Apply the user's current settings. Cheap and idempotent: the config only affects how
@@ -173,9 +210,20 @@ impl ProviderEngine {
         &self.additional_roots
     }
 
-    /// Every root this engine scans: the tool's own, then the user's, deduplicated.
+    /// Every root this engine scans.
+    ///
+    /// A **default** instance reads the folders the tool declares, plus any the user added. A
+    /// **named** instance reads only the folders the user gave it: a second account is a second
+    /// set of logs, and letting it fall back to the tool's own folder would make two instances
+    /// read one directory and report the same usage twice. Until it has a folder it reports as
+    /// not installed, which is the truth about it.
     pub fn roots(&self) -> Vec<PathBuf> {
-        resolve_roots(&self.provider.discover_roots(), &self.additional_roots)
+        let declared = if self.instance.is_default() {
+            self.provider.discover_roots()
+        } else {
+            Vec::new()
+        };
+        resolve_roots(&declared, &self.additional_roots)
     }
 
     pub fn access(&self) -> RootAccess {
@@ -337,6 +385,10 @@ impl ProviderEngine {
 
     pub fn snapshot(&self, now: DateTime<Utc>) -> ProviderSnapshot {
         let mut snapshot = self.provider.build_snapshot(&self.index, now, &self.config);
+        // The provider module builds a default-instance snapshot because it knows nothing
+        // about instances; the identity is stamped here, where it is owned.
+        snapshot.instance = self.instance.clone();
+        snapshot.label.clone_from(&self.label);
         // Root problems come first: an unreadable folder explains a missing file, and a file
         // error under a folder that is gone is a consequence rather than a second fault.
         let mut messages: Vec<_> = self
@@ -437,6 +489,8 @@ impl ProviderEngine {
         }
 
         Ok(ProviderEngine {
+            instance: ProviderInstanceId::default_for(provider.id()),
+            label: None,
             provider,
             cursors,
             index,
@@ -505,7 +559,12 @@ impl ProviderEngine {
     /// the last refresh. Waiting for the engine to catch up would leave that folder unwatched
     /// until something else happened to wake the loop.
     pub fn watch_directories_with(&self, additional: &[PathBuf]) -> Vec<PathBuf> {
-        let roots = resolve_roots(&self.provider.discover_roots(), additional);
+        let declared = if self.instance.is_default() {
+            self.provider.discover_roots()
+        } else {
+            Vec::new()
+        };
+        let roots = resolve_roots(&declared, additional);
         let mut directories = Vec::new();
         let mut seen = HashSet::new();
 
@@ -715,6 +774,69 @@ mod tests {
             .open(path)
             .expect("open for append");
         file.write_all(contents.as_bytes()).expect("append");
+    }
+
+    /// Two instances of one tool are two quotas.
+    ///
+    /// Their log files carry the same session identifiers — a session id is unique inside one
+    /// account, not across two — so the only thing keeping them apart is that each engine owns
+    /// its own index and its own checkpoint.
+    #[test]
+    fn two_instances_of_one_tool_do_not_share_sessions_or_checkpoints() {
+        let (mut first, first_root) = engine_for("instance-a");
+        let (mut second, second_root) = engine_for("instance-b");
+        let work = ProviderInstanceId::new(ProviderId::Codex, "work").expect("valid instance");
+        second
+            .set_instance(work.clone(), Some("Work".into()))
+            .expect("bind the second engine");
+        // A named instance reads only the folders it was given — its own account's logs.
+        second.set_additional_roots(vec![second_root.clone()]);
+
+        // The same file name in both roots: colliding session keys by construction.
+        append(&first_root.join("session.jsonl"), "one\n");
+        append(&second_root.join("session.jsonl"), "one\ntwo\n");
+
+        first.refresh(None).expect("first refresh");
+        second.refresh(None).expect("second refresh");
+
+        let now = Utc::now();
+        assert_eq!(first.snapshot(now).today.input, 1);
+        assert_eq!(second.snapshot(now).today.input, 2);
+        assert!(first.snapshot(now).instance.is_default());
+        assert_eq!(second.snapshot(now).instance, work);
+        assert_eq!(second.snapshot(now).label.as_deref(), Some("Work"));
+        // Same tool, so the same name and plan list; different quota.
+        assert_eq!(first.snapshot(now).id, second.snapshot(now).id);
+
+        // Checkpoints are separate documents, and restoring one cannot pick up the other's
+        // cursors: they are keyed by instance in the store and by content here.
+        assert_ne!(first.checkpoint().unwrap(), second.checkpoint().unwrap());
+    }
+
+    /// A named instance reads only what it was given.
+    #[test]
+    fn a_named_instance_does_not_fall_back_to_the_tools_own_folder() {
+        let (mut engine, root) = engine_for("named-instance-roots");
+        append(&root.join("a.jsonl"), "one\n");
+        engine
+            .set_instance(
+                ProviderInstanceId::new(ProviderId::Codex, "work").expect("valid"),
+                None,
+            )
+            .expect("bind the instance");
+
+        // Nothing configured: the tool's own folder is *not* inherited, so this instance has
+        // nothing to read rather than a duplicate of the default one's numbers.
+        assert!(engine.roots().is_empty());
+        assert_eq!(engine.access(), RootAccess::Missing);
+        let report = engine.refresh(None).expect("refresh");
+        assert_eq!(report.files_found, 0);
+
+        // Given its own folder, it reads that and only that.
+        engine.set_additional_roots(vec![root.clone()]);
+        let report = engine.refresh(None).expect("refresh with a folder");
+        assert_eq!(report.files_found, 1);
+        assert_eq!(report.lines, 1);
     }
 
     /// A second folder the user pointed the app at, folded into the same quota identity.

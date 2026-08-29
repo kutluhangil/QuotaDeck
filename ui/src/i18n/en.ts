@@ -354,6 +354,22 @@ export const en = {
     rootsInvalidDuplicate: "That folder is already on the list.",
     rootsInvalidTooMany: (limit: number) => `At most ${limit} additional folders per tool.`,
 
+    /**
+     * A second copy of a tool with its own quota. Distinct from additional log folders, which
+     * fold several folders into one quota — this splits one tool into several.
+     */
+    instancesTitle: "Separate accounts",
+    instancesHint:
+      "A second login to the same tool has its own limit. Add one to track it apart, with its own plan, thresholds and history. It reads only the log folders you give it below — nothing is copied from the first, and nothing is shared with it.",
+    instancesEmpty: "No separate accounts.",
+    instancesTool: "Tool",
+    instancesNamePlaceholder: "short-name",
+    instancesLabelPlaceholder: "Name shown on the card",
+    instancesAdd: "Add account",
+    instancesRemove: (name: string) => `Remove ${name}`,
+    instancesInvalidName:
+      "Use lowercase letters, digits and hyphens — this becomes the key the account is stored under.",
+
     languageTitle: "Language",
     languageSystem: "Match system",
     /**

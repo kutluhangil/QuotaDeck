@@ -11,13 +11,13 @@
  * the dot — the dot speeds up recognition, it does not carry meaning on its own.
  */
 
-import { PROVIDER_IDS, type ProviderId } from "./types";
+import { PROVIDER_IDS, providerOf, type ProviderInstanceId } from "./types";
 
 /** Matches the `--id-*` token count in `styles/tokens.css`. */
 const IDENTITY_HUES = 4;
 
-export function identityHue(provider: ProviderId): number {
-  const index = PROVIDER_IDS.indexOf(provider);
+export function identityHue(instance: ProviderInstanceId): number {
+  const index = PROVIDER_IDS.indexOf(providerOf(instance));
   // A provider the frontend does not know about would land at -1 and paint nothing.
   return index < 0 ? 0 : index % IDENTITY_HUES;
 }

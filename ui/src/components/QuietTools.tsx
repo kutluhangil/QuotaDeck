@@ -29,13 +29,13 @@ export function QuietTools({ snapshots }: { snapshots: ProviderSnapshot[] }) {
       {present.length > 0 && (
         <ul className="pills" aria-label={strings.a11y.tools}>
           {present.map((snapshot) => (
-            <li key={snapshot.id} className="type-caption pills__pill">
+            <li key={snapshot.instance} className="type-caption pills__pill">
               <span
                 className="card__dot"
-                data-hue={identityHue(snapshot.id)}
+                data-hue={identityHue(snapshot.instance)}
                 aria-hidden="true"
               />
-              <span className="pills__name">{strings.provider[snapshot.id]}</span>
+              <span className="pills__name">{snapshot.label ?? strings.provider[snapshot.id]}</span>
               <span className="pills__reason">
                 {strings.unavailable[snapshot.unavailable ?? "never-reported"]}
               </span>
@@ -51,8 +51,10 @@ export function QuietTools({ snapshots }: { snapshots: ProviderSnapshot[] }) {
           </summary>
           <ul className="quiet__list">
             {absent.map((snapshot) => (
-              <li key={snapshot.id} className="quiet__row">
-                <span className="type-label quiet__name">{strings.provider[snapshot.id]}</span>
+              <li key={snapshot.instance} className="quiet__row">
+                <span className="type-label quiet__name">
+                  {snapshot.label ?? strings.provider[snapshot.id]}
+                </span>
                 <span className="type-caption quiet__reason">
                   {strings.unavailable[snapshot.unavailable ?? "never-reported"]}
                 </span>

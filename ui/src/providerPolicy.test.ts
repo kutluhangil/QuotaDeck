@@ -18,6 +18,7 @@ const settings: Settings = {
   demo: false,
   disabledProviders: [],
   additionalRoots: {},
+  instances: {},
   providerOrder: ["claude-code", "codex", "copilot-cli"],
   retentionDays: 32,
 };
