@@ -2921,6 +2921,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "quotadeck-cli"
+version = "1.0.0"
+dependencies = [
+ "chrono",
+ "quotadeck-app",
+ "quotadeck-core",
+ "quotadeck-providers",
+ "serde_json",
+]
+
+[[package]]
 name = "quotadeck-core"
 version = "1.0.0"
 dependencies = [

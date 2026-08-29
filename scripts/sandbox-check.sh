@@ -32,7 +32,7 @@
 set -euo pipefail
 
 IDENTIFIER="com.kutluhangil.quotadeck"
-BIN="target/debug/quotadeck-debug"
+BIN="target/debug/quotadeckctl"
 HELPER_BIN="target/debug/quotadeck"
 STAGE="target/sandbox-check"
 APP="${STAGE}/QuotaDeckCheck.app"
@@ -64,10 +64,10 @@ launch_sandboxed() {
 }
 
 echo "==> building"
-cargo build -p quotadeck-app --bin quotadeck-debug --bin quotadeck
+cargo build -p quotadeck-cli --bin quotadeckctl -p quotadeck-app --bin quotadeck
 
 echo "==> unsandboxed baseline"
-UNSANDBOXED="$("${BIN}" paths)"
+UNSANDBOXED="$("${BIN}" guard)"
 echo "${UNSANDBOXED}"
 
 REAL_HOME="$(printf '%s\n' "${UNSANDBOXED}" | awk '$1=="home" {print $2}')"
@@ -97,7 +97,7 @@ codesign --sign - --entitlements app/Entitlements.plist --force "${APP}"
 echo "==> sandboxed"
 PATHS_STDOUT="${STAGE}/paths.stdout"
 PATHS_STDERR="${STAGE}/paths.stderr"
-launch_sandboxed "${APP}" /dev/null "${PATHS_STDOUT}" "${PATHS_STDERR}" paths
+launch_sandboxed "${APP}" /dev/null "${PATHS_STDOUT}" "${PATHS_STDERR}" guard
 if [[ ! -s "${PATHS_STDOUT}" ]]; then
   echo "error: the sandboxed path probe produced no output" >&2
   sed -n '1,80p' "${PATHS_STDERR}" >&2

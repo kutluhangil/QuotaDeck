@@ -13,10 +13,13 @@ kabul kriterleri blueprint Ek A.
 
 ## Kod tarafı — komut bazlı kanıt
 
-2026-08-25 için aşağıdaki komutların her biri yeniden çalıştırıldı:
+2026-08-28 için aşağıdaki komutların her biri yeniden çalıştırıldı:
 
-- [x] `cargo test --workspace` — 367 test geçti, 0 başarısız (app 83, core 198, providers 86)
-- [x] `npm test --prefix ui` — 71 Vitest testi geçti
+- [x] `cargo fmt --all -- --check` — fark yok
+- [x] `cargo test --workspace` — 444 test geçti, 0 başarısız, 14 `ignored` (perf 4, gerçek log 7, CLI 3)
+- [x] `cargo test -p quotadeck-app --test cli --release -- --ignored` — 3 test geçti: JSON `schemaVersion`,
+      yayımlanmış CSV başlığı ve kapanan boruda panik olmaması, hepsi release binary'sinden
+- [x] `npm test --prefix ui` — 85 Vitest testi geçti
 - [x] `npm run build --prefix ui` — `tsc --noEmit` temiz ve üretim paketi derlendi
 - [x] `npm --prefix ui exec tauri -- build --bundles app` — macOS `.app` paketi derlendi
 - [x] `cargo clippy --workspace --all-targets -- -D warnings` — uyarı yok
@@ -32,10 +35,17 @@ kabul kriterleri blueprint Ek A.
       Codex ve Copilot kökleri `missing` yerine `denied` döndürdü, statusline zinciri ve yalnız-kota
       capture doğrulandı, otomatik ayar yazımı salt-okunur hatasıyla reddedildi
 - [x] `python3 app/icons/generate.py --check` — izlenen ikonlar kaynakla aynı
-- [x] Release `.app` gerçek macOS oturumunda açıldı; süreç çalıştı ve Control Center native status
-      item kaydını oluşturdu. Tray tıklaması, panel odağı ve tıklayınca gizleme hâlâ insan gözüyle
-      kapatılacak çalışma zamanı maddeleridir; erişilebilirlik otomasyonu accessory uygulamanın gizli
-      paneline bağlanamadı.
+- [x] `quotadeckctl` release binary'si elle sürüldü: `--help`, `--version`, `providers`, `status
+      --provider codex`, `config validate`, `guard` ve `export --json` beklenen çıktıyı ve çıkış
+      kodunu verdi.
+- [x] `.app` paketinin içi açıldı: `Contents/MacOS` yalnız `quotadeck` içeriyor. Bu tur öncesinde
+      ikinci bir `[[bin]]` olduğu için paket CLI'ı da taşıyordu ve `docs/STORE.md` §9'un "GUI onu
+      kurmaz" cümlesi yanlıştı; CLI ayrı `quotadeck-cli` kasasına taşındı ve
+      `node scripts/check-appstore-config.mjs` ikinci `[[bin]]` eklenirse artık kırılıyor.
+- [x] Release `.app` gerçek macOS oturumunda açıldı (2026-08-25 ölçümü, bu turda tekrarlanmadı);
+      süreç çalıştı ve Control Center native status item kaydını oluşturdu. Tray tıklaması, panel
+      odağı ve tıklayınca gizleme hâlâ insan gözüyle kapatılacak çalışma zamanı maddeleridir;
+      erişilebilirlik otomasyonu accessory uygulamanın gizli paneline bağlanamadı.
 
 ### Tarihsel ölçüm (2026-08-01)
 

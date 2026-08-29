@@ -5,6 +5,7 @@
 //! filesystem capability at all — it receives snapshots and nothing else.
 
 pub mod alerts;
+pub mod cli;
 pub mod deck;
 pub mod export;
 pub mod i18n;

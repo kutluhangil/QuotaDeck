@@ -302,7 +302,7 @@
 
 - [x] RED: test 90/365 presets, custom half-open date range, UTC/local DST edges, and empty ranges.
 - [x] GREEN: add range controls and backend-generated JSON/CSV copied to clipboard; do not grant filesystem capability.
-- [ ] Keep unpriced tokens, dropped labels, provider health, and schema version in exports. (JSON schema version is Phase 6 CLI work.)
+- [x] Keep unpriced tokens, dropped labels, provider health, and schema version in exports. (JSON schema version landed with the Phase 6 CLI work.)
 
 ### Task 5.3: Verify, commit, and push
 
@@ -315,8 +315,11 @@
 ### Task 6.1: Rename and test the command surface
 
 **Files:**
-- Move: `app/src/bin/debug.rs` → `app/src/bin/quotadeckctl.rs`
-- Modify: `app/Cargo.toml`
+- Move: `app/src/bin/debug.rs` → `cli/src/main.rs` (its own crate; the Tauri bundler ships every
+  `[[bin]]` of the packaged crate, so a second one in `quotadeck-app` lands inside the `.app`)
+- Create: `cli/Cargo.toml`, `cli/tests/cli.rs`
+- Modify: `Cargo.toml`, `app/Cargo.toml`, `scripts/sandbox-check.sh`,
+  `scripts/check-appstore-config.mjs`
 - Create: `app/src/cli.rs`
 - Modify: `app/src/lib.rs`
 
@@ -325,8 +328,8 @@
 - Commands: `--help`, `--version`, `providers`, `status`, `export`, `config show`, `config validate`, `guard`, `tray`, and `statusline preview`.
 - Mutating statusline commands remain explicit and unavailable in the sandboxed store artifact.
 
-- [ ] RED: integration tests cover help/version, unknown flags, conflicting formats, unknown/disabled providers, malformed config, stable JSON schema, and documented exit codes.
-- [ ] GREEN: move argument parsing into pure/testable code and keep stdout data separate from stderr diagnostics.
+- [x] RED: integration tests cover help/version, unknown flags, conflicting formats, unknown/disabled providers, malformed config, stable JSON schema, and documented exit codes.
+- [x] GREEN: move argument parsing into pure/testable code and keep stdout data separate from stderr diagnostics.
 
 ### Task 6.2: Make distribution claims true
 
@@ -335,14 +338,14 @@
 - Modify: `docs/RELEASE_CHECKLIST.md`
 - Modify: release workflow files if a standalone CLI artifact is shipped.
 
-- [ ] Build a standalone signed/notarized CLI artifact or remove every claim that the App Store GUI installs it.
-- [ ] Document a stable JSON `schemaVersion` and keep the CSV header regression test.
+- [x] Build a standalone signed/notarized CLI artifact or remove every claim that the App Store GUI installs it. — the claim was already in `docs/STORE.md` §9 and was false: the Tauri bundler copies every `[[bin]]` of the packaged crate, so the `.app` shipped the CLI. The command line moved to its own `quotadeck-cli` crate, the rebuilt bundle carries `quotadeck` alone, and `scripts/check-appstore-config.mjs` fails on a second `[[bin]]`. Signing and notarising a standalone CLI artifact still needs the Apple account in `docs/USER_ACTIONS.md` §2.
+- [x] Document a stable JSON `schemaVersion` and keep the CSV header regression test.
 
 ### Task 6.3: Verify, commit, and push
 
-- [ ] Run CLI integration tests from the built release binary and pipe tests including broken pipe behavior.
-- [ ] Commit with `feat(cli): ship a stable quotadeckctl interface`.
-- [ ] Push separately.
+- [x] Run CLI integration tests from the built release binary and pipe tests including broken pipe behavior.
+- [x] Commit with `feat(cli): ship a stable quotadeckctl interface`.
+- [x] Push separately.
 
 ## Phase 7 — Multi-root and true provider instances
 

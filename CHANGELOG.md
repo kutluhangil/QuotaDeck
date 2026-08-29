@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-08-28
+
+- CLI: renamed `quotadeck-debug` to `quotadeckctl` and gave it a documented command surface — `providers`, `status`, `export`, `config show`, `config validate`, `guard`, `tray` and `statusline preview|install|revert`. The old name said the binary was a scratch harness while `docs/STORE.md` §9 was already telling people to pipe its output; one of the two had to become true.
+- CLI: argument parsing moved into `app/src/cli.rs`, pure and free of I/O, so the contract a script depends on is tested without spawning a process. Conflicting formats, a half-open `--from`/`--to` pair, `--plan` without `--provider`, and a bare date instead of an RFC3339 instant are all refused by name rather than silently completed.
+- CLI: `status` without `--provider` now walks every enabled tool in the user's own order instead of demanding a key, and takes each one's stored plan.
+- CLI: added `config show` and `config validate`. Both are read-only — the panel owns every settings write, and a second writer would race it. `validate` catches the one failure every other command also hits: a settings file naming a provider this build did not compile.
+- CLI: data goes to stdout and diagnostics to stderr on every command, and a refused argument writes nothing to stdout at all. A warning landing in the file the caller was writing is a corrupted export, not a warning.
+- Export: the JSON now carries `schemaVersion` (`1`) as its first field, plus `health` and `retention`. A provider that could not be read was previously indistinguishable from one that was idle, and how far back the numbers go is part of reading them. `docs/STORE.md` §9 documents when the number is bumped: only when a consumer has to change.
+- Store: the command line moved into its own `quotadeck-cli` crate. `docs/STORE.md` §9 has said since Phase 9 that the binary is not inside the `.app`, and it was not true: the Tauri bundler copies every `[[bin]]` of the packaged crate into `Contents/MacOS`, so every build shipped the debug binary next to the app. The bundle now contains `quotadeck` alone, verified by unpacking it, and `scripts/check-appstore-config.mjs` fails if `app/Cargo.toml` grows a second `[[bin]]`.
+- Store: `docs/STORE.md` §9 is now the command line's page rather than an exit-code table. It states plainly that the GUI does not install the binary and gives the `cargo build` line instead — an App Store application cannot put an executable on `PATH`, and a listing that implied otherwise was both a review risk and untrue.
+- `scripts/sandbox-check.sh` follows the rename: the sandbox probe is `quotadeckctl guard`.
+
 ## 2026-08-25
 
 - CI: compile macOS sandbox helpers only on macOS, use the stable Win32 handle API for Windows log-file identity, ship the required generated Windows `.ico` asset, and make cross-platform perf/icon checks match their supported platform semantics.

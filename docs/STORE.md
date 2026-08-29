@@ -166,13 +166,55 @@ Six per platform, all from the sample deck so no real usage or path is shown:
 
 No provider logos in any of them (§1).
 
-## 9. Exit codes
+## 9. The command line — `quotadeckctl`
 
-`quotadeck-debug export` writes to stdout and reports the deck's worst reading through its exit
-status, so a shell can branch on the quota without parsing anything. It is a developer/debug
-executable and is not included in the Mac App Store `.app` or `.pkg`; do not promise it in the
-store listing. It is a local read of files the user already has, and it adds no capability the
-sandbox entitlements do not already cover.
+A **separate artifact**, and a separate crate. It is not inside the Mac App Store `.app` or the
+`.pkg`, the GUI does not install it, and the store listing must not promise it: an App Store
+application cannot put an executable on `PATH`, and claiming otherwise is a review rejection as
+well as an untruth. Anyone who wants it builds it from this repository:
+
+```
+cargo build --release -p quotadeck-cli --bin quotadeckctl
+```
+
+`quotadeck-cli` is its own crate rather than a second `[[bin]]` in `quotadeck-app` because the
+Tauri bundler copies **every** binary of the packaged crate into `Contents/MacOS`. While the
+command line lived in the app crate the paragraph above was false, and nothing said so.
+`scripts/check-appstore-config.mjs` now fails the build if `app/Cargo.toml` grows a second
+`[[bin]]`, so the sentence stays true without anyone having to remember it.
+
+It adds no capability. It reads the same local files the panel reads, writes nothing outside the
+app's own data directory, and opens no socket.
+
+### Commands
+
+```
+quotadeckctl providers                        compiled providers, their level and roots
+quotadeckctl status [--provider <key>] [--plan <id>]
+                                              parse the logs and print every window
+quotadeckctl export [--json|--csv] [--provider <key>] [--from <RFC3339> --to <RFC3339>]
+                                              the deck to stdout
+quotadeckctl config show                      the stored settings, as they are on disk
+quotadeckctl config validate                  resolve them against this build's registry
+quotadeckctl guard                            resolved home, data directory, per-root access
+quotadeckctl tray <key>                       draw the menu bar item for that provider
+quotadeckctl statusline preview|install|revert
+```
+
+`config` is read-only; the panel owns every settings write, and a second writer would race it.
+`statusline install` and `statusline revert` are spelled out rather than defaulted into, and both
+refuse to run inside the App Sandbox (§5) — there the panel shows a copyable command instead.
+`guard` is what `scripts/sandbox-check.sh` compares between a sandboxed and an unsandboxed run.
+
+Data goes to stdout and diagnostics to stderr, on every command, so a warning never lands in the
+file the caller is writing. A reader that hangs up early — `export --csv | head` — is that
+reader's decision, not a failure of the export: the broken pipe is absorbed and the quota status
+is still what the process reports.
+
+### Exit codes
+
+`export` reports the deck's worst reading through its exit status, so a shell can branch on the
+quota without parsing anything.
 
 | Code | Meaning |
 |---|---|
@@ -180,18 +222,30 @@ sandbox entitlements do not already cover.
 | `10` | near the limit — at least one window at or past 90%, the same point `PaceRisk` calls at risk |
 | `11` | limit hit — at least one window reporting 100% or more |
 | `20` | indeterminate — nothing reported a percentage, or the first pass had not finished |
-| `1` | the command itself failed: an unreadable settings file, an unknown provider key, a scan error |
+| `1` | the command itself failed: a refused argument, an unreadable settings file, an unknown or disabled provider key, a scan error |
 
 `20` is deliberately not `0`. A machine with no supported tool installed, or one whose logs are
 not readable from a sandboxed process, has no reading to give — and a script that read that as
 "plenty left" would be wrong in exactly the case the user most needs to know about.
 
+### The JSON schema
+
+The JSON export's first field is `schemaVersion`, currently `1`. It is bumped only when a
+consumer would have to change: a field removed, renamed, or given a different meaning. A new
+optional field does not bump it. A script that reads the number knows which contract it is
+holding; one that cannot find it is reading an export written before there was a contract.
+
+Version `1` carries `schemaVersion`, `updatedAt`, `scanning`, `providers`, `health`, `retention`
+and `history`. `health` is there because a tool that could not be read must not be
+indistinguishable from one that was idle, and `retention` because how far back the numbers go is
+part of reading them.
+
 Both writers take the same snapshot the panel renders:
 
 ```
-quotadeck-debug export --json                  the whole deck and its retained history
-quotadeck-debug export --csv                   one row per hour, per dimension, per label
-quotadeck-debug export --csv --provider codex  one tool only
+quotadeckctl export --json                  the whole deck and its retained history
+quotadeckctl export --csv                   one row per hour, per dimension, per label
+quotadeckctl export --csv --provider codex  one tool only
 ```
 
 The CSV leaves the cost cell empty where nothing in the row carried a price, rather than writing

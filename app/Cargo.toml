@@ -16,11 +16,6 @@ path = "src/lib.rs"
 name = "quotadeck"
 path = "src/main.rs"
 
-# Terminal harness for verifying a provider against real logs.
-[[bin]]
-name = "quotadeck-debug"
-path = "src/bin/debug.rs"
-
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 

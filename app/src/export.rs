@@ -24,7 +24,7 @@ use quotadeck_core::error::{Error, Result};
 use quotadeck_core::types::{CostRange, ProviderId, ProviderSnapshot, TokenRollup};
 use serde::{Deserialize, Serialize};
 
-use crate::deck::{DeckState, ProviderHistory};
+use crate::deck::{DeckState, ProviderHealth, ProviderHistory, RetentionState};
 
 /// Every window read and none of them close to full.
 pub const EXIT_OK: u8 = 0;
@@ -35,6 +35,14 @@ pub const EXIT_LIMIT_HIT: u8 = 11;
 /// Nothing could be read, or the first pass has not finished. Distinct from [`EXIT_OK`] on
 /// purpose: a script must not read "no reading" as "plenty left".
 pub const EXIT_INDETERMINATE: u8 = 20;
+
+/// The shape of the JSON export.
+///
+/// Published and bumped only when a consumer would have to change: a removed field, a renamed
+/// one, or a changed meaning. New optional fields do not bump it. A script that reads this
+/// number knows which contract it is holding; one that cannot find it is reading an export from
+/// before there was a contract.
+pub const SCHEMA_VERSION: u32 = 1;
 
 /// Where [`EXIT_NEAR_LIMIT`] starts.
 ///
@@ -95,20 +103,31 @@ pub fn exit_code(state: &DeckState) -> u8 {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct Export<'a> {
+    /// [`SCHEMA_VERSION`]. First field on purpose: a reader that has to guess the shape can
+    /// stop at the first line.
+    schema_version: u32,
     updated_at: DateTime<Utc>,
     /// True while the first pass over every file is still running, which is what makes a
     /// reading a lower bound rather than a measurement.
     scanning: bool,
     providers: &'a [ProviderSnapshot],
+    /// What each provider's last read did. A tool that could not be read is a fact about the
+    /// export, and leaving it out would let an unreadable provider look like an idle one.
+    health: &'a [ProviderHealth],
+    /// How far back the history in this file is allowed to go.
+    retention: &'a RetentionState,
     history: &'a [ProviderHistory],
 }
 
 /// Serialise the deck and its retained history as JSON.
 pub fn to_json(state: &DeckState, history: &[ProviderHistory]) -> Result<String> {
     let export = Export {
+        schema_version: SCHEMA_VERSION,
         updated_at: state.updated_at,
         scanning: state.scanning,
         providers: &state.providers,
+        health: &state.health,
+        retention: &state.retention,
         history,
     };
     // Pretty rather than compact: this lands in a terminal and in version control at least as
@@ -364,6 +383,7 @@ fn format_failed(error: std::fmt::Error) -> Error {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::deck::HealthState;
     use chrono::{TimeZone, Utc};
     use quotadeck_core::breakdown::BreakdownPoint;
     use quotadeck_core::history::HistoryPoint;
@@ -491,6 +511,45 @@ mod tests {
         assert_eq!(parsed["history"][0]["models"][0]["label"], "claude-opus-4");
         // The refused-label count travels with the data it qualifies, not beside it.
         assert_eq!(parsed["history"][0]["modelsDropped"], 3);
+    }
+
+    #[test]
+    fn the_json_export_names_its_schema_and_admits_what_could_not_be_read() {
+        let at = Utc.timestamp_opt(HOUR, 0).single().expect("valid instant");
+        let mut state = DeckState {
+            providers: vec![snapshot(Some(42.0))],
+            updated_at: at,
+            scanning: false,
+            health: vec![ProviderHealth {
+                provider: ProviderId::ClaudeCode,
+                state: HealthState::Error,
+                last_attempt_at: Some(at),
+                last_success_at: None,
+                consecutive_failures: 2,
+                last_error: Some("the log directory could not be read".into()),
+                next_retry_at: None,
+            }],
+            refreshing: false,
+            refresh_generation: 0,
+            refresh_error: None,
+            retention: Default::default(),
+        };
+        state.retention.effective_days = 30;
+
+        let json = to_json(&state, &[history()]).expect("serialise the export");
+        let parsed: serde_json::Value = serde_json::from_str(&json).expect("the export is JSON");
+
+        // A consumer that cannot read the version cannot know which shape it received.
+        assert_eq!(parsed["schemaVersion"], SCHEMA_VERSION);
+        // A provider that failed is in the file as a failure, not as an absence.
+        assert_eq!(parsed["health"][0]["provider"], "claude-code");
+        assert_eq!(parsed["health"][0]["state"], "error");
+        assert_eq!(
+            parsed["health"][0]["lastError"],
+            "the log directory could not be read"
+        );
+        // How far back the numbers go is part of reading them.
+        assert_eq!(parsed["retention"]["effectiveDays"], 30);
     }
 
     #[test]

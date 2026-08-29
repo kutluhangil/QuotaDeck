@@ -1,14 +1,28 @@
-//! Development harness for the core engine.
+//! The terminal interface to the deck.
 //!
-//! The shipped product is a tray application; this binary exists so each provider can be
-//! verified against real logs from a terminal before any UI exists.
+//! The shipped product is a tray application. This binary answers the same question to a shell:
+//! which windows are open, how full they are, and what the logs behind them say. It is a
+//! separate artifact — it is not inside the Mac App Store `.app` or `.pkg` (`docs/STORE.md` §9).
+//!
+//! Two rules the whole surface keeps:
+//!
+//! - **stdout carries data, stderr carries diagnostics.** Every command here is meant to be
+//!   piped, so a warning must never land in the file the caller is writing.
+//! - **The exit status is the answer.** `export` reports the deck's worst reading through it,
+//!   so a script can branch on the quota without parsing a byte.
+//!
+//! Argument parsing lives in [`quotadeck_app::cli`] so the contract can be tested without
+//! spawning a process.
 
 use std::cmp::Ordering::Equal;
 use std::io::Write;
 use std::process::ExitCode;
 
 use chrono::{DateTime, Duration, Local, Utc};
-use quotadeck_app::deck::{DeckState, ProviderHistory, Settings};
+use quotadeck_app::cli::{self, Command, StatuslineAction};
+use quotadeck_app::deck::{
+    DeckState, HealthState, ProviderHealth, ProviderHistory, RetentionState, Settings,
+};
 use quotadeck_app::{export, icon};
 use quotadeck_core::discovery::{access, RootAccess};
 use quotadeck_core::engine::ProviderEngine;
@@ -18,130 +32,127 @@ use quotadeck_core::types::{
     Confidence, ProviderSnapshot, QuotaWindow, UnavailableReason, WindowKind,
 };
 
+/// The command itself could not be carried out: unreadable settings, an unknown provider key,
+/// a refused argument. Distinct from the quota codes `export` reports (`docs/STORE.md` §9).
+const EXIT_USAGE: u8 = 1;
+
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    let command = args.first().map(String::as_str);
+    let command = match cli::parse(&args) {
+        Ok(command) => command,
+        Err(error) => {
+            eprintln!("{}", error.message);
+            return ExitCode::from(EXIT_USAGE);
+        }
+    };
 
     match command {
-        Some("list") => list(),
-        Some("paths") => paths(),
-        Some("statusline") => match args.get(1).map(String::as_str) {
-            // Both write to settings.json, so they are spelled out rather than defaulted into.
-            // Point HOME at a scratch directory to exercise them without touching a real one.
-            Some("install") => statusline_apply(quotadeck_app::statusline::install()),
-            Some("revert") => statusline_apply(quotadeck_app::statusline::revert()),
-            None => statusline_preview(),
-            Some(other) => {
-                eprintln!("unknown statusline command: {other}");
-                ExitCode::FAILURE
-            }
-        },
-        Some("debug") => match args.get(1) {
-            Some(key) => debug_provider(key, args.get(2).cloned()),
-            None => {
-                eprintln!("debug requires a provider key; run `quotadeck list` to see them");
-                ExitCode::FAILURE
-            }
-        },
-        Some("export") => export(&args[1..]),
-        Some("tray") => match args.get(1) {
-            Some(key) => tray_preview(key),
-            None => {
-                eprintln!("tray requires a provider key; run `quotadeck list` to see them");
-                ExitCode::FAILURE
-            }
-        },
-        Some(other) => {
-            eprintln!("unknown command: {other}");
-            usage();
-            ExitCode::FAILURE
+        Command::Help => {
+            println!("{}", cli::HELP);
+            ExitCode::SUCCESS
         }
-        None => {
-            usage();
-            ExitCode::FAILURE
+        Command::Version => {
+            println!("quotadeckctl {}", env!("CARGO_PKG_VERSION"));
+            ExitCode::SUCCESS
+        }
+        Command::Providers => providers(),
+        Command::Guard => guard(),
+        Command::ConfigShow => config_show(),
+        Command::ConfigValidate => config_validate(),
+        Command::Status { provider, plan } => status(provider.as_deref(), plan),
+        Command::Export(args) => export(&args),
+        Command::Tray { provider } => tray_preview(&provider),
+        Command::Statusline(action) => match action {
+            StatuslineAction::Preview => statusline_preview(),
+            StatuslineAction::Install => statusline_apply(quotadeck_app::statusline::install()),
+            StatuslineAction::Revert => statusline_apply(quotadeck_app::statusline::revert()),
+        },
+    }
+}
+
+/// Load the settings or say, on stderr, why they could not be read.
+fn settings() -> Result<Settings, ExitCode> {
+    Settings::load().map_err(|error| {
+        eprintln!("settings could not be read: {error}");
+        ExitCode::from(EXIT_USAGE)
+    })
+}
+
+/// The stored settings, exactly as they are on disk.
+///
+/// Read-only on purpose: the panel owns every write, and a second writer would race it. A
+/// machine that has never opened the app has no file, and this prints the defaults it would be
+/// launched with rather than an error.
+fn config_show() -> ExitCode {
+    let settings = match settings() {
+        Ok(settings) => settings,
+        Err(code) => return code,
+    };
+    match serde_json::to_string_pretty(&settings) {
+        Ok(text) => {
+            println!("{text}");
+            ExitCode::SUCCESS
+        }
+        Err(error) => {
+            eprintln!("settings could not be serialised: {error}");
+            ExitCode::from(EXIT_USAGE)
         }
     }
 }
 
-fn usage() {
-    eprintln!(
-        "usage:\n  quotadeck list                  detected providers on this machine\n  quotadeck paths                 resolved home, data dir and root access\n  quotadeck debug <key> [plan]    parse one provider and print what it found\n  quotadeck export [--json|--csv] [--provider <key>] [--from <RFC3339> --to <RFC3339>]\n                                  the deck to stdout; exits 0 ok, 10 near, 11 hit, 20 unknown\n  quotadeck tray <key>            draw the menu bar item for that provider\n  quotadeck statusline            what connecting the Claude Code status line would change\n  quotadeck statusline install    write the shim into settings.json\n  quotadeck statusline revert     put settings.json back"
-    );
+/// Whether the stored settings resolve against the providers this build actually compiled.
+///
+/// A settings file written by a later release can name a provider this binary does not have.
+/// That is the failure this catches, and it is worth its own command because every other
+/// command fails on it too, with the same message but a lot more work done first.
+fn config_validate() -> ExitCode {
+    let settings = match settings() {
+        Ok(settings) => settings,
+        Err(code) => return code,
+    };
+    match settings.ordered_provider_ids(&quotadeck_providers::ids()) {
+        Ok(ordered) => {
+            let enabled = ordered
+                .iter()
+                .filter(|id| settings.is_provider_enabled(**id))
+                .count();
+            println!(
+                "settings are valid: {} provider(s) known, {enabled} enabled",
+                ordered.len()
+            );
+            ExitCode::SUCCESS
+        }
+        Err(error) => {
+            eprintln!("provider settings are invalid: {error}");
+            ExitCode::from(EXIT_USAGE)
+        }
+    }
 }
 
-fn parse_rfc3339(flag: &str, value: &str) -> Result<DateTime<Utc>, String> {
-    DateTime::parse_from_rfc3339(value)
-        .map(|instant| instant.with_timezone(&Utc))
-        .map_err(|error| {
-            format!(
-                "{flag} must be an RFC3339 instant with a timezone; received {value:?}: {error}"
-            )
-        })
-}
-
-fn parse_export_request(
-    args: &[String],
+/// Resolve the parsed words against the stored settings.
+///
+/// The default range is the retained window ending now; an explicit `--from`/`--to` pair is
+/// taken as given and clamped later by [`export::prepare`], which is the only place that knows
+/// how far back the data actually goes.
+fn resolve_export_request(
+    args: &cli::ExportArgs,
     settings: &Settings,
     now: DateTime<Utc>,
 ) -> Result<export::ExportRequest, String> {
-    let mut format: Option<export::ExportFormat> = None;
-    let mut provider_key: Option<String> = None;
-    let mut from = None;
-    let mut to = None;
-    let mut rest = args.iter();
-    while let Some(arg) = rest.next() {
-        let chosen = match arg.as_str() {
-            "--json" => Some(export::ExportFormat::Json),
-            "--csv" => Some(export::ExportFormat::Csv),
-            "--provider" => {
-                provider_key = Some(
-                    rest.next()
-                        .ok_or_else(|| {
-                            "--provider needs a key; run `quotadeck list` to see them".to_string()
-                        })?
-                        .clone(),
-                );
-                None
-            }
-            "--from" => {
-                let value = rest
-                    .next()
-                    .ok_or_else(|| "--from needs an RFC3339 instant".to_string())?;
-                from = Some(parse_rfc3339("--from", value)?);
-                None
-            }
-            "--to" => {
-                let value = rest
-                    .next()
-                    .ok_or_else(|| "--to needs an RFC3339 instant".to_string())?;
-                to = Some(parse_rfc3339("--to", value)?);
-                None
-            }
-            other => return Err(format!("unknown export option: {other}")),
-        };
-        if let Some(chosen) = chosen {
-            if format.is_some_and(|earlier| earlier != chosen) {
-                return Err("--json and --csv cannot both be given".into());
-            }
-            format = Some(chosen);
-        }
-    }
-
-    let range = match (from, to) {
+    let range = match (args.from, args.to) {
         (Some(from), Some(to)) => export::HistoryRange { from, to },
-        (Some(_), None) => return Err("--from requires the paired --to flag".into()),
-        (None, Some(_)) => return Err("--to requires the paired --from flag".into()),
-        (None, None) => export::HistoryRange {
+        _ => export::HistoryRange {
             from: now - settings.retention_days.duration(),
             to: now,
         },
     };
-    let provider = provider_key
+    let provider = args
+        .provider
         .as_deref()
         .map(|key| explicit_provider(settings, key, "--provider").map(|provider| provider.id()))
         .transpose()?;
     Ok(export::ExportRequest {
-        format: format.unwrap_or(export::ExportFormat::Json),
+        format: args.format.unwrap_or(export::ExportFormat::Json),
         range,
         provider,
     })
@@ -152,8 +163,9 @@ fn explicit_provider(
     key: &str,
     command: &str,
 ) -> Result<Box<dyn quotadeck_core::provider::Provider>, String> {
-    let provider =
-        quotadeck_providers::by_key(key).ok_or_else(|| format!("unknown provider: {key}"))?;
+    let provider = quotadeck_providers::by_key(key).ok_or_else(|| {
+        format!("unknown provider: {key}; run `quotadeckctl providers` to see them")
+    })?;
     if !settings.is_provider_enabled(provider.id()) {
         return Err(format!(
             "provider {key:?} is disabled in settings; enable it before using {command}"
@@ -189,7 +201,7 @@ fn selected_providers(
 /// The exit status is the deck's worst reading, so a shell can branch on the quota without
 /// parsing anything — see `docs/STORE.md` §9. Nothing is written to disk: the app's own data
 /// directory is the only path this process ever writes to, and an export is not part of it.
-fn export(args: &[String]) -> ExitCode {
+fn export(args: &cli::ExportArgs) -> ExitCode {
     let settings = match Settings::load() {
         Ok(settings) => settings,
         Err(e) => {
@@ -199,7 +211,7 @@ fn export(args: &[String]) -> ExitCode {
     };
 
     let now = Utc::now();
-    let request = match parse_export_request(args, &settings, now) {
+    let request = match resolve_export_request(args, &settings, now) {
         Ok(request) => request,
         Err(error) => {
             eprintln!("{error}");
@@ -218,9 +230,15 @@ fn export(args: &[String]) -> ExitCode {
     let history_from = now - settings.retention_days.duration();
     let mut snapshots = Vec::with_capacity(providers.len());
     let mut history = Vec::with_capacity(providers.len());
+    // This process reads every provider exactly once, so health here is that single attempt
+    // rather than the running record the tray keeps. It is still written out: a tool that could
+    // not be read must not be indistinguishable from one that was idle.
+    let mut health = Vec::with_capacity(providers.len());
 
     for provider in providers {
         let id = provider.id();
+        let mut reading = ProviderHealth::new(id);
+        reading.last_attempt_at = Some(now);
         let mut engine =
             ProviderEngine::with_retention(provider, settings.retention_days.duration());
         engine.set_config(settings.config_for(id));
@@ -228,6 +246,8 @@ fn export(args: &[String]) -> ExitCode {
         match engine.access() {
             RootAccess::Readable => {}
             RootAccess::Missing => {
+                reading.state = HealthState::Unavailable;
+                health.push(reading);
                 snapshots.push(ProviderSnapshot::unavailable(
                     id,
                     UnavailableReason::NotInstalled,
@@ -235,6 +255,10 @@ fn export(args: &[String]) -> ExitCode {
                 continue;
             }
             RootAccess::Denied => {
+                reading.state = HealthState::Error;
+                reading.consecutive_failures = 1;
+                reading.last_error = Some("the log directory could not be read from here".into());
+                health.push(reading);
                 snapshots.push(ProviderSnapshot::unavailable(
                     id,
                     UnavailableReason::PermissionDenied,
@@ -248,12 +272,19 @@ fn export(args: &[String]) -> ExitCode {
         // percentage, so the exit status falls back to indeterminate rather than to ok.
         if let Err(e) = engine.refresh(None) {
             eprintln!("{}: could not be read: {e}", id.key());
+            reading.state = HealthState::Error;
+            reading.consecutive_failures = 1;
+            reading.last_error = Some(e.to_string());
+            health.push(reading);
             snapshots.push(ProviderSnapshot::unavailable(
                 id,
                 UnavailableReason::ReadError,
             ));
             continue;
         }
+        reading.state = HealthState::Healthy;
+        reading.last_success_at = Some(now);
+        health.push(reading);
 
         history.push(ProviderHistory {
             id,
@@ -278,11 +309,11 @@ fn export(args: &[String]) -> ExitCode {
         // Every file was read before anything was written, so this is a measurement rather
         // than a lower bound.
         scanning: false,
-        health: Vec::new(),
+        health,
         refreshing: false,
         refresh_generation: 0,
         refresh_error: None,
-        retention: quotadeck_app::deck::RetentionState {
+        retention: RetentionState {
             requested_days: settings.retention_days.into(),
             effective_days: settings.retention_days.into(),
             rebuilding: false,
@@ -416,7 +447,7 @@ fn print_glyph(name: &str, glyph: &icon::Glyph) {
 /// genuinely sandboxed, and the three lines below are what the sandbox changes: `$HOME` becomes
 /// the container, `home` must not, and every provider root turns `denied` until the user has
 /// handed over the folder. `scripts/sandbox-check.sh` compares the two runs.
-fn paths() -> ExitCode {
+fn guard() -> ExitCode {
     let show = |value: Option<std::path::PathBuf>| {
         value.map_or_else(|| "-".to_string(), |path| path.display().to_string())
     };
@@ -459,7 +490,7 @@ fn paths() -> ExitCode {
     ExitCode::SUCCESS
 }
 
-fn list() -> ExitCode {
+fn providers() -> ExitCode {
     let settings = match Settings::load() {
         Ok(settings) => settings,
         Err(error) => {
@@ -583,29 +614,58 @@ fn statusline_preview() -> ExitCode {
     ExitCode::SUCCESS
 }
 
-fn debug_provider(key: &str, plan_id: Option<String>) -> ExitCode {
-    let settings = match Settings::load() {
+/// Parse the logs and print what each window reports.
+///
+/// Without `--provider` this walks every enabled tool in the user's own order, so the exit
+/// status is the whole machine's: one unreadable provider fails the command, and the ones that
+/// were read are still printed above the failure.
+fn status(key: Option<&str>, plan_id: Option<String>) -> ExitCode {
+    let settings = match settings() {
         Ok(settings) => settings,
-        Err(error) => {
-            eprintln!("settings could not be read: {error}");
-            return ExitCode::FAILURE;
-        }
+        Err(code) => return code,
     };
-    let provider = match explicit_provider(&settings, key, "debug") {
-        Ok(provider) => provider,
+    let selected = match selected_providers(&settings, key) {
+        Ok(selected) => selected,
         Err(error) => {
             eprintln!("{error}");
-            return ExitCode::FAILURE;
+            return ExitCode::from(EXIT_USAGE);
         }
     };
 
+    let mut code = ExitCode::SUCCESS;
+    for (index, provider) in selected.into_iter().enumerate() {
+        if index > 0 {
+            println!();
+        }
+        // An explicit plan belongs to the one provider it was passed with; the parser refuses
+        // `--plan` without `--provider`, so this can only ever apply to a named tool.
+        let plan = key.and(plan_id.clone()).or_else(|| {
+            settings
+                .plans
+                .get(provider.id().key())
+                .filter(|_| key.is_none())
+                .cloned()
+        });
+        if !status_provider(provider, plan) {
+            code = ExitCode::from(EXIT_USAGE);
+        }
+    }
+    code
+}
+
+/// One provider, from its roots to its windows. `false` means the scan failed, which is what
+/// makes the whole command fail.
+fn status_provider(
+    provider: Box<dyn quotadeck_core::provider::Provider>,
+    plan_id: Option<String>,
+) -> bool {
     let roots = provider.discover_roots();
     if roots.is_empty() {
         println!(
             "{} is not installed on this machine",
             provider.display_name()
         );
-        return ExitCode::SUCCESS;
+        return true;
     }
     if roots
         .iter()
@@ -618,7 +678,7 @@ fn debug_provider(key: &str, plan_id: Option<String>) -> ExitCode {
         for root in &roots {
             println!("  denied  {}", root.display());
         }
-        return ExitCode::FAILURE;
+        return false;
     }
 
     println!("{}", provider.display_name());
@@ -637,7 +697,7 @@ fn debug_provider(key: &str, plan_id: Option<String>) -> ExitCode {
         Ok(report) => report,
         Err(e) => {
             eprintln!("scan failed: {e}");
-            return ExitCode::FAILURE;
+            return false;
         }
     };
     let duplicates = engine.take_duplicate_count();
@@ -671,7 +731,7 @@ fn debug_provider(key: &str, plan_id: Option<String>) -> ExitCode {
                 .join(", ")
         );
     }
-    ExitCode::SUCCESS
+    true
 }
 
 fn print_snapshot(snapshot: &ProviderSnapshot, now: DateTime<Utc>) {
@@ -885,34 +945,6 @@ mod provider_policy_tests {
     }
 
     #[test]
-    fn export_range_flags_are_paired_and_require_rfc3339_instants() {
-        let settings = Settings::default();
-        let now = DateTime::parse_from_rfc3339("2026-08-25T12:00:00Z")
-            .expect("fixed instant")
-            .with_timezone(&Utc);
-        for (args, missing) in [
-            (vec!["--from".into(), "2026-08-01T00:00:00Z".into()], "--to"),
-            (vec!["--to".into(), "2026-08-02T00:00:00Z".into()], "--from"),
-        ] {
-            let error = parse_export_request(&args, &settings, now).expect_err("missing pair");
-            assert!(error.contains(missing), "{error}");
-        }
-
-        let error = parse_export_request(
-            &[
-                "--from".into(),
-                "2026-08-01".into(),
-                "--to".into(),
-                "2026-08-02".into(),
-            ],
-            &settings,
-            now,
-        )
-        .expect_err("date-only input is ambiguous");
-        assert!(error.contains("RFC3339"), "{error}");
-    }
-
-    #[test]
     fn export_request_defaults_to_effective_retention_and_resolves_provider_id() {
         let settings = Settings {
             retention_days: quotadeck_app::deck::RetentionDays::Days90,
@@ -921,8 +953,13 @@ mod provider_policy_tests {
         let now = DateTime::parse_from_rfc3339("2026-08-25T12:00:00Z")
             .expect("fixed instant")
             .with_timezone(&Utc);
-        let request = parse_export_request(
-            &["--csv".into(), "--provider".into(), "codex".into()],
+        let request = resolve_export_request(
+            &cli::ExportArgs {
+                format: Some(export::ExportFormat::Csv),
+                provider: Some("codex".into()),
+                from: None,
+                to: None,
+            },
             &settings,
             now,
         )
@@ -935,6 +972,32 @@ mod provider_policy_tests {
         );
         assert_eq!(request.range.from, now - Duration::days(90));
         assert_eq!(request.range.to, now);
+    }
+
+    #[test]
+    fn an_explicit_range_is_taken_as_given_rather_than_from_the_retention_window() {
+        let from = DateTime::parse_from_rfc3339("2026-08-01T00:00:00Z")
+            .expect("fixed instant")
+            .with_timezone(&Utc);
+        let to = DateTime::parse_from_rfc3339("2026-08-02T00:00:00Z")
+            .expect("fixed instant")
+            .with_timezone(&Utc);
+        let request = resolve_export_request(
+            &cli::ExportArgs {
+                format: None,
+                provider: None,
+                from: Some(from),
+                to: Some(to),
+            },
+            &Settings::default(),
+            to + Duration::days(5),
+        )
+        .expect("valid request");
+
+        // The default when nothing is asked for, not a silent override of what was.
+        assert_eq!(request.format, export::ExportFormat::Json);
+        assert_eq!(request.range.from, from);
+        assert_eq!(request.range.to, to);
     }
 
     #[test]

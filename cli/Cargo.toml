@@ -1,0 +1,21 @@
+[package]
+name = "quotadeck-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# Its own crate, not a second `[[bin]]` in `quotadeck-app`: the Tauri bundler copies every
+# binary of the packaged crate into `Contents/MacOS`, and `docs/STORE.md` §9 says the GUI does
+# not ship the command line. Keeping it here is what makes that sentence true.
+[[bin]]
+name = "quotadeckctl"
+path = "src/main.rs"
+
+[dependencies]
+quotadeck-app = { path = "../app" }
+quotadeck-core.workspace = true
+quotadeck-providers.workspace = true
+chrono.workspace = true
+serde_json.workspace = true

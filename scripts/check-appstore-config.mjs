@@ -55,6 +55,13 @@ export function checkAppStoreConfig(read = fromRoot) {
     !cargo.includes('"macos-private-api"'),
     "Cargo.toml must not force-enable Tauri's macos-private-api feature",
   );
+  // The bundler copies every `[[bin]]` of the packaged crate into `Contents/MacOS`, so a second
+  // one here would silently ship inside the store build. `docs/STORE.md` §9 says the GUI does
+  // not install the command line; `quotadeck-cli` is a separate crate to keep that true.
+  requireConfig(
+    (cargo.match(/^\[\[bin\]\]/gm) ?? []).length === 1,
+    "app/Cargo.toml must declare exactly one [[bin]]; a second one ships inside the App Store bundle",
+  );
   requireConfig(
     entitlements.includes("com.apple.security.files.user-selected.read-only"),
     "the user-selected home grant must remain read-only",
