@@ -13,39 +13,51 @@ kabul kriterleri blueprint Ek A.
 
 ## Kod tarafı — komut bazlı kanıt
 
-2026-08-28 için aşağıdaki komutların her biri yeniden çalıştırıldı:
+2026-08-29 için aşağıdaki komutların her biri yeniden çalıştırıldı:
 
 - [x] `cargo fmt --all -- --check` — fark yok
-- [x] `cargo test --workspace` — 444 test geçti, 0 başarısız, 14 `ignored` (perf 4, gerçek log 7, CLI 3)
-- [x] `cargo test -p quotadeck-app --test cli --release -- --ignored` — 3 test geçti: JSON `schemaVersion`,
-      yayımlanmış CSV başlığı ve kapanan boruda panik olmaması, hepsi release binary'sinden
-- [x] `npm test --prefix ui` — 85 Vitest testi geçti
-- [x] `npm run build --prefix ui` — `tsc --noEmit` temiz ve üretim paketi derlendi
-- [x] `npm --prefix ui exec tauri -- build --bundles app` — macOS `.app` paketi derlendi
 - [x] `cargo clippy --workspace --all-targets -- -D warnings` — uyarı yok
-- [x] `cargo test -p quotadeck-app tray` — 3 test geçti, 0 başarısız
-- [x] `node scripts/check-appstore-config.mjs` — özel macOS API'leri kapalı, tray yalnızca Rust'tan
-      oluşturuluyor ve seçilen home grant'i salt-okunur
-- [x] `npm run check --prefix site` — Astro tanılama özeti 0 hata, 0 uyarı, 0 ipucu; altı sayfa
-      derlendi ve CSP kontrolü geçti
+- [x] `cargo test --workspace` — 470 test geçti, 0 başarısız, 14 `ignored`
+- [x] `cargo test --workspace --release -- --ignored --test-threads=1 --nocapture` — 14/14 geçti:
+      perf bütçeleri, 365 günlük saklama, gerçek Codex/Claude Code/Copilot günlükleri ve CLI'ın
+      release binary'sinden çalışan üç entegrasyon testi
 - [x] `cargo test -p quotadeck-core --release --test perf -- --ignored --test-threads=1
-      --nocapture` — 4/4 geçti: cold parse 83 ms / 160,3 MB / 500 dosya, sıcak tik 4.805 µs ve
-      0 byte, bir saatlik izleme yalnız eklenen 65.343 byte'ı okudu, tepe RSS 7,2 MB
-- [x] `bash scripts/sandbox-check.sh` — gerçek App Sandbox etkin; gerçek home korundu, Claude,
-      Codex ve Copilot kökleri `missing` yerine `denied` döndürdü, statusline zinciri ve yalnız-kota
+      --nocapture` — 4/4: cold parse 67 ms / 160,3 MB / 500 dosya, sıcak tik 3.235 µs ve 0 byte,
+      bir saatlik izleme yalnız eklenen 65.343 byte'ı okudu, tepe RSS 7,0 MB
+- [x] `cargo bench --workspace --no-run` — derlendi
+- [x] `cargo tree --workspace | grep -iE 'reqwest|hyper|ureq|isahc|surf|curl'` — 0 eşleşme
+- [x] Kimlik dosyası taraması (`auth.json`, `credentials.json`, `.credentials`, Keychain,
+      `SecItem`) — kaynakta 0 eşleşme
+- [x] `npm test --prefix ui -- --run` — 93 Vitest testi geçti (10 dosya)
+- [x] `npm run build --prefix ui` — `tsc --noEmit` temiz ve üretim paketi derlendi
+- [x] `npm --prefix ui exec tauri -- build --bundles app` — macOS `.app` paketi derlendi;
+      `Contents/MacOS` yalnız `quotadeck` içeriyor (CLI ayrı `quotadeck-cli` kasasında)
+- [x] `node scripts/check-appstore-config.mjs` — özel macOS API'leri kapalı, tray yalnızca
+      Rust'tan oluşturuluyor, seçilen home grant'i salt-okunur, `app/Cargo.toml` tek `[[bin]]`
+- [x] `npm run check --prefix site` — altı sayfa derlendi ve CSP kontrolü geçti
+- [x] `bash scripts/sandbox-check.sh` — 9/9 OK: gerçek App Sandbox etkin, gerçek home korundu,
+      üç sağlayıcı kökü `missing` yerine `denied` döndürdü, statusline zinciri ve yalnız-kota
       capture doğrulandı, otomatik ayar yazımı salt-okunur hatasıyla reddedildi
 - [x] `python3 app/icons/generate.py --check` — izlenen ikonlar kaynakla aynı
-- [x] `quotadeckctl` release binary'si elle sürüldü: `--help`, `--version`, `providers`, `status
-      --provider codex`, `config validate`, `guard` ve `export --json` beklenen çıktıyı ve çıkış
-      kodunu verdi.
-- [x] `.app` paketinin içi açıldı: `Contents/MacOS` yalnız `quotadeck` içeriyor. Bu tur öncesinde
-      ikinci bir `[[bin]]` olduğu için paket CLI'ı da taşıyordu ve `docs/STORE.md` §9'un "GUI onu
-      kurmaz" cümlesi yanlıştı; CLI ayrı `quotadeck-cli` kasasına taşındı ve
-      `node scripts/check-appstore-config.mjs` ikinci `[[bin]]` eklenirse artık kırılıyor.
-- [x] Release `.app` gerçek macOS oturumunda açıldı (2026-08-25 ölçümü, bu turda tekrarlanmadı);
-      süreç çalıştı ve Control Center native status item kaydını oluşturdu. Tray tıklaması, panel
-      odağı ve tıklayınca gizleme hâlâ insan gözüyle kapatılacak çalışma zamanı maddeleridir;
-      erişilebilirlik otomasyonu accessory uygulamanın gizli paneline bağlanamadı.
+- [x] `quotadeckctl` release binary'si elle sürüldü: `--help`, `--version`, `providers`,
+      `status --provider codex`, `config validate`, `config show`, `guard` ve `export --json`.
+      Ayrıca geçici bir HOME'da `codex#work` instance'ı tanımlanıp `providers` listesinde ayrı
+      satır olarak, `export --csv --provider codex#work` çıktısında ayrı `provider` anahtarıyla
+      göründüğü doğrulandı.
+
+**Bu turda düzeltilen bir test varsayımı:** `codex_parses_every_real_rollout_and_reports_a_measured_window`
+`snapshot.today.total() > 0` iddiasında bulunuyordu; bu, geliştiricinin Codex'i son 24 saatte
+kullanmış olmasını şart koşuyor. Makinede son Codex etkinliği 2026-08-26 olduğu için test
+kırılıyordu — ve aynı test 74e46b8 (Faz 7 öncesi) commit'inde de kırılıyor, yani regresyon değil.
+İddia, ayrıştırıcının gerçekten sınadığı şeye çevrildi: saklanan pencere boyunca sayılan token.
+
+## Elle doğrulanmayan çalışma zamanı maddeleri
+
+Aşağıdakiler kod tarafında kapanamaz; `docs/USER_ACTIONS.md` §3–§5'e bakın.
+
+- [ ] macOS: tray tıklaması, panel odağı, tıklayınca gizleme, VoiceOver okuma sırası, 72 saat RSS
+- [ ] Windows ve Linux: paketleme ve gerçek masaüstü oturumunda tray/panel davranışı
+- [ ] Yeni sağlayıcılar: gerçek fixture olmadan ayrıştırıcı yazılmaz (`docs/USER_ACTIONS.md` §6)
 
 ### Tarihsel ölçüm (2026-08-01)
 

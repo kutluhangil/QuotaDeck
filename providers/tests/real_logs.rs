@@ -23,6 +23,9 @@ use quotadeck_providers::copilot_cli::CopilotCli;
 #[test]
 #[ignore = "requires Codex logs on this machine"]
 fn codex_parses_every_real_rollout_and_reports_a_measured_window() {
+    /// The engine's own default retention, so the assertion spans everything it kept.
+    const RETENTION_DAYS: i64 = quotadeck_core::engine::DEFAULT_RETENTION_DAYS;
+
     let provider = Codex;
     if provider.discover_roots().is_empty() {
         panic!("Codex is not installed here; this test needs its session logs");
@@ -77,7 +80,17 @@ fn codex_parses_every_real_rollout_and_reports_a_measured_window() {
             .all(|w| w.used_percent.is_some_and(|p| (0.0..=100.0).contains(&p))),
         "a reported percentage outside 0-100 means the field was misread"
     );
-    assert!(snapshot.today.total() > 0, "no token activity was counted");
+    // Over the retained window, not over "today". Whether this developer used Codex in the
+    // last 24 hours is a fact about the calendar; whether the parser counted the tokens in the
+    // files it just read is the property this test exists to check, and a machine that has been
+    // idle for three days must not be reported as a parser that counts nothing.
+    let retained = engine
+        .index()
+        .rolling(now, chrono::Duration::days(RETENTION_DAYS));
+    assert!(
+        retained.total() > 0,
+        "no token activity was counted across {RETENTION_DAYS} days of real rollouts"
+    );
 }
 
 /// A second scan of the same logs must produce the same numbers. Anything that drifts here

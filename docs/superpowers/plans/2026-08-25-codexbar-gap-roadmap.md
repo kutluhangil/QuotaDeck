@@ -426,6 +426,10 @@
 
 ### Task 9.1: Acquire real local fixtures
 
+**Blocked — needs a real installation.** None of these tools are on this machine
+(`docs/DISCOVERY.md` §1), and the rule that a parser is never written against a guessed schema
+is what keeps a fabricated percentage off the screen. Waiting.
+
 - [ ] Follow `docs/USER_ACTIONS.md` for OpenCode, Windsurf, JetBrains, Cursor, Kimi, Gemini CLI, Qwen Code, or another requested tool.
 - [ ] Anonymize the smallest complete local record set before committing it.
 - [ ] Record root, glob/database schema, event semantics, cumulative/delta behavior, and measured/derived confidence in the fixture README.
@@ -438,6 +442,8 @@
 - Modify: `providers/src/lib.rs`
 - Modify: `core/src/types.rs` only if a new stable ID is required.
 
+**Blocked on Task 9.1.** One provider per evidence package; no evidence, no provider.
+
 - [ ] RED: write parser, dedup, accounting, malformed-record, discovery, and double-scan fixture tests.
 - [ ] GREEN: implement only fields proven by the fixture; unknown values remain unavailable/unpriced.
 - [ ] Run real fixture tests and performance budgets before registration.
@@ -445,14 +451,14 @@
 
 ### Task 9.3: Final cross-platform release gate
 
-- [ ] Run `cargo fmt --all -- --check`.
-- [ ] Run `cargo clippy --workspace --all-targets -- -D warnings`.
-- [ ] Run `cargo test --workspace` and all real-log tests available on this machine.
-- [ ] Run release perf tests single-threaded with `--nocapture`.
-- [ ] Run UI tests/build, Astro semantic check/build, App Store config, icon, sandbox, and no-network/no-credential guards.
-- [ ] Re-run real macOS tray/panel/settings/dashboard/statusline/notification flow.
-- [ ] Review the complete diff and unresolved `docs/USER_ACTIONS.md` items.
-- [ ] Commit final documentation truth and push separately.
+- [x] Run `cargo fmt --all -- --check`.
+- [x] Run `cargo clippy --workspace --all-targets -- -D warnings`.
+- [x] Run `cargo test --workspace` and all real-log tests available on this machine. — 470 passed; all 14 ignored tests run in release and pass, including the four real-log suites.
+- [x] Run release perf tests single-threaded with `--nocapture`. — 4/4 within budget.
+- [x] Run UI tests/build, Astro semantic check/build, App Store config, icon, sandbox, and no-network/no-credential guards. — all green; sandbox 9/9.
+- [ ] Re-run real macOS tray/panel/settings/dashboard/statusline/notification flow. — **human QA**, `docs/USER_ACTIONS.md` §3. The signed sandbox harness and the `.app` bundle build; clicking, focus and VoiceOver order cannot be asserted from here.
+- [x] Review the complete diff and unresolved `docs/USER_ACTIONS.md` items.
+- [x] Commit final documentation truth and push separately.
 
 ## Completion Definition
 
