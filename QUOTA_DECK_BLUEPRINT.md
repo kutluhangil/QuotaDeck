@@ -878,13 +878,20 @@ Copilot CLI ve Hermes'i buldu; geri kalanı kurulu değil. Tahmin edilen şemayl
 o yüzden bunlar gerçek fixture edinilene kadar açık kalıyor (§10).
 
 - [ ] Kimi (`~/.kimi`, `~/.kimi-code`, `KIMI_DATA_DIR`; turn-scoped kayıt filtresi) — makinede yok
-- [ ] Gemini CLI — makinede yok (`~/.gemini` var ama oturum logu tutmuyor)
+- [ ] Gemini CLI — kurulu, ama ayrıştıracak kota verisi yok. Oturum dosyaları
+      `~/.gemini/tmp/<project>/chats/session-*.jsonl` altında duruyor; şemanın tamamı
+      sayıldı ve içinde tek bir token, kullanım ya da pencere alanı yok — transkript,
+      sayaç değil (`docs/DISCOVERY.md` §1.1)
 - [x] GitHub Copilot CLI — kredi sayacı, takvim ayı penceresi, `quota_exceeded` ölçümü (§11)
-- [ ] Qwen Code — makinede yok
+- [ ] Qwen Code — makinede yok. Aday yol: `~/.qwen/tmp/*/chats/session-*.json`
+      (2026-09-06 rakip taraması; **makinede doğrulanmadı**)
 - [ ] OpenCode — makinede yok
 - [ ] Amp — makinede yok
-- [ ] Droid — makinede yok
-- [ ] Goose — makinede yok
+- [ ] Droid — makinede yok. Aday yol: `~/.factory/sessions`, workspace'e göre JSONL
+      (2026-09-06 rakip taraması; **makinede doğrulanmadı**)
+- [ ] Goose — makinede yok. Aday yol: `~/.local/share/goose/sessions/sessions.db` (SQLite,
+      v1.20+), daha eskisi `~/.goose/sessions/*.jsonl`. SQLite yeni bir okuyucu demek —
+      bağımlılık etkisi ayrıştırıcıdan önce ölçülmeli (2026-09-06 taraması; **doğrulanmadı**)
 - [ ] Codebuff, pi-agent, Kilo — makinede yok. Hermes kurulu ama `~/.hermes/logs` hiç token kaydı tutmuyor, ayrıştıracak bir şey yok.
 - [x] "Sessiz araçlar" katlanır bölümü — `ui/src/components/QuietTools.tsx`
 

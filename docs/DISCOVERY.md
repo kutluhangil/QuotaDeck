@@ -28,7 +28,7 @@
 | **GitHub Copilot CLI** | yes | `~/.copilot/session-state/<uuid>/events.jsonl` | L2 | 186 files, 50.1 MB. Usage written only at session end. |
 | **Antigravity** | yes | `~/Library/Application Support/Antigravity/` | — | IDE data dir only. Deferred to v2 per blueprint §3.1. |
 | **Hermes Agent** | yes | `~/.hermes/` | — | `logs/` present but contains **no** token/usage records. Nothing to parse. |
-| **Gemini CLI** | no | — | — | `~/.gemini` exists but holds only `skills/`, `config/`, Antigravity assets. No session logs. Not installed as a CLI. |
+| **Gemini CLI** | yes | `~/.gemini/tmp/<project>/chats/session-*.jsonl` | — | Transcript only. Every key in the file was enumerated: `kind`, `sessionId`, `projectHash`, `startTime`, `lastUpdated`, and `$set.messages[]` carrying `id`, `type`, `timestamp` and `content[].text`. There is **no** token, usage or quota field anywhere in the schema. Nothing to parse. See §1.1. |
 | Kimi / kimi-code | no | — | — | absent |
 | Qwen Code | no | — | — | absent |
 | OpenCode | no | — | — | absent |
@@ -41,6 +41,32 @@
 | OpenClaw | no | — | — | absent |
 
 Absent tools must be reported as `Unavailable`. Never synthesize data for them.
+
+### 1.1 Gemini CLI, re-examined 2026-09-06
+
+The original row said `~/.gemini` held no session logs and that the CLI was not installed. Both
+halves were wrong on the surface and right underneath, which is the dangerous kind of wrong: a
+reader who found the files would conclude the document was unreliable and go write a parser on a
+guess.
+
+What is actually true:
+
+- The CLI **is** installed, at `~/.npm-global/bin/gemini`.
+- Session files **do** exist, at `~/.gemini/tmp/<project>/chats/session-*.jsonl`.
+- They carry **no quota data**. This is not a sample: the directory held two files of two lines
+  each, all four lines were parsed, and every key path in them was enumerated. The complete
+  schema is `kind`, `sessionId`, `projectHash`, `startTime`, `lastUpdated`, and `$set.messages[]`
+  with `id`, `type`, `timestamp` and `content[].text`. No token count, no usage block, no window,
+  no reset instant. A transcript, not a meter.
+
+So the conclusion stands unchanged — Gemini CLI cannot be implemented — but it now rests on an
+enumerated schema rather than on a claim that the files do not exist.
+
+**Do not point an implementation at `~/.gemini` if this ever changes.** That directory also holds
+`oauth_creds.json`, `google_accounts.json` and `jetski-standalone-oauth-token`. A provider whose
+log root is the same directory as its credentials needs a glob narrow enough that the credential
+files are never listed, never opened, and never probed for existence — the rule in `CLAUDE.md` is
+absolute, and a directory walk that merely enumerates them already breaks it.
 
 ---
 
