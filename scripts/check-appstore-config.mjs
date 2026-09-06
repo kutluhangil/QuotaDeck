@@ -70,6 +70,46 @@ export function checkAppStoreConfig(read = fromRoot) {
     !entitlements.includes("com.apple.security.files.user-selected.read-write"),
     "the App Store build must not gain write access to the selected home directory",
   );
+
+  // The widget extension. Its entitlements are checked separately from the host's because
+  // `--deep` signing would have given it the host's, which is exactly the mistake this guards.
+  const widgetEntitlements = read("app/widget/Entitlements.widget.plist");
+  requireConfig(
+    !/\.network\./.test(widgetEntitlements),
+    "the widget entitlements request a network capability",
+  );
+  requireConfig(
+    !widgetEntitlements.includes("com.apple.security.files.user-selected"),
+    "the widget must not request file access; it reads only the app group container",
+  );
+
+  const appGroupOf = (plist) => {
+    const match = plist.match(
+      /application-groups<\/key>\s*<array>\s*<string>([^<]+)<\/string>/,
+    );
+    return match ? match[1] : null;
+  };
+  requireConfig(
+    appGroupOf(entitlements) !== null &&
+      appGroupOf(entitlements) === appGroupOf(widgetEntitlements),
+    "the host and the widget must declare the same app group, or neither can see the snapshot",
+  );
+
+  const valueOf = (plist, key) => {
+    const match = plist.match(
+      new RegExp(`<key>${key}</key>\\s*<string>([^<]+)</string>`),
+    );
+    return match ? match[1] : null;
+  };
+  const widgetInfo = read("app/widget/Info.plist");
+  requireConfig(
+    valueOf(widgetInfo, "CFBundleIdentifier") === "com.kutluhangil.quotadeck.widget",
+    "the widget bundle identifier must be the host identifier plus .widget",
+  );
+  requireConfig(
+    valueOf(widgetInfo, "QuotaDeckAppGroup") === appGroupOf(widgetEntitlements),
+    "the widget's Info.plist names a different app group than its entitlements",
+  );
 }
 
 checkAppStoreConfig();

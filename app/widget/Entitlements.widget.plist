@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  The widget's entitlements, and what is missing from them is the point.
+
+  There is no network capability, for the same reason the host has none. There is no
+  user-selected file capability and no bookmark capability either: the extension reads one file
+  out of the App Group container and has no business anywhere else on the disk. It cannot ask
+  for a folder, because it has no panel to ask with and no bookmark to keep the answer in.
+
+  `$TEAM_ID` is substituted by `scripts/appstore.sh` into a temporary copy, exactly as it is for
+  the host — a Team ID is account data and does not belong in the repository. macOS requires the
+  Team ID as an App Group prefix; the `group.` form is iOS.
+-->
+<plist version="1.0">
+<dict>
+  <key>com.apple.security.app-sandbox</key>
+  <true/>
+  <key>com.apple.security.application-groups</key>
+  <array>
+    <string>$TEAM_ID.com.kutluhangil.quotadeck.shared</string>
+  </array>
+  <key>com.apple.application-identifier</key>
+  <string>$TEAM_ID.com.kutluhangil.quotadeck.widget</string>
+  <key>com.apple.developer.team-identifier</key>
+  <string>$TEAM_ID</string>
+</dict>
+</plist>

@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  The extension's bundle metadata. `$TEAM_ID` is substituted by scripts/widget.sh, for the same
+  reason it is everywhere else: the App Group identifier carries a Team ID, and a Team ID is
+  account data. `QuotaDeckAppGroup` is how the extension finds its own container without one
+  being compiled into it.
+-->
+<plist version="1.0">
+<dict>
+  <key>CFBundleIdentifier</key>
+  <string>com.kutluhangil.quotadeck.widget</string>
+  <key>CFBundleName</key>
+  <string>Quota Deck Widget</string>
+  <key>CFBundleDisplayName</key>
+  <string>Quota Deck</string>
+  <key>CFBundleExecutable</key>
+  <string>QuotaDeckWidget</string>
+  <key>CFBundlePackageType</key>
+  <string>XPC!</string>
+  <key>CFBundleShortVersionString</key>
+  <string>1.0.0</string>
+  <key>CFBundleVersion</key>
+  <string>1.0.0</string>
+  <key>LSMinimumSystemVersion</key>
+  <string>11.0</string>
+  <key>QuotaDeckAppGroup</key>
+  <string>$TEAM_ID.com.kutluhangil.quotadeck.shared</string>
+  <key>NSExtension</key>
+  <dict>
+    <key>NSExtensionPointIdentifier</key>
+    <string>com.apple.widgetkit-extension</string>
+  </dict>
+</dict>
+</plist>
