@@ -14,6 +14,8 @@ pub mod sandbox;
 pub mod statusline;
 pub mod statusline_helper;
 pub mod tray;
+#[cfg(target_os = "macos")]
+mod widget;
 
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::path::PathBuf;
@@ -2148,6 +2150,10 @@ fn publish(
             if let Err(error) = store.flush() {
                 failures.push(format!("could not flush usage persistence: {error}"));
             }
+        }
+        #[cfg(target_os = "macos")]
+        if let Err(error) = widget::publish(&state, &settings, now) {
+            failures.push(format!("widget snapshot failed: {error}"));
         }
         if let Err(error) = tray::refresh(app, &state, settings) {
             failures.push(format!("tray refresh failed: {error}"));

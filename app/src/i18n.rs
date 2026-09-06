@@ -135,6 +135,37 @@ impl Language {
         }
     }
 
+    /// Shown in the widget when no enabled instance has anything to report.
+    pub fn widget_empty(self) -> &'static str {
+        match self {
+            Language::En => "No tool is reporting a quota yet.",
+            Language::Tr => "Henüz kota bildiren bir araç yok.",
+            Language::De => "Noch meldet kein Werkzeug ein Kontingent.",
+            Language::Es => "Todavía ninguna herramienta informa de una cuota.",
+        }
+    }
+
+    /// Stands in for a countdown when the provider reported no reset instant. Never a guess
+    /// derived from the window length — an estimate drawn as a clock reads as a measurement.
+    pub fn widget_no_reset(self) -> &'static str {
+        match self {
+            Language::En => "no reset reported",
+            Language::Tr => "sıfırlanma bildirilmedi",
+            Language::De => "keine Zurücksetzung gemeldet",
+            Language::Es => "sin reinicio informado",
+        }
+    }
+
+    /// Marks a level measured long enough ago to be doubted.
+    pub fn widget_stale(self) -> &'static str {
+        match self {
+            Language::En => "last measured",
+            Language::Tr => "son ölçüm",
+            Language::De => "zuletzt gemessen",
+            Language::Es => "última medición",
+        }
+    }
+
     pub fn tray_rebuilding(self) -> &'static str {
         match self {
             Language::En => "Rebuilding",
@@ -360,6 +391,24 @@ mod tests {
             confidence: Confidence::Measured {
                 reported_at: Utc::now(),
             },
+        }
+    }
+
+    /// Iterated over the registry rather than named one by one, for the same reason the panel's
+    /// catalogue test is: adding a language must not be able to leave a surface untranslated.
+    #[test]
+    fn every_language_carries_the_widget_strings() {
+        for language in Language::ALL {
+            for (name, value) in [
+                ("widget_empty", language.widget_empty()),
+                ("widget_no_reset", language.widget_no_reset()),
+                ("widget_stale", language.widget_stale()),
+            ] {
+                assert!(
+                    !value.trim().is_empty(),
+                    "{language:?} has no {name} string"
+                );
+            }
         }
     }
 
