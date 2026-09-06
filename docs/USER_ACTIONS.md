@@ -15,6 +15,9 @@ Bu dosyada yalnızca kodla, CI ile veya bu macOS oturumunda güvenilir biçimde 
 - [ ] `com.kutluhangil.quotadeck` için App Sandbox açık Mac App Store provisioning profile oluştur ve `app/MacAppStore.provisionprofile` olarak yerleştir; commit etme.
 - [ ] App Store Connect API anahtarı oluştur; `.p8` dosyasını güvenli konumda tut ve Key ID/Issuer ID değerlerini ortam değişkenleriyle sağla.
 - [ ] App Store Connect’te uygulama kaydını, fiyat/bölge fiyatlarını, gizlilik anketini ve listeleme metnini tamamla.
+- [ ] `<TEAM_ID>.com.kutluhangil.quotadeck.shared` App Group'unu oluştur ve hem uygulamaya hem widget'a ekle. Widget'ın okuyabildiği tek yer burası.
+- [ ] Widget için ayrı App ID oluştur: `com.kutluhangil.quotadeck.widget`.
+- [ ] Widget için Mac App Store provisioning profile oluştur ve `app/widget/QuotaDeckWidget.provisionprofile` olarak yerleştir; commit etme. Appex kendi profilini gömer, host'unki onu kapsamaz.
 - [ ] İlk imzalı `.pkg` yüklemesinden sonra TestFlight veya App Review gönderimini başlat.
 
 ## 3. Gerçek insan QA’sı

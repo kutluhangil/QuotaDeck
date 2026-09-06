@@ -997,7 +997,11 @@ mal olmuyor" olan bir ürünün sayfası 78 KB'lık bir paketle açılmamalı.
 - [x] Çoklu hesap / çoklu config kökü — iki ayrı özellik olarak geldi: ek log klasörleri
       (birden çok klasör, tek kota) ve adlandırılmış örnekler (`ProviderInstanceId`, her biri
       kendi kotası). İkisi de App Store derlemesinde kapalı, tek security-scoped bookmark yüzünden
-- [ ] Menü çubuğu widget'ları
+- [x] Menü çubuğu widget'ları — WidgetKit eklentisi, sıfırlanmaya kalan süreyi gösterir.
+      Tray zaten en kritik sağlayıcının doluluğunu söylüyor; on altı piksel bir sayaç
+      taşıyamaz, bu da sorunun öbür yarısı. Yalnız App Store derlemesinde: App Group
+      entitlement'ı imzalı team derlemesi gerektiriyor. Görünüm doğrulaması Apple
+      Distribution sertifikası gelene kadar açık (`docs/USER_ACTIONS.md` §1)
 - [x] DE / ES yerelleştirme — panel ve arka uç için tam katalog; katalog testi dil kaydını
       gezdiği için yeni bir dil yarım kalamıyor. Site bilerek EN/TR kaldı
 

@@ -123,6 +123,16 @@ jobs:
       - name: Mac App Store configuration uses no private API
         run: node scripts/check-appstore-config.mjs
 
+      # A gate that only ever passes proves nothing; these break one file each and assert the
+      # gate names it.
+      - name: Release config gate refuses what it claims to refuse
+        run: node --test scripts/check-appstore-config.test.mjs
+
+      # Compiles the extension without signing it, so a Swift error is caught without an Apple
+      # account. Signing is scripts/appstore.sh's job and needs a certificate.
+      - name: Widget extension compiles
+        run: TEAM_ID=PLACEHOLDER bash scripts/widget.sh
+
       - name: App icons match their deterministic source
         run: python3 app/icons/generate.py --check
 
