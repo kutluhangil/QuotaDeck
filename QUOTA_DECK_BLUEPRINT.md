@@ -855,8 +855,8 @@ Bu faz atlanamaz. Bütün planın varsayımlarını kendi makinende doğrular.
 - [x] `Bucket` serisi Rust'tan gelir (5 dk çözünürlük, ring buffer) — `core/src/horizon.rs`
 - [x] Canvas veya SVG render — SVG; kare hızı yok, şerit yalnızca snapshot geldiğinde hareket eder
 - [x] Kayan pencere animasyonu: bloklar sola akar — CSS transition, snapshot başına bir kez
-- [ ] ~~"Geri dönen kapasite" hayalet katmanı~~ — **kaldırıldı.** Yalnızca kayan pencerede doğru;
-      ölçülen iki sağlayıcı bu konuda anlaşmıyor (Codex keyfi bir anda sıfırlıyor). Şerit artık
+- [x] ~~"Geri dönen kapasite" hayalet katmanı~~ — **kaldırıldı, karar kapandı.** Yalnızca
+      kayan pencerede doğru; ölçülen iki sağlayıcı bu konuda anlaşmıyor (Codex keyfi bir anda sıfırlıyor). Şerit artık
       yalnızca kanıtlayabildiği aralığı çiziyor.
 - [x] `prefers-reduced-motion` → animasyon kapalı, statik gösterim
 - [x] Hover: o kovadaki token/maliyet tooltip'i — eksen etiketleri yerinde değişir, kart oynamaz
@@ -988,11 +988,18 @@ mal olmuyor" olan bir ürünün sayfası 78 KB'lık bir paketle açılmamalı.
 
 ### Faz 13 — v1.1 (yayın sonrası)
 
-- [ ] Kaçak ajan tespiti (§6.3)
-- [ ] Antigravity sağlayıcısı — deneysel bayrak, varsayılan kapalı
-- [ ] Çoklu hesap / çoklu config kökü
+Üçü 1.0'a yetişti, ikisi yayın sonrasına kaldı.
+
+- [x] Kaçak ajan tespiti (§6.3) — `AgentOrigin` normal çalışmayı, alt ajanı ve workflow
+      ajanını ayrı sayıyor; anormal saatlik harcama kullanıcının kendi geçmişine göre bildiriliyor
+- [ ] Antigravity sağlayıcısı — deneysel bayrak, varsayılan kapalı. `ProviderId::Antigravity`
+      tanımlı ama ayrıştırıcısı yok; gerçek bir oturum dosyası görmeden yazılmıyor
+- [x] Çoklu hesap / çoklu config kökü — iki ayrı özellik olarak geldi: ek log klasörleri
+      (birden çok klasör, tek kota) ve adlandırılmış örnekler (`ProviderInstanceId`, her biri
+      kendi kotası). İkisi de App Store derlemesinde kapalı, tek security-scoped bookmark yüzünden
 - [ ] Menü çubuğu widget'ları
-- [ ] DE / ES yerelleştirme
+- [x] DE / ES yerelleştirme — panel ve arka uç için tam katalog; katalog testi dil kaydını
+      gezdiği için yeni bir dil yarım kalamıyor. Site bilerek EN/TR kaldı
 
 ---
 

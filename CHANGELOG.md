@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-09-06
+
+- Docs: the blueprint's Faz 13 list still showed rogue-agent detection, multiple accounts and DE/ES localisation as open, and the release checklist still offered DE/ES as "on request". All three shipped before 1.0; the boxes now say so and name what actually landed, because a backlog that lies about what is done is read as a backlog nobody reads.
+- Docs: the ghost-capacity layer stayed an open box while its own line said it was removed. A decision that was closed is now checked off rather than sitting in the same list as work still waiting for an Apple account.
+
 ## 2026-08-29
 
 - Tests: `codex_parses_every_real_rollout_and_reports_a_measured_window` asserted `today.total() > 0`, which required this developer to have used Codex within the last 24 hours. It now asserts token activity across the engine's retained window — the property the parser is actually responsible for. Verified as pre-existing: the same assertion fails at 74e46b8, before any of this work.

@@ -329,7 +329,9 @@ ps -o rss=,comm= -p $(pgrep -f "Quota Deck")
       Copilot CLI. Kalanların hepsi "makinede yok" diye bekliyor — biçimini gerçek bir dosyayla
       doğrulamadan sağlayıcı yazmıyoruz, çünkü tahmine dayalı bir ayrıştırıcı sessizce yanlış
       sayı üretir. Bir aracı kurup birkaç oturum çalıştırırsan o sağlayıcıyı yazabilirim.
-- [ ] **DE / ES yerelleştirme.** Altyapı hazır; katalog eklemek bir dosya. Talep gelirse.
+- [x] **DE / ES yerelleştirme** eklendi; panel, bildirimler, tray satırları ve klasör izni
+      cümlesi dört dilde. Katalog testi dil kaydını gezdiği için eksik çeviri yayına çıkamıyor.
+      Site bilerek EN/TR kaldı.
 - [x] **Kaçak ajan tespiti** uygulandı; normal çalışma, alt ajan ve workflow ajan harcamasını
       ayrı gösterir ve kullanıcının kendi geçmişine göre anormal saatlik harcamayı bildirir.
 
