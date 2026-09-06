@@ -41,7 +41,7 @@ use quotadeck_core::types::{
     Confidence, Cost, DerivationBasis, PlanCeiling, PlanOption, ProviderId, ProviderSnapshot,
     QuotaWindow, TokenRollup, UnavailableReason, WindowKind,
 };
-use quotadeck_core::{paths, plan};
+use quotadeck_core::{history, paths, plan};
 use serde::Deserialize;
 
 /// Both record shapes carry one of these. Cheap enough to run on every line and it keeps the
@@ -486,6 +486,18 @@ fn derived_window(
         return None;
     }
     let corrected = ceiling.cost_usd * factor.unwrap_or(1.0);
+    // A seed the user's own history has already disproved. Raised, never lowered: a quiet
+    // fortnight says nothing about the ceiling, but a window they really spent is a window the
+    // ceiling must be able to hold.
+    let hours = history::hours(
+        index.bucket_series(),
+        now - Duration::hours(plan::OBSERVATION_HOURS),
+        now,
+    );
+    let corrected = plan::raised_seed(
+        corrected,
+        plan::observed_ceiling(&hours, ceiling.window_minutes),
+    );
     let percent = plan::percent_of(corrected, spent.usd)?;
 
     Some(QuotaWindow {
@@ -942,6 +954,47 @@ mod tests {
         // Max 20x allows twenty times what Pro does, so the same spend reads twenty times lower.
         let ratio = percent("pro") / percent("max-20x");
         assert!((ratio - 20.0).abs() < 0.01, "{ratio}");
+    }
+
+    #[test]
+    fn history_the_seed_says_was_impossible_raises_the_seed() {
+        // Thirty hours at $10 means every five-hour window held $50, where the Pro seed says
+        // the window holds $5. A Pro subscriber cannot spend ten times their limit — they are
+        // cut off long before — so the seed is wrong, and reporting 999% would be reporting
+        // the seed's error as the user's usage.
+        let mut index = EventIndex::new(Duration::days(32));
+        let now = "2026-07-25T22:20:00Z"
+            .parse::<DateTime<Utc>>()
+            .expect("now");
+        for hours_ago in 1..=30 {
+            index.ingest(ParsedEvent::Usage(UsageEvent {
+                at: now - Duration::hours(hours_ago),
+                session: "s".into(),
+                dedup: None,
+                model: Some("claude-opus-5".into()),
+                project: None,
+                origin: AgentOrigin::Main,
+                tokens: TokenRollup {
+                    output: 100_000,
+                    ..Default::default()
+                },
+                requests: 0.0,
+                cost: Cost::Usd(10.0),
+                accounting: Accounting::Incremental,
+            }));
+        }
+
+        let snapshot = ClaudeCode.build_snapshot(&index, now, &config("pro"));
+        let session = snapshot
+            .windows
+            .iter()
+            .find(|window| window.window_minutes == FIVE_HOUR_MINUTES)
+            .expect("a five-hour estimate");
+        let percent = session.used_percent.expect("a derived percentage");
+        assert!(
+            percent <= 120.0,
+            "the seed's error was reported as the user's usage: {percent}%"
+        );
     }
 
     #[test]

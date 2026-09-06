@@ -13,6 +13,7 @@
 //! and carries the estimated badge. Calibration narrows the error; it never promotes an
 //! estimate to a measurement.
 
+use crate::history::HistoryPoint;
 use crate::types::CostRange;
 
 /// Below this, the divisor is small enough that rounding in the reported percentage swamps
@@ -74,15 +75,185 @@ pub fn percent_of(ceiling_usd: f64, spent_usd: f64) -> Option<f32> {
     Some(percent.clamp(0.0, 999.0) as f32)
 }
 
+/// How far back the floor looks.
+///
+/// Eight days, so a seven-day window still yields more than one fully covered observation and
+/// a five-hour window yields nearly two hundred. Further back stops being this user's current
+/// habit and starts being their last plan.
+pub const OBSERVATION_HOURS: i64 = 192;
+
+/// Fewer completed windows than this and the ninetieth percentile is picking one of three
+/// numbers. Eight is the point where discarding the top decile discards something.
+pub const MIN_OBSERVED_WINDOWS: usize = 8;
+
+/// A ceiling the user's own history proves the plan cannot be below.
+///
+/// This is a **floor on the ceiling**, not the ceiling. The reasoning only runs one way: you
+/// cannot spend more in a window than the window holds, so a window in which $120 was really
+/// spent proves the ceiling is at least $120. The converse is not true — spending little proves
+/// nothing at all, because the user may simply not have been working. [`raised_seed`] is where
+/// that asymmetry is enforced.
+///
+/// The ninetieth percentile rather than the maximum: one mispriced record, or one hour whose
+/// tokens were counted twice, would otherwise redefine the plan on its own. Discarding the top
+/// decile costs a little floor and buys immunity to a single bad row.
+///
+/// `None` whenever the arithmetic would produce confidence it has not earned: too little
+/// history, or any hour in the range carrying tokens we could not price, which makes every sum
+/// short by an unknown amount.
+pub fn observed_ceiling(hours: &[HistoryPoint], window_minutes: u32) -> Option<f64> {
+    if window_minutes == 0 {
+        return None;
+    }
+    if hours.iter().any(|hour| !hour.cost.is_complete()) {
+        return None;
+    }
+    let span = i64::from(window_minutes) * 60;
+    let last_start = hours.iter().map(|hour| hour.start).max()?;
+
+    // Keyed by hour rather than summed positionally. The list omits empty hours, so two points
+    // either side of a week-long gap are adjacent in the vector and hours apart in reality;
+    // adding them would invent a window that never happened.
+    // A single forward sweep. `hours` is oldest-first, so the window's far edge only ever
+    // moves forward and each hour is added and removed once; scanning the whole list per
+    // anchor would put a quadratic pass on every tick.
+    let mut sums = Vec::new();
+    let mut far = 0usize;
+    let mut total = 0.0;
+    for (near, anchor) in hours.iter().enumerate() {
+        let end = anchor.start.checked_add(span)?;
+        while far < hours.len() && hours[far].start < end {
+            total += hours[far].cost.usd;
+            far += 1;
+        }
+        // A window is only evidence if the history covers all of it. An anchor whose window
+        // runs past the last hour we hold is a partial sum, and a partial sum is not a floor.
+        if end <= last_start + 3600 {
+            sums.push(total);
+        }
+        total -= hours[near].cost.usd;
+    }
+    if sums.len() < MIN_OBSERVED_WINDOWS {
+        return None;
+    }
+    sums.sort_by(f64::total_cmp);
+    // Nearest-rank ninetieth percentile.
+    let rank = ((sums.len() as f64) * 0.9).ceil() as usize;
+    let index = rank.saturating_sub(1).min(sums.len() - 1);
+    let floor = sums[index];
+    if floor > 0.0 {
+        Some(floor)
+    } else {
+        None
+    }
+}
+
+/// The seed, raised to whatever the history proves it cannot be below.
+///
+/// Never lowers. A user who spent little this fortnight has told us nothing about their
+/// ceiling, and quietly shrinking their plan because they took a holiday would report them at
+/// ninety percent of a quota they are nowhere near.
+pub fn raised_seed(seed_usd: f64, observed_usd: Option<f64>) -> f64 {
+    match observed_usd {
+        Some(observed) if observed > seed_usd => observed,
+        _ => seed_usd,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::history::HistoryPoint;
+    use crate::types::TokenRollup;
 
     fn spent(usd: f64) -> CostRange {
         CostRange {
             usd,
             unpriced_tokens: 0,
         }
+    }
+
+    fn hour(start: i64, usd: f64) -> HistoryPoint {
+        HistoryPoint {
+            start,
+            tokens: TokenRollup::default(),
+            cost: CostRange {
+                usd,
+                unpriced_tokens: 0,
+            },
+        }
+    }
+
+    /// `count` consecutive hours, each spending `usd`, starting at hour zero.
+    fn flat(count: i64, usd: f64) -> Vec<HistoryPoint> {
+        (0..count).map(|i| hour(i * 3600, usd)).collect()
+    }
+
+    #[test]
+    fn a_window_the_user_really_spent_becomes_the_floor() {
+        // Twenty-four hours at $10, so every five-hour window holds $50. The user demonstrably
+        // spent that much in five hours, so the ceiling cannot be below it.
+        let floor = observed_ceiling(&flat(24, 10.0), 300).expect("enough history");
+        assert!((floor - 50.0).abs() < 1e-9, "{floor}");
+    }
+
+    #[test]
+    fn one_freak_hour_does_not_become_the_ceiling() {
+        // A single mispriced or pathological hour sits in the top decile and is discarded;
+        // taking the maximum instead would let one bad record redefine the plan.
+        let mut history = flat(24, 10.0);
+        history.push(hour(24 * 3600, 5_000.0));
+        let floor = observed_ceiling(&history, 300).expect("enough history");
+        assert!(floor < 100.0, "one outlier moved the floor to {floor}");
+    }
+
+    #[test]
+    fn an_unpriced_hour_makes_the_observation_unusable() {
+        // Part of the window was billed to a model with no price, so the sum is short by an
+        // unknown amount. A floor built on a short sum is not a floor.
+        let mut history = flat(24, 10.0);
+        history[3].cost.unpriced_tokens = 1;
+        assert!(observed_ceiling(&history, 300).is_none());
+    }
+
+    #[test]
+    fn a_window_running_past_the_end_of_the_history_is_not_evidence() {
+        // The last hours of the range anchor windows we only hold part of. Counting them would
+        // let a single expensive final hour stand in for a whole five-hour window.
+        let mut history = flat(24, 10.0);
+        history.push(hour(24 * 3600, 5_000.0));
+        let floor = observed_ceiling(&history, 300).expect("enough history");
+        assert!(
+            floor < 100.0,
+            "a partial window at the end set the floor to {floor}"
+        );
+    }
+
+    #[test]
+    fn a_quiet_stretch_counts_as_the_zero_it_was() {
+        // Empty hours are omitted from the list, but an omitted hour inside the queried range
+        // is a measured zero, not missing data. A silence must not raise the floor.
+        let mut history = flat(12, 10.0);
+        history.extend((0..12).map(|i| hour((24 + i) * 3600, 10.0)));
+        let floor = observed_ceiling(&history, 300).expect("enough history");
+        assert!(
+            (floor - 50.0).abs() < 1e-9,
+            "a twelve-hour silence changed the floor to {floor}"
+        );
+    }
+
+    #[test]
+    fn too_little_history_is_refused() {
+        assert!(observed_ceiling(&flat(5, 10.0), 300).is_none());
+    }
+
+    #[test]
+    fn the_floor_only_ever_raises_a_seed() {
+        // The asymmetry is the whole point. Spending little proves nothing about the ceiling,
+        // so a low observation must never pull a seed down.
+        assert!((raised_seed(100.0, Some(250.0)) - 250.0).abs() < 1e-9);
+        assert!((raised_seed(100.0, Some(20.0)) - 100.0).abs() < 1e-9);
+        assert!((raised_seed(100.0, None) - 100.0).abs() < 1e-9);
     }
 
     #[test]
