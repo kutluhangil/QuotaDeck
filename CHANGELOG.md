@@ -2,6 +2,7 @@
 
 ## 2026-09-06
 
+- Plan: wrote the nine-task implementation plan for the macOS widget, `docs/superpowers/plans/2026-09-06-macos-widget.md`. The last task is the honest one: the extension compiles in CI and its entitlements are provable under an ad-hoc signature, but it cannot be loaded until the App Group and the widget's own provisioning profile exist.
 - Design: accepted the spec for the macOS widget, the last unbuilt Faz 13 item with a reason to exist. It answers when the user can work again rather than repeating the tray's level, because `resets_at` is an absolute instant and `Text(style: .timer)` ticks it without a process of ours awake or a refresh budget spent. `docs/superpowers/specs/2026-09-06-menu-bar-widget-design.md`.
 - Docs: the blueprint's Faz 13 list still showed rogue-agent detection, multiple accounts and DE/ES localisation as open, and the release checklist still offered DE/ES as "on request". All three shipped before 1.0; the boxes now say so and name what actually landed, because a backlog that lies about what is done is read as a backlog nobody reads.
 - Docs: the ghost-capacity layer stayed an open box while its own line said it was removed. A decision that was closed is now checked off rather than sitting in the same list as work still waiting for an Apple account.
