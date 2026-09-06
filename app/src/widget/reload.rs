@@ -29,8 +29,20 @@ pub fn should_reload(previous: Option<&WidgetSnapshot>, next: &WidgetSnapshot) -
     }
 }
 
-/// Ask WidgetKit to rebuild the timeline. Given a body in a later task.
-pub fn request() {}
+unsafe extern "C" {
+    fn quotadeck_reload_widget();
+}
+
+/// Ask WidgetKit to rebuild the timeline.
+///
+/// Nothing is reported on failure because the call reports none, and a widget that redraws late
+/// still redraws. The countdown stays correct either way: it is an absolute instant, not a
+/// number we are responsible for decrementing.
+pub fn request() {
+    // SAFETY: a Swift `@_cdecl` function taking no arguments and returning nothing, linked
+    // statically by `build.rs`.
+    unsafe { quotadeck_reload_widget() }
+}
 
 #[cfg(test)]
 mod tests {
