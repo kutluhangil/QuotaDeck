@@ -23,7 +23,7 @@
   <key>CFBundleVersion</key>
   <string>1.0.0</string>
   <key>LSMinimumSystemVersion</key>
-  <string>11.0</string>
+  <string>13.0</string>
   <key>QuotaDeckAppGroup</key>
   <string>$TEAM_ID.com.kutluhangil.quotadeck.shared</string>
   <key>NSExtension</key>
