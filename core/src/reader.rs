@@ -62,6 +62,20 @@ impl LineReader {
         F: FnMut(&str),
     {
         let path = cursor.path().to_path_buf();
+
+        // A quiet tick touches every file, and an open() is not free: with an endpoint-security
+        // agent inspecting each one it costs ~60-90 µs against ~2 µs for a stat. A cursor
+        // already at the end of the same file is answered from the path alone. Any other
+        // stat result falls through to the open, which owns the error reporting.
+        #[cfg(unix)]
+        match std::fs::metadata(&path) {
+            Ok(metadata) if cursor.is_caught_up_with(&metadata) => {
+                return Ok(ReadOutcome::default())
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(ReadOutcome::default()),
+            _ => {}
+        }
+
         let mut file = match File::open(&path) {
             Ok(file) => file,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(ReadOutcome::default()),
@@ -298,6 +312,27 @@ mod tests {
         let (lines, outcome) = collect(&mut reader, &mut cursor);
         assert_eq!(lines, vec!["fresh"]);
         assert_eq!(outcome.rotation, Some(Rotation::Truncated));
+    }
+
+    #[test]
+    fn a_same_length_file_moved_over_the_path_is_read_as_new() {
+        let path = scratch("replaced.jsonl");
+        append(&path, b"old-one\n");
+        let mut reader = LineReader::default();
+        let mut cursor = FileCursor::new(&path);
+        let (lines, _) = collect(&mut reader, &mut cursor);
+        assert_eq!(lines, vec!["old-one"]);
+
+        // Same length as what the cursor already consumed, so size alone cannot tell the two
+        // apart; only the file's identity can. The old file still exists when the new one is
+        // created, so the two cannot share an inode.
+        let staged = scratch("replaced.staged");
+        append(&staged, b"new-one\n");
+        std::fs::rename(&staged, &path).expect("move over the path");
+
+        let (lines, outcome) = collect(&mut reader, &mut cursor);
+        assert_eq!(lines, vec!["new-one"]);
+        assert_eq!(outcome.rotation, Some(Rotation::Replaced));
     }
 
     #[test]

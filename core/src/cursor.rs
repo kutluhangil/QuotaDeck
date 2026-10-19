@@ -22,12 +22,18 @@ pub struct FileIdentity {
 impl FileIdentity {
     #[cfg(unix)]
     pub fn of_file(file: &File) -> std::io::Result<Self> {
+        Ok(Self::of_metadata(&file.metadata()?))
+    }
+
+    /// Unix only: a path's `stat` carries the same device and inode as the open handle's.
+    /// Windows has no stable equivalent without opening the file.
+    #[cfg(unix)]
+    pub fn of_metadata(metadata: &std::fs::Metadata) -> Self {
         use std::os::unix::fs::MetadataExt;
-        let metadata = file.metadata()?;
-        Ok(FileIdentity {
+        FileIdentity {
             volume: metadata.dev(),
             index: metadata.ino(),
-        })
+        }
     }
 
     #[cfg(windows)]
@@ -141,6 +147,16 @@ impl FileCursor {
 
         self.identity = Some(identity);
         Ok(rotation)
+    }
+
+    /// Whether `metadata`, taken from the path, describes the same file this cursor already
+    /// read to its end — the one case where opening it would read nothing and reset nothing.
+    #[cfg(unix)]
+    pub fn is_caught_up_with(&self, metadata: &std::fs::Metadata) -> bool {
+        let size = metadata.len();
+        self.identity == Some(FileIdentity::of_metadata(metadata))
+            && size == self.byte_offset
+            && size == self.size_at_last_read
     }
 
     /// Bytes appended since the last read.
