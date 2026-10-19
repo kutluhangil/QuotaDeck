@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-10-19
+
+- Perf: the warm-tick budget went red — 30–38 ms against a 20 ms budget, where the same commit measured 4.3 ms in September — with the code unchanged. The cost was not in reading: the tick read 0 bytes. It was in `open()` itself. An endpoint-security extension now on this machine inspects every open, and a bare `open`+`fstat`+`close` measured 58–94 µs per file against 1–2 µs for a `stat`; 500 cursors made it 29–47 ms before a single line of ours ran. The machines people run this on are exactly the ones that carry such agents.
+- Reader: a cursor already at the end of the same file is now answered from a `stat` of the path, without opening it. Same device and inode, size equal to both the cursor's offset and the size it last saw — the one case where the open would have read nothing and reset nothing, so the outcome is identical. Anything else, including a stat error, falls through to the open, which still owns rotation and error reporting. Unix only: Windows has no file identity without a handle. Warm tick is 687–754 µs.
+- Reader: added a test for the case a size-only shortcut would get wrong — a same-length file moved over the path. Identity, not size, is what reports it as `Replaced`.
+- Pricing: every Claude Code event on this machine was unpriced. The current models — Claude Opus 5.5, Sonnet 5.5, Haiku 5.5 and Fable 5.1 — were missing from the table, so 110 million tokens in seven days showed as $0.00 with an "incomplete" badge. Added from Anthropic's model pages, each effective from its published release day; the same real logs now price at $40.43 with nothing unpriced.
+- Pricing: cache reads are no longer a uniform 0.1x of input. Fable 5.1 bills them at 0.025x and Opus 5.5 and Sonnet 5.5 at 0.05x; the table stores each rate as published rather than deriving it. One secondary source quoted Sonnet 5.5 at $0.20 — the pricing page says $0.10, and the pricing page is what is in the table.
+- Pricing: Claude Haiku 5.5 is priced by prompt length — over 100,000 tokens, every bucket of that request, output included, moves to five times the rate. A period can now carry a `longPrompt` tier, and a request's prompt length is its input plus cache reads and writes, as Anthropic counts it. Claude Code usage rows are already one per request after dedup, so the tier is applied to the unit it is defined on.
+- Pricing: the table revision is now 2, so stored checkpoints are rebuilt on next launch and history that was recorded as unpriced is priced instead of staying wrong.
+- Tests: the price-table test pinned `sourceCheckedAt` to 2026-08-25, which would have failed the first time anyone re-verified a price. It now asserts that no price was checked before the model took effect.
+- Copilot CLI: the real-log test reads nothing. The tool has moved to a native runtime and its `session-state` directory holds only `.session-operation-locks`. No parser change without a real session sample; recorded in `docs/USER_ACTIONS.md` §6.
+- Release: `scripts/sandbox-check.sh` cannot launch its freshly built probe bundle here (`-10810` from LaunchServices, unaffected by waiting). Launched by hand, the sandboxed probe behaves: HOME redirected to the container, all three provider roots `denied`. Recorded as unproven in `docs/RELEASE_CHECKLIST.md` rather than as passing.
+
 ## 2026-09-06
 
 - Plan: an estimated ceiling is now raised to whatever the user's own history proves it cannot be below. `plan.rs` could already calibrate a seed against a *measured* window; where a tool never reports a percentage there was nothing but the shipped seed, and a Pro seed of $5 against five hours in which $50 was really spent reported 999% — the seed's error rendered as the user's usage.

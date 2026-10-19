@@ -13,7 +13,32 @@ kabul kriterleri blueprint Ek A.
 
 ## Kod tarafı — komut bazlı kanıt
 
-2026-08-29 için aşağıdaki komutların her biri yeniden çalıştırıldı:
+### 2026-10-19 (macOS 27, rustc 1.99.1)
+
+- [x] `cargo fmt --all -- --check` ve `cargo clippy --workspace --all-targets -- -D warnings` — temiz
+- [x] `cargo test --workspace` — 494 test geçti, 0 başarısız, 14 `ignored`
+- [ ] `cargo test --workspace --release -- --ignored --test-threads=1` — **13/14**. Kalan
+      `copilot_reads_metered_credits_from_every_finished_session` bu makinede okunacak oturum
+      bulamıyor: Copilot CLI yeni native runtime'a (`copilot_runtime`) geçmiş ve
+      `~/.copilot/session-state` altında yalnız `.session-operation-locks` duruyor. Kod hatası
+      değil, ama yeni sürümün oturumları nereye yazdığı gerçek bir örnekle doğrulanmadan
+      parser'a dokunulmayacak (`docs/USER_ACTIONS.md` §6).
+- [x] Perf bütçesi 4/4 — cold parse 86–93 ms / 160,3 MB, sıcak tik **687–754 µs** ve 0 byte,
+      saatlik izleme yalnız eklenen 65.343 byte, tepe RSS 7,0–7,5 MB. Düzeltmeden önce sıcak tik
+      30–38 ms ölçülüyordu ve 20 ms bütçesini aşıyordu; nedeni CHANGELOG'da.
+- [x] `cargo bench --workspace --no-run`, no-HTTP-client grep'i (0) ve kimlik dosyası grep'i (0)
+- [x] `npm test --prefix ui` (93/93), `npm run build --prefix ui`, `npm run check --prefix site`
+- [x] `npm --prefix ui exec tauri -- build --bundles app` — `Contents/MacOS` yalnız `quotadeck`
+- [x] `node scripts/check-appstore-config.mjs`, `python3 app/icons/generate.py --check`
+- [ ] `bash scripts/sandbox-check.sh` — **çalışmadı.** Yeni oluşturulan probe bundle'ı
+      `open` ile başlatılamıyor: `_LSOpenURLsWithCompletionHandler() failed with error -10810`.
+      Bekleme eklemek sonucu değiştirmiyor. Aynı bundle daha önce başlatılmış bir kayıtla elle
+      açıldığında sandbox doğru çalıştı: HOME container'a yönlendi, üç sağlayıcı kökü `denied`
+      döndü. Kök neden bulunmadı; harness'ın geri kalan sekiz kontrolü bu turda kanıtlanmadı.
+
+### 2026-08-29
+
+Aşağıdaki komutların her biri yeniden çalıştırıldı:
 
 - [x] `cargo fmt --all -- --check` — fark yok
 - [x] `cargo clippy --workspace --all-targets -- -D warnings` — uyarı yok

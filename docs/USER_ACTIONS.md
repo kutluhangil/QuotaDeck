@@ -51,6 +51,8 @@ Quota Deck şema tahmin ederek parser yazmaz. Eklenmesini istediğin her araç i
 - [ ] Yerel log/veritabanı konumunu bildir; kimlik bilgisi dosyası gönderme.
 - [ ] Codex’e dosyanın yalnız gerekli birkaç anonymize kaydını fixture’a dönüştürme izni ver.
 
+- [ ] **Copilot CLI (mevcut sağlayıcı):** araç yeni native runtime'a geçmiş ve 2026-10-19 itibarıyla `~/.copilot/session-state` altında `events.jsonl` bırakmıyor; Quota Deck bu yüzden Copilot için hiçbir şey okuyamıyor. Bir Copilot oturumunu normal şekilde başlatıp kapat, ardından oturumun nereye yazıldığını bildir. Kimlik bilgisi dosyası gönderme.
+
 Öncelikli adaylar: OpenCode, Windsurf, JetBrains, Cursor, Kimi, Gemini CLI ve Qwen Code. Bir aracın yalnız OAuth/cookie/API ile kota sunduğu anlaşılırsa o araç Quota Deck’e eklenmez.
 
 ## Güvenlik notu
