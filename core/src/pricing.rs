@@ -47,6 +47,18 @@ pub struct PricePeriod {
     pub source: String,
     pub source_checked_at: NaiveDate,
     pub rates: ModelPrice,
+    /// Higher rates for a request whose prompt is longer than a threshold. Claude Haiku 5.5
+    /// is priced this way; every other model bills the whole context window at `rates`.
+    pub long_prompt: Option<LongPromptRates>,
+}
+
+/// Rates that replace the base ones for every bucket of a request — output included — once
+/// its prompt (input plus cache reads and writes) exceeds `above_tokens`.
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LongPromptRates {
+    pub above_tokens: u64,
+    pub rates: ModelPrice,
 }
 
 #[derive(Deserialize)]
@@ -64,6 +76,8 @@ struct RawPricePeriod {
     source: String,
     source_checked_at: String,
     rates: ModelPrice,
+    #[serde(default)]
+    long_prompt: Option<LongPromptRates>,
 }
 
 /// What one call consumed, split the way the billing buckets are.
@@ -165,6 +179,14 @@ fn validate_period(
             format!("price table sourceCheckedAt for {model} period {index} is invalid: {error}")
         })?;
     validate_rates(model, index, raw.rates)?;
+    if let Some(tier) = raw.long_prompt {
+        if tier.above_tokens == 0 {
+            return Err(format!(
+                "price table longPrompt aboveTokens for {model} period {index} must be positive"
+            ));
+        }
+        validate_rates(&format!("{model} longPrompt"), index, tier.rates)?;
+    }
 
     Ok(PricePeriod {
         effective_from,
@@ -172,6 +194,7 @@ fn validate_period(
         source: raw.source,
         source_checked_at,
         rates: raw.rates,
+        long_prompt: raw.long_prompt,
     })
 }
 
@@ -238,7 +261,7 @@ pub fn embedded_pricing_revision() -> u64 {
     table().revision
 }
 
-/// The price for `model` at `at`, or `None` when the model or instant is uncovered.
+/// The base price for `model` at `at`, or `None` when the model or instant is uncovered.
 ///
 /// Documented vendor, region, revision and release-date decorations are removed first, then
 /// the longest exact table key is selected. An arbitrary prefix is not enough: treating a
@@ -248,6 +271,10 @@ pub fn price_for_at(model: &str, at: DateTime<Utc>) -> Option<&'static ModelPric
 }
 
 fn price_for_in<'a>(table: &'a Table, model: &str, at: DateTime<Utc>) -> Option<&'a ModelPrice> {
+    period_for_in(table, model, at).map(|period| &period.rates)
+}
+
+fn period_for_in<'a>(table: &'a Table, model: &str, at: DateTime<Utc>) -> Option<&'a PricePeriod> {
     let id = normalise(model);
     let periods = table
         .models
@@ -255,12 +282,9 @@ fn price_for_in<'a>(table: &'a Table, model: &str, at: DateTime<Utc>) -> Option<
         .filter(|(key, _)| id == key.as_str())
         .max_by_key(|(key, _)| key.len())
         .map(|(_, periods)| periods)?;
-    periods
-        .iter()
-        .find(|period| {
-            at >= period.effective_from && period.effective_until.is_none_or(|until| at < until)
-        })
-        .map(|period| &period.rates)
+    periods.iter().find(|period| {
+        at >= period.effective_from && period.effective_until.is_none_or(|until| at < until)
+    })
 }
 
 /// Equivalent API cost in USD, or `None` when the model or instant is uncovered.
@@ -269,7 +293,17 @@ pub fn cost_of_at(model: &str, at: DateTime<Utc>, usage: &PricedUsage) -> Option
 }
 
 fn cost_of_in(table: &Table, model: &str, at: DateTime<Utc>, usage: &PricedUsage) -> Option<f64> {
-    let price = price_for_in(table, model, at)?;
+    let period = period_for_in(table, model, at)?;
+    // Each request is priced on its own prompt length, cache hits included.
+    let prompt = usage
+        .input
+        .saturating_add(usage.cache_read)
+        .saturating_add(usage.cache_write_5m)
+        .saturating_add(usage.cache_write_1h);
+    let price = match &period.long_prompt {
+        Some(tier) if prompt > tier.above_tokens => &tier.rates,
+        _ => &period.rates,
+    };
     Some(
         usage.input as f64 * price.input
             + usage.output as f64 * price.output
@@ -349,7 +383,11 @@ mod tests {
                     "{model} the one-hour cache write is the more expensive one"
                 );
                 assert!(!period.source.is_empty());
-                assert_eq!(period.source_checked_at.to_string(), "2026-08-25");
+                // A price cannot have been verified before the model shipped.
+                assert!(
+                    period.source_checked_at >= period.effective_from.date_naive(),
+                    "{model} was checked before it took effect"
+                );
             }
         }
     }
@@ -357,8 +395,10 @@ mod tests {
     #[test]
     fn cache_write_rates_hold_anthropics_published_multiples_of_input() {
         for (model, periods) in &table().models {
-            for period in periods {
-                let price = period.rates;
+            let tiers = periods.iter().flat_map(|period| {
+                std::iter::once(period.rates).chain(period.long_prompt.map(|tier| tier.rates))
+            });
+            for price in tiers {
                 let five_minute = price.cache_write_5m / price.input;
                 let one_hour = price.cache_write_1h / price.input;
                 assert!(
@@ -484,6 +524,66 @@ mod tests {
 
         let expected = 23_858.0 * 5e-6 + 439.0 * 2.5e-5 + 18_260.0 * 5e-7 + 6_953.0 * 1e-5;
         assert!((cost - expected).abs() < 1e-12, "{cost} vs {expected}");
+    }
+
+    #[test]
+    fn the_current_generation_is_priced_from_its_release_day() {
+        for (model, released, input, cache_read) in [
+            ("claude-fable-5-1", "2026-09-01T00:00:00Z", 1e-5, 2.5e-7),
+            ("claude-opus-5-5", "2026-09-22T00:00:00Z", 4e-6, 2e-7),
+            ("claude-sonnet-5-5", "2026-09-28T00:00:00Z", 2e-6, 1e-7),
+            ("claude-haiku-5-5", "2026-10-07T00:00:00Z", 1e-7, 1e-8),
+        ] {
+            let released = at(released);
+            assert!(
+                price_for_at(model, released - chrono::Duration::seconds(1)).is_none(),
+                "{model} must be unpriced before it shipped"
+            );
+            let price = price_for_at(model, released).expect("priced on release day");
+            assert_eq!(price.input, input, "{model} input");
+            // Not the old 0.1x: these models publish their own cache-read multipliers.
+            assert_eq!(price.cache_read, cache_read, "{model} cache read");
+        }
+    }
+
+    #[test]
+    fn haiku_5_5_bills_a_prompt_over_100k_tokens_at_the_long_prompt_rates() {
+        let when = at("2026-10-08T00:00:00Z");
+        let usage = |input, cache_read| PricedUsage {
+            input,
+            output: 1_000,
+            cache_read,
+            cache_write_5m: 0,
+            cache_write_1h: 0,
+        };
+
+        // Exactly at the threshold is still "up to 100,000 tokens".
+        let short = cost_of_at("claude-haiku-5-5", when, &usage(40_000, 60_000)).expect("short");
+        let expected_short = 40_000.0 * 1e-7 + 1_000.0 * 5e-7 + 60_000.0 * 1e-8;
+        assert!((short - expected_short).abs() < 1e-12, "{short}");
+
+        // Cache reads count toward prompt length, so one more cached token crosses it, and
+        // the whole request — output included — moves to the higher rates.
+        let long = cost_of_at("claude-haiku-5-5", when, &usage(40_000, 60_001)).expect("long");
+        let expected_long = 40_000.0 * 5e-7 + 1_000.0 * 2.5e-6 + 60_001.0 * 5e-8;
+        assert!((long - expected_long).abs() < 1e-12, "{long}");
+    }
+
+    #[test]
+    fn a_long_prompt_tier_must_be_complete_and_above_zero() {
+        let tiered = SYNTHETIC.replacen(
+            "\"rates\": { \"input\": 0.000004,",
+            "\"longPrompt\": { \"aboveTokens\": 0, \"rates\": { \"input\": 0.00002, \"output\": 0.0001, \"cacheRead\": 0.000002, \"cacheWrite5m\": 0.000025, \"cacheWrite1h\": 0.00004 } },\n            \"rates\": { \"input\": 0.000004,",
+            1,
+        );
+        let error = parse_table(&tiered).expect_err("zero threshold");
+        assert!(error.contains("aboveTokens"), "{error}");
+
+        let negative = tiered
+            .replace("\"aboveTokens\": 0", "\"aboveTokens\": 100000")
+            .replace("\"input\": 0.00002,", "\"input\": 0,");
+        let error = parse_table(&negative).expect_err("zero rate");
+        assert!(error.contains("longPrompt"), "{error}");
     }
 
     #[test]
