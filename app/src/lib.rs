@@ -708,6 +708,8 @@ struct StartupState {
 /// Whether Windows will launch Quota Deck after sign-in. Other platforms omit the setting:
 /// the App Store build must not grow a second launch mechanism beside its sandboxed bundle.
 #[tauri::command]
+// The Windows block must `return`: the parser sees the non-Windows block after it.
+#[allow(clippy::needless_return)]
 fn startup_state(app: AppHandle) -> std::result::Result<StartupState, String> {
     #[cfg(target_os = "windows")]
     {
@@ -729,6 +731,8 @@ fn startup_state(app: AppHandle) -> std::result::Result<StartupState, String> {
 }
 
 #[tauri::command]
+// The Windows block must `return`: the parser sees the non-Windows block after it.
+#[allow(clippy::needless_return)]
 fn set_startup(app: AppHandle, enabled: bool) -> std::result::Result<StartupState, String> {
     #[cfg(target_os = "windows")]
     {

@@ -239,11 +239,23 @@ fn an_hour_of_watching_reads_only_what_was_appended() {
     let _ = std::fs::remove_file(&path);
 }
 
+/// Peak resident set of this process, from `VmHWM`.
+///
+/// Not `ru_maxrss`: on Linux it survives `execve`, so it reports the high-water mark of the
+/// cargo process that spawned the test (~70 MB on CI) rather than this binary's.
+#[cfg(target_os = "linux")]
+fn peak_rss_bytes() -> Option<u64> {
+    let status = std::fs::read_to_string("/proc/self/status").ok()?;
+    let line = status.lines().find_map(|l| l.strip_prefix("VmHWM:"))?;
+    let kb: u64 = line.trim().strip_suffix("kB")?.trim().parse().ok()?;
+    Some(kb * 1024)
+}
+
 /// Peak resident set of this process, from `getrusage`.
 ///
-/// macOS reports `ru_maxrss` in bytes and Linux in kilobytes — the same field with two
+/// macOS reports `ru_maxrss` in bytes and the BSDs in kilobytes — the same field with two
 /// meanings, which is worth stating rather than discovering.
-#[cfg(unix)]
+#[cfg(all(unix, not(target_os = "linux")))]
 fn peak_rss_bytes() -> Option<u64> {
     // SAFETY: `usage` is fully initialised by the call, which only writes to it.
     let mut usage: libc::rusage = unsafe { std::mem::zeroed() };
