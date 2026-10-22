@@ -2,9 +2,9 @@
 
 ## Git
 
-Blueprint §10 forbade commits. Kutluhan overrode this on 2026-07-25: **commit and push at the end of each phase.**
+Blueprint §10 forbade commits. On 2026-07-25 Kutluhan allowed commit and push at the end of each phase; on 2026-10-22 he revoked that. **Never commit or push on your own, not even at the end of a phase.** Commit or push only when Kutluhan explicitly asks for it.
 
-- Commit and push as **separate commands**, never chained.
+- When asked, commit and push as **separate commands**, never chained.
 - Never add `Co-Authored-By: Claude` or any AI attribution trailer. GitHub Contributors must show only Kutluhan.
 - Never change `user.name` / `user.email`.
 - Stay on `main`. Do not create branches.
