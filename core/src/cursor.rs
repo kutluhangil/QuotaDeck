@@ -110,6 +110,13 @@ pub struct FileCursor {
     /// Kept as bytes rather than text: a read chunk can end mid-codepoint, and decoding
     /// the fragment on its own would corrupt the character that spans the boundary.
     pub partial: Vec<u8>,
+    /// Size and modification time folded into one value, for sources read whole rather than
+    /// appended to: a rewritten document or a database. `None` until the first such read.
+    #[serde(default)]
+    pub stamp: Option<u64>,
+    /// Newest row a database source has handed over, in the source's own ordering.
+    #[serde(default)]
+    pub watermark: i64,
 }
 
 impl FileCursor {
@@ -120,6 +127,8 @@ impl FileCursor {
             identity: None,
             size_at_last_read: 0,
             partial: Vec::new(),
+            stamp: None,
+            watermark: 0,
         }
     }
 
@@ -169,6 +178,8 @@ impl FileCursor {
         self.size_at_last_read = 0;
         self.partial.clear();
         self.identity = None;
+        self.stamp = None;
+        self.watermark = 0;
     }
 }
 

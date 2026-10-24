@@ -1,0 +1,13 @@
+{
+  "sessionId": "a1b2c3d4",
+  "projectHash": "0f3e9b1c",
+  "startTime": "2026-10-20T09:00:00.000Z",
+  "lastUpdated": "2026-10-20T09:05:00.000Z",
+  "messages": [
+    {"id": "m1", "timestamp": "2026-10-20T09:00:01.000Z", "type": "user", "content": "redacted"},
+    {"id": "m2", "timestamp": "2026-10-20T09:00:32.000Z", "type": "gemini", "content": "redacted", "model": "gemini-3-flash-preview", "tokens": {"input": 15327, "output": 23, "cached": 11526, "thoughts": 919, "tool": 7, "total": 16276}},
+    {"id": "m3", "timestamp": "2026-10-20T09:01:00.000Z", "type": "user", "content": "redacted"},
+    {"id": "m4", "timestamp": "2026-10-20T09:01:40.000Z", "type": "gemini", "content": "redacted", "model": "gemini-2.5-pro", "tokens": {"input": 2000, "output": 150, "cached": 500, "thoughts": 0, "tool": 0, "total": 2650}},
+    {"id": "m5", "timestamp": "2026-10-20T09:02:00.000Z", "type": "gemini", "content": "redacted", "model": "gemini-2.5-pro", "tokens": {"input": 0, "output": 0, "cached": 0, "thoughts": 0, "tool": 0, "total": 0}}
+  ]
+}

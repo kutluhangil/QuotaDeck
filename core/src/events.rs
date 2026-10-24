@@ -94,8 +94,9 @@ pub struct UsageEvent {
     /// Provider-native billing units, where one exists (Copilot premium requests).
     pub requests: f64,
     /// Equivalent API cost of this record, matching whatever `accounting` says `tokens` is:
-    /// a delta for [`Accounting::Incremental`], the record's own share for a cumulative
-    /// provider. A provider that cannot price its models reports [`Cost::Unpriced`].
+    /// a delta for [`Accounting::Incremental`], the session's running cost for
+    /// [`Accounting::Cumulative`], which is charged only its growth. A provider that cannot
+    /// price its models reports [`Cost::Unpriced`].
     pub cost: Cost,
     pub accounting: Accounting,
 }
@@ -205,6 +206,9 @@ pub struct EventIndex {
 struct SessionTotal {
     at: DateTime<Utc>,
     tokens: TokenRollup,
+    /// The running cost that came with `tokens`, so the next total is charged only its growth.
+    #[serde(default)]
+    usd: Option<f64>,
 }
 
 /// One session's project, with the instant it was reported so the oldest can be evicted.
@@ -336,6 +340,7 @@ impl EventIndex {
                 .push(fingerprint);
         }
 
+        let mut cost = usage.cost;
         let delta = match usage.accounting {
             Accounting::Incremental => usage.tokens,
             Accounting::Cumulative => {
@@ -350,20 +355,30 @@ impl EventIndex {
                     {
                         return false;
                     }
-                    Some(total) => total.tokens,
-                    None => TokenRollup::default(),
+                    Some(total) => (total.tokens, total.usd),
+                    None => (TokenRollup::default(), None),
+                };
+                let (previous, previous_usd) = previous;
+                let running_usd = match usage.cost {
+                    Cost::Usd(usd) => Some(usd),
+                    Cost::Unpriced => None,
                 };
                 self.session_totals.insert(
                     usage.session.clone(),
                     SessionTotal {
                         at: usage.at,
                         tokens: usage.tokens,
+                        usd: running_usd,
                     },
                 );
                 self.bound_session_totals(&usage.session);
                 // A total that went backwards means the session counter restarted; the
                 // reported value is then itself the delta.
                 if usage.tokens.total() >= previous.total() {
+                    // A cumulative record's cost is a running total too.
+                    if let (Some(now), Some(before)) = (running_usd, previous_usd) {
+                        cost = Cost::Usd((now - before).max(0.0));
+                    }
                     usage.tokens.saturating_sub(&previous)
                 } else {
                     usage.tokens
@@ -372,14 +387,13 @@ impl EventIndex {
         };
 
         if !delta.is_zero() || usage.requests != 0.0 {
-            self.series
-                .add(usage.at, &delta, usage.requests, usage.cost);
+            self.series.add(usage.at, &delta, usage.requests, cost);
             // Behind the same guard as the bucket series, so a duplicate, a zero delta or a
             // backwards cumulative total never reaches the breakdown either. Two places
             // counting the same record under different rules is how a total starts disagreeing
             // with the sum of its own parts.
             self.models
-                .add(usage.at, usage.model.as_deref(), &delta, usage.cost);
+                .add(usage.at, usage.model.as_deref(), &delta, cost);
             // The record's own directory wins; the session map is only consulted for the
             // providers that never repeat it on a usage row. Neither is derived from a file
             // path, so a record nobody recorded a directory for stays unattributed.
@@ -388,9 +402,9 @@ impl EventIndex {
                     .get(&usage.session)
                     .map(|entry| entry.project.as_str())
             });
-            self.projects.add(usage.at, project, &delta, usage.cost);
+            self.projects.add(usage.at, project, &delta, cost);
             self.agents
-                .add(usage.at, Some(usage.origin.key()), &delta, usage.cost);
+                .add(usage.at, Some(usage.origin.key()), &delta, cost);
         }
 
         self.last_activity = Some(match self.last_activity {
@@ -663,6 +677,42 @@ mod tests {
 
     fn index() -> EventIndex {
         EventIndex::new(ChronoDuration::days(7))
+    }
+
+    /// A session total rewritten with more tokens is charged the growth of its running cost,
+    /// not the whole running cost again.
+    #[test]
+    fn a_cumulative_record_is_charged_only_its_cost_growth() {
+        let mut index = index();
+        let total = |at: i64, input: u64, usd: f64| {
+            ParsedEvent::Usage(UsageEvent {
+                at: ts(at),
+                session: "s".into(),
+                dedup: None,
+                model: None,
+                project: None,
+                origin: AgentOrigin::Main,
+                tokens: TokenRollup {
+                    input,
+                    ..Default::default()
+                },
+                requests: 0.0,
+                cost: Cost::Usd(usd),
+                accounting: Accounting::Cumulative,
+            })
+        };
+        index.ingest(total(1_785_700_000, 100, 1.0));
+        index.ingest(total(1_785_700_060, 300, 3.0));
+        // The same total read again from an unchanged document adds nothing.
+        index.ingest(total(1_785_700_060, 300, 3.0));
+        let range = index.rolling_cost(ts(1_785_700_100), ChronoDuration::hours(1));
+        assert!((range.usd - 3.0).abs() < 1e-9, "{}", range.usd);
+        assert_eq!(
+            index
+                .rolling(ts(1_785_700_100), ChronoDuration::hours(1))
+                .input,
+            300
+        );
     }
 
     #[test]
@@ -1154,6 +1204,7 @@ mod tests {
                 input: 10,
                 ..Default::default()
             },
+            usd: None,
         };
         checkpoint
             .session_totals

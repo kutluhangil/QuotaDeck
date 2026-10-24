@@ -40,7 +40,7 @@ use crate::alerts::{Alert, Alerts};
 use crate::deck::{
     provider_snapshot_after_failure, Deck, DeckState, HealthState, ProviderHealth, ProviderHistory,
     ProviderPolicyOutcome, ProviderPolicySyncRequest, RefreshReceipt, RetentionChangeRequest,
-    RetentionDays, RetentionState, Settings, Theme, TrayMode,
+    RetentionDays, RetentionState, Settings, Theme, TrayMode, UsageDisplay,
 };
 use crate::i18n::Locale;
 use crate::sandbox::AccessState;
@@ -148,6 +148,7 @@ pub fn run() -> Result<()> {
             forget_access,
             set_tray_mode,
             set_theme,
+            set_usage_display,
             set_locale,
             set_demo,
             set_retention_days,
@@ -663,6 +664,18 @@ fn set_tray_mode(
 #[tauri::command]
 fn set_theme(deck: tauri::State<'_, Deck>, theme: Theme) -> std::result::Result<Settings, String> {
     deck.set_theme(theme).map_err(|e| e.to_string())
+}
+
+/// Flip every percentage between spent and left, and redraw the tray to match.
+#[tauri::command]
+fn set_usage_display(
+    app: AppHandle,
+    deck: tauri::State<'_, Deck>,
+    display: UsageDisplay,
+) -> std::result::Result<Settings, String> {
+    let settings = deck.set_usage_display(display).map_err(|e| e.to_string())?;
+    tray::refresh(&app, &deck.state(), settings.clone())?;
+    Ok(settings)
 }
 
 /// Record the language and re-label the one surface the panel cannot reach.
@@ -2220,7 +2233,12 @@ mod provider_policy_tests {
             [
                 ProviderId::CopilotCli,
                 ProviderId::ClaudeCode,
-                ProviderId::Codex
+                ProviderId::Codex,
+                ProviderId::GeminiCli,
+                ProviderId::PiAgent,
+                ProviderId::Amp,
+                ProviderId::Droid,
+                ProviderId::OpenCode,
             ]
             .map(ProviderInstanceId::default_for)
             .to_vec()
@@ -2236,7 +2254,11 @@ mod provider_policy_tests {
     fn disabled_providers_are_omitted_from_backend_passes() {
         let settings = Settings {
             provider_order: vec!["codex".into(), "claude-code".into(), "copilot-cli".into()],
-            disabled_providers: BTreeSet::from(["claude-code".into(), "copilot-cli".into()]),
+            disabled_providers: quotadeck_providers::ids()
+                .into_iter()
+                .filter(|id| *id != ProviderId::Codex)
+                .map(|id| id.key().to_string())
+                .collect::<BTreeSet<_>>(),
             ..Settings::default()
         };
         let engines = quotadeck_providers::all()

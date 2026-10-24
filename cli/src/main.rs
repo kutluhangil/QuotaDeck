@@ -1013,7 +1013,17 @@ mod provider_policy_tests {
                 .iter()
                 .map(|(instance, _)| instance.key())
                 .collect::<Vec<_>>(),
-            vec!["copilot-cli".to_string(), "codex".to_string()]
+            [
+                "copilot-cli",
+                "codex",
+                "gemini-cli",
+                "pi-agent",
+                "amp",
+                "droid",
+                "opencode"
+            ]
+            .map(String::from)
+            .to_vec()
         );
     }
 

@@ -1,0 +1,4 @@
+{"sessionId":"a1b2c3d4","projectHash":"0f3e9b1c","startTime":"2026-10-20T09:00:00.000Z"}
+{"id":"m1","timestamp":"2026-10-20T09:00:01.000Z","type":"user","content":"redacted"}
+{"id":"m2","timestamp":"2026-10-20T09:00:32.000Z","type":"gemini","model":"gemini-3-flash-preview","tokens":{"input":400,"output":10,"cached":0,"thoughts":0,"tool":0,"total":410}}
+{"id":"m2","timestamp":"2026-10-20T09:00:32.000Z","type":"gemini","model":"gemini-3-flash-preview","tokens":{"input":400,"output":23,"cached":0,"thoughts":0,"tool":0,"total":423}}

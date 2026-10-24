@@ -13,7 +13,7 @@ use chrono::{DateTime, Duration as ChronoDuration, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::cursor::FileCursor;
-use crate::discovery::{access, find_files, resolve_roots, RootAccess};
+use crate::discovery::{access, find_files, resolve_roots, FoundFile, RootAccess};
 use crate::error::Result;
 use crate::events::{EventIndex, ParsedEvent};
 use crate::provider::{LineSource, Provider, ProviderConfig};
@@ -272,7 +272,21 @@ impl ProviderEngine {
                 format!("configured log folder {} {reason}", root.display()),
             );
         }
-        let found = find_files(&roots, self.provider.watch_globs());
+        let mut found: Vec<(FoundFile, SourceKind)> =
+            find_files(&roots, self.provider.watch_globs())
+                .into_iter()
+                .map(|file| (file, SourceKind::Lines))
+                .collect();
+        found.extend(
+            find_files(&roots, self.provider.document_globs())
+                .into_iter()
+                .map(|file| (file, SourceKind::Document)),
+        );
+        found.extend(
+            find_files(&roots, self.provider.database_globs())
+                .into_iter()
+                .map(|file| (file, SourceKind::Database)),
+        );
 
         let mut report = RefreshReport {
             files_found: found.len(),
@@ -280,7 +294,8 @@ impl ProviderEngine {
         };
 
         // Files a tool deleted must not keep a cursor alive forever.
-        let live: std::collections::HashSet<&PathBuf> = found.iter().map(|f| &f.path).collect();
+        let live: std::collections::HashSet<&PathBuf> =
+            found.iter().map(|(f, _)| &f.path).collect();
         let errors_before = self.read_errors.len();
         self.read_errors.retain(|path, _| live.contains(path));
         if self.read_errors.len() != errors_before {
@@ -293,7 +308,7 @@ impl ProviderEngine {
         }
 
         let limit = max_files.unwrap_or(found.len());
-        for file in found.iter().take(limit) {
+        for (file, kind) in found.iter().take(limit) {
             if cancelled() {
                 report.cancelled = true;
                 break;
@@ -307,24 +322,65 @@ impl ProviderEngine {
                 self.checkpoint_dirty = true;
             }
 
-            // Nothing appended and no rotation in progress: skip the open entirely.
-            if cursor.identity.is_some()
-                && cursor.byte_offset == file.size
-                && cursor.size_at_last_read == file.size
-            {
-                continue;
-            }
-
             let source = LineSource::new(&file.path);
-            let file_report = read_file(
-                &mut self.reader,
-                cursor,
-                self.provider.as_ref(),
-                &source,
-                &mut self.index,
-                &mut self.scratch,
-                &mut cancelled,
-            )?;
+            let file_report = match kind {
+                SourceKind::Lines => {
+                    // Nothing appended and no rotation in progress: skip the open entirely.
+                    if cursor.identity.is_some()
+                        && cursor.byte_offset == file.size
+                        && cursor.size_at_last_read == file.size
+                    {
+                        continue;
+                    }
+                    read_file(
+                        &mut self.reader,
+                        cursor,
+                        self.provider.as_ref(),
+                        &source,
+                        &mut self.index,
+                        &mut self.scratch,
+                        &mut cancelled,
+                    )?
+                }
+                SourceKind::Document | SourceKind::Database => {
+                    let stamp = change_stamp(file, *kind);
+                    if cursor.stamp == Some(stamp) {
+                        continue;
+                    }
+                    let watermark_before = cursor.watermark;
+                    let file_report = if *kind == SourceKind::Document {
+                        read_document(
+                            file,
+                            self.provider.as_ref(),
+                            &source.with_modified(file.modified.into()),
+                            &mut self.index,
+                            &mut self.scratch,
+                        )
+                    } else {
+                        read_database(
+                            file,
+                            cursor,
+                            self.provider.as_ref(),
+                            &mut self.index,
+                            &mut self.scratch,
+                        )
+                    };
+                    // A document that will not parse is retried when it next changes, not on
+                    // every tick. A database is stamped only once a read made no progress: a
+                    // batch that moved the watermark may have left rows behind, and a lock
+                    // error is a writer that will be gone on the next pass.
+                    let settled = match kind {
+                        SourceKind::Document => true,
+                        _ => file_report.parse_errors == 0 && cursor.watermark == watermark_before,
+                    };
+                    if settled {
+                        cursor.stamp = Some(stamp);
+                    }
+                    cursor.size_at_last_read = file.size;
+                    cursor.byte_offset = file.size;
+                    file_report
+                }
+            };
             if file_report.bytes > 0 {
                 report.files_read += 1;
             }
@@ -613,6 +669,117 @@ fn push_watch_directory(
     }
 }
 
+/// How a discovered file is read.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SourceKind {
+    /// Appended to; read from a byte offset.
+    Lines,
+    /// Rewritten in place; read whole when it changes.
+    Document,
+    /// A database; read past a watermark when it changes.
+    Database,
+}
+
+/// Largest document read whole. A session file past this is a tool misbehaving, and reading it
+/// would break the memory budget the line reader exists to keep.
+const MAX_DOCUMENT_BYTES: u64 = 32 * 1024 * 1024;
+
+/// Size and modification time of a whole-read source, as one comparable value.
+///
+/// A database in WAL mode takes new rows in its `-wal` sibling and leaves the main file alone
+/// until a checkpoint, so that sibling is folded in too.
+fn change_stamp(file: &FoundFile, kind: SourceKind) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    file.size.hash(&mut hasher);
+    file.modified.hash(&mut hasher);
+    if kind == SourceKind::Database {
+        let mut wal = file.path.clone().into_os_string();
+        wal.push("-wal");
+        if let Ok(metadata) = std::fs::metadata(&wal) {
+            metadata.len().hash(&mut hasher);
+            metadata.modified().ok().hash(&mut hasher);
+        }
+    }
+    hasher.finish()
+}
+
+fn read_document(
+    file: &FoundFile,
+    provider: &dyn Provider,
+    source: &LineSource<'_>,
+    index: &mut EventIndex,
+    scratch: &mut Vec<ParsedEvent>,
+) -> RefreshReport {
+    use std::io::Read;
+    let mut report = RefreshReport::default();
+    if file.size > MAX_DOCUMENT_BYTES {
+        report.parse_errors = 1;
+        report.first_parse_error = Some(format!(
+            "{} is {} bytes, over the {MAX_DOCUMENT_BYTES}-byte limit for a session document; skipped",
+            file.path.display(),
+            file.size
+        ));
+        return report;
+    }
+    let mut bytes = Vec::new();
+    let read = std::fs::File::open(&file.path)
+        .and_then(|handle| handle.take(MAX_DOCUMENT_BYTES).read_to_end(&mut bytes));
+    if let Err(error) = read {
+        // Deleted or replaced between discovery and the read: the next pass sees the new state.
+        report.first_parse_error = Some(format!("could not read {}: {error}", file.path.display()));
+        report.parse_errors = 1;
+        return report;
+    }
+    report.bytes = bytes.len() as u64;
+    let Ok(text) = std::str::from_utf8(&bytes) else {
+        report.invalid_lines = 1;
+        return report;
+    };
+    scratch.clear();
+    match provider.parse_document(source, text, scratch) {
+        Ok(()) => {
+            for event in scratch.drain(..) {
+                index.ingest(event);
+            }
+        }
+        Err(error) => {
+            scratch.clear();
+            report.parse_errors = 1;
+            report.first_parse_error = Some(error.to_string());
+        }
+    }
+    report
+}
+
+fn read_database(
+    file: &FoundFile,
+    cursor: &mut FileCursor,
+    provider: &dyn Provider,
+    index: &mut EventIndex,
+    scratch: &mut Vec<ParsedEvent>,
+) -> RefreshReport {
+    let mut report = RefreshReport::default();
+    scratch.clear();
+    match provider.read_database(&file.path, cursor.watermark, scratch) {
+        Ok(watermark) => {
+            if !scratch.is_empty() {
+                report.bytes = file.size;
+            }
+            for event in scratch.drain(..) {
+                index.ingest(event);
+            }
+            cursor.watermark = watermark;
+        }
+        Err(error) => {
+            scratch.clear();
+            report.parse_errors = 1;
+            report.first_parse_error = Some(error.to_string());
+        }
+    }
+    report
+}
+
 fn read_file(
     reader: &mut LineReader,
     cursor: &mut FileCursor,
@@ -743,6 +910,41 @@ mod tests {
             }));
             Ok(())
         }
+        fn document_globs(&self) -> &'static [&'static str] {
+            &["*.json"]
+        }
+        /// One token per non-empty line, each keyed by its text so a rewrite counts once.
+        fn parse_document(
+            &self,
+            source: &LineSource<'_>,
+            text: &str,
+            out: &mut Vec<ParsedEvent>,
+        ) -> Result<()> {
+            for line in text.lines().filter(|line| !line.trim().is_empty()) {
+                out.push(counted(source.session_key(), line));
+            }
+            Ok(())
+        }
+        fn database_globs(&self) -> &'static [&'static str] {
+            &["*.db"]
+        }
+        /// Rows are integers, one per line; at most two are handed over per call.
+        fn read_database(
+            &self,
+            path: &Path,
+            watermark: i64,
+            out: &mut Vec<ParsedEvent>,
+        ) -> Result<i64> {
+            let text = std::fs::read_to_string(path).map_err(|e| crate::Error::io(path, e))?;
+            let mut rows: Vec<i64> = text.lines().filter_map(|l| l.trim().parse().ok()).collect();
+            rows.sort_unstable();
+            let mut newest = watermark;
+            for row in rows.into_iter().filter(|row| *row >= watermark).take(2) {
+                out.push(counted("db".into(), &row.to_string()));
+                newest = row;
+            }
+            Ok(newest)
+        }
         fn build_snapshot(
             &self,
             index: &EventIndex,
@@ -751,6 +953,65 @@ mod tests {
         ) -> ProviderSnapshot {
             default_snapshot(self.id(), index, now)
         }
+    }
+
+    fn counted(session: String, key: &str) -> ParsedEvent {
+        ParsedEvent::Usage(UsageEvent {
+            at: Utc::now(),
+            dedup: Some(crate::events::DedupKey::new(&session, key)),
+            session,
+            model: None,
+            project: None,
+            origin: AgentOrigin::Main,
+            tokens: TokenRollup {
+                input: 1,
+                ..Default::default()
+            },
+            requests: 0.0,
+            cost: crate::types::Cost::Unpriced,
+            accounting: Accounting::Incremental,
+        })
+    }
+
+    /// A document is rewritten in place. Reading it whole on every change must still count
+    /// each entry once.
+    #[test]
+    fn a_rewritten_document_counts_each_entry_once() {
+        let (mut engine, root) = engine_for("document-rewrite");
+        let path = root.join("thread.json");
+        std::fs::write(&path, "a\nb\n").expect("write document");
+        engine.refresh(None).expect("first refresh");
+        assert_eq!(engine.snapshot(Utc::now()).today.input, 2);
+
+        // Unchanged: not even opened.
+        let report = engine.refresh(None).expect("idle refresh");
+        assert_eq!(report.bytes, 0);
+
+        std::fs::write(&path, "a\nb\nc\n").expect("rewrite document");
+        engine.refresh(None).expect("refresh after rewrite");
+        assert_eq!(engine.snapshot(Utc::now()).today.input, 3);
+    }
+
+    /// A database is read past its watermark in bounded batches, across refreshes.
+    #[test]
+    fn a_database_is_read_in_batches_past_its_watermark() {
+        let (mut engine, root) = engine_for("database-watermark");
+        let path = root.join("history.db");
+        std::fs::write(&path, "1\n2\n3\n").expect("write rows");
+
+        engine.refresh(None).expect("first batch");
+        assert_eq!(engine.snapshot(Utc::now()).today.input, 2);
+        // The file did not change, but the batch moved the watermark: the rest is still read.
+        // Row 2 is handed over again at the watermark and deduplicated.
+        engine.refresh(None).expect("second batch");
+        assert_eq!(engine.snapshot(Utc::now()).today.input, 3);
+        // Caught up: the stamp settles and an unchanged database is no longer queried.
+        engine.refresh(None).expect("settling pass");
+        assert_eq!(engine.refresh(None).expect("idle pass").bytes, 0);
+
+        std::fs::write(&path, "1\n2\n3\n4\n").expect("append row");
+        engine.refresh(None).expect("refresh after a new row");
+        assert_eq!(engine.snapshot(Utc::now()).today.input, 4);
     }
 
     /// Each test gets its own root; they run in parallel and would otherwise see each

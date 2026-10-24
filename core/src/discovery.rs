@@ -124,6 +124,17 @@ fn walk(dir: &Path, segments: &[&str], out: &mut Vec<FoundFile>) {
     let Some((pattern, rest)) = segments.split_first() else {
         return;
     };
+    // A literal segment is looked up, not searched for. Listing the directory would read the
+    // names of everything beside it, and a tool's folder can hold its credential files there.
+    if !pattern.contains('*') {
+        let path = dir.join(pattern);
+        // `symlink_metadata`, as `DirEntry::metadata` below: a symlink is never followed.
+        let Ok(metadata) = std::fs::symlink_metadata(&path) else {
+            return;
+        };
+        visit(path, &metadata, rest, out);
+        return;
+    }
     let Ok(entries) = std::fs::read_dir(dir) else {
         return;
     };
@@ -139,18 +150,21 @@ fn walk(dir: &Path, segments: &[&str], out: &mut Vec<FoundFile>) {
         let Ok(metadata) = entry.metadata() else {
             continue;
         };
+        visit(entry.path(), &metadata, rest, out);
+    }
+}
 
-        if rest.is_empty() {
-            if metadata.is_file() {
-                out.push(FoundFile {
-                    path: entry.path(),
-                    size: metadata.len(),
-                    modified: metadata.modified().unwrap_or(SystemTime::UNIX_EPOCH),
-                });
-            }
-        } else if metadata.is_dir() {
-            walk(&entry.path(), rest, out);
+fn visit(path: PathBuf, metadata: &std::fs::Metadata, rest: &[&str], out: &mut Vec<FoundFile>) {
+    if rest.is_empty() {
+        if metadata.is_file() {
+            out.push(FoundFile {
+                path,
+                size: metadata.len(),
+                modified: metadata.modified().unwrap_or(SystemTime::UNIX_EPOCH),
+            });
         }
+    } else if metadata.is_dir() {
+        walk(&path, rest, out);
     }
 }
 

@@ -664,6 +664,7 @@ fn write_settings(path: &Path, settings: &SettingsDocument) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::env::consts::EXE_SUFFIX;
 
     #[test]
     fn a_plain_command_survives_quoting() {
@@ -723,8 +724,8 @@ mod tests {
 
     #[test]
     fn our_own_command_is_recognised_so_installing_twice_cannot_nest_it() {
-        let helper = Path::new("/apps/quotadeck");
-        let ours = compose(helper, Path::new("/data/statusline"), Some("theirs"));
+        let helper = PathBuf::from(format!("/apps/quotadeck{EXE_SUFFIX}"));
+        let ours = compose(&helper, Path::new("/data/statusline"), Some("theirs"));
         assert!(is_ours(&ours));
         assert!(is_ours(
             "'/Applications/Quota Deck.app/Contents/MacOS/quotadeck-statusline' --log '/data/statusline'"
@@ -735,10 +736,10 @@ mod tests {
 
     #[test]
     fn a_moved_main_executable_is_still_recognised_and_its_chain_is_recovered() {
-        let command = "'/Downloads/Quota Deck.app/Contents/MacOS/quotadeck' --statusline-helper --log '/data/statusline' --chain 'npx -y ccstatusline@latest'";
-        assert!(is_ours(command));
+        let command = format!("'/Downloads/Quota Deck.app/Contents/MacOS/quotadeck{EXE_SUFFIX}' --statusline-helper --log '/data/statusline' --chain 'npx -y ccstatusline@latest'");
+        assert!(is_ours(&command));
         assert_eq!(
-            chained_command(command).as_deref(),
+            chained_command(&command).as_deref(),
             Some("npx -y ccstatusline@latest")
         );
     }

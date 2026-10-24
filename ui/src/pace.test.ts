@@ -28,6 +28,8 @@ function snapshot(paces: PaceForecast[]): ProviderSnapshot {
     windows: [],
     today: { input: 0, output: 0, cacheRead: 0, cacheCreation: 0, reasoning: 0 },
     todayCost: { usd: 0, unpricedTokens: 0 },
+    month: { input: 0, output: 0, cacheRead: 0, cacheCreation: 0, reasoning: 0 },
+    monthCost: { usd: 0, unpricedTokens: 0 },
     series: [],
     pace: paces,
     lastActivity: null,

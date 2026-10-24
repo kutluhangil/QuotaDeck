@@ -126,6 +126,16 @@ impl Language {
         }
     }
 
+    /// Follows a percentage that counts what is left rather than what is spent.
+    pub fn tray_left(self) -> &'static str {
+        match self {
+            Language::En => "left",
+            Language::Tr => "kaldı",
+            Language::De => "übrig",
+            Language::Es => "restante",
+        }
+    }
+
     pub fn tray_stale(self) -> &'static str {
         match self {
             Language::En => "Stale",

@@ -23,7 +23,7 @@ use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent}
 use tauri::{AppHandle, Manager, Runtime};
 use tauri_plugin_positioner::{Position, WindowExt};
 
-use crate::deck::{Deck, DeckState, HealthState, Settings, TrayMode};
+use crate::deck::{Deck, DeckState, HealthState, Settings, TrayMode, UsageDisplay};
 use crate::i18n::{provider_name, Language};
 use crate::icon;
 
@@ -64,11 +64,21 @@ fn menu_model(
         if !settings.is_instance_enabled(&instance) {
             continue;
         }
+        // A tool that is not on this machine has nothing to summarise; eight lines of
+        // "unavailable" would bury the two that matter.
+        let absent = state
+            .providers
+            .iter()
+            .any(|snapshot| snapshot.instance == instance && !snapshot.installed);
+        if absent {
+            continue;
+        }
         let label = settings.label_for(&instance);
         items.push(TrayMenuItem::Summary(summary_label(
             state,
             &instance,
             label.as_deref(),
+            settings.usage_display,
             language,
         )));
     }
@@ -87,6 +97,7 @@ fn summary_label(
     state: &DeckState,
     instance: &ProviderInstanceId,
     label: Option<&str>,
+    display: UsageDisplay,
     language: Language,
 ) -> String {
     let name = match label {
@@ -105,19 +116,24 @@ fn summary_label(
                 .filter_map(|window| window.used_percent)
                 .max_by(f32::total_cmp)
         });
+    let suffix = match display {
+        UsageDisplay::Used => String::new(),
+        UsageDisplay::Remaining => format!(" {}", language.tray_left()),
+    };
+    let percent = percent.map(|used| display.shown(used));
     let health = state
         .health
         .iter()
         .find(|health| &health.provider == instance);
     match health.map(|health| health.state) {
         Some(HealthState::Healthy) => percent
-            .map(|value| format!("{name} — {:.0}%", value))
+            .map(|value| format!("{name} — {:.0}%{suffix}", value))
             .unwrap_or_else(|| format!("{name} — {}", language.tray_unavailable())),
         Some(HealthState::Rebuilding) => {
             format!("{name} — {}", language.tray_rebuilding())
         }
         Some(HealthState::Stale) => percent
-            .map(|value| format!("{name} — {} ({:.0}%)", language.tray_stale(), value))
+            .map(|value| format!("{name} — {} ({:.0}%{suffix})", language.tray_stale(), value))
             .unwrap_or_else(|| format!("{name} — {}", language.tray_stale())),
         Some(HealthState::Error) => format!("{name} — {}", language.tray_error()),
         Some(HealthState::Unavailable) | None => {
@@ -290,7 +306,7 @@ pub fn refresh<R: Runtime>(
     let peak = state.peak_percent();
 
     match settings.tray_mode {
-        TrayMode::Compact => set_compact(&tray, peak),
+        TrayMode::Compact => set_compact(&tray, peak, settings.usage_display),
         TrayMode::Glyph => set_icon(&tray, &icon::bar(peak)),
         TrayMode::Strip => set_icon(&tray, &strip_for(state)),
     }?;
@@ -315,8 +331,13 @@ pub fn refresh<R: Runtime>(
 /// an icon is there to anchor it, and Windows does not draw one at all. Keeping the glyph on
 /// both means compact reads as glyph-plus-number on Linux and as plain glyph on Windows —
 /// where dropping the icon would have left an item with nothing in it.
-fn set_compact<R: Runtime>(tray: &tauri::tray::TrayIcon<R>, peak: Option<f32>) -> TrayResult {
-    let title = peak.map(|percent| format!("{}%", percent.round()));
+fn set_compact<R: Runtime>(
+    tray: &tauri::tray::TrayIcon<R>,
+    peak: Option<f32>,
+    display: UsageDisplay,
+) -> TrayResult {
+    // The glyph keeps drawing fullness; only the printed number follows the user's reading.
+    let title = peak.map(|percent| format!("{}%", display.shown(percent).round()));
     if cfg!(target_os = "macos") {
         tray.set_icon(None)
             .map_err(|error| format!("could not clear the compact tray icon: {error}"))?;
@@ -452,6 +473,8 @@ mod tests {
             }],
             today: TokenRollup::default(),
             today_cost: CostRange::default(),
+            month: Default::default(),
+            month_cost: Default::default(),
             series: Vec::new(),
             pace: Vec::new(),
             last_activity: None,
@@ -473,6 +496,25 @@ mod tests {
             snapshot(ProviderId::ClaudeCode, 81.0),
             snapshot(ProviderId::Codex, 72.0),
         ];
+        // Tools that are not installed get no line at all.
+        state.providers.extend(
+            quotadeck_providers::ids()
+                .into_iter()
+                .filter(|id| {
+                    ![
+                        ProviderId::ClaudeCode,
+                        ProviderId::Codex,
+                        ProviderId::CopilotCli,
+                    ]
+                    .contains(id)
+                })
+                .map(|id| {
+                    ProviderSnapshot::unavailable(
+                        id,
+                        quotadeck_core::types::UnavailableReason::NotInstalled,
+                    )
+                }),
+        );
         let mut codex = ProviderHealth::new(ProviderInstanceId::default_for(ProviderId::Codex));
         codex.state = HealthState::Stale;
         let mut claude =
@@ -537,8 +579,31 @@ mod tests {
             &state,
             &ProviderInstanceId::default_for(ProviderId::ClaudeCode),
             None,
+            UsageDisplay::Used,
             Language::En,
         );
         assert_eq!(label, "Claude Code — Rebuilding");
+    }
+
+    #[test]
+    fn a_remaining_reading_counts_down_and_says_so() {
+        let mut state = DeckState::empty();
+        state.providers = vec![snapshot(ProviderId::ClaudeCode, 72.0)];
+        state.health = vec![ProviderHealth {
+            state: HealthState::Healthy,
+            ..ProviderHealth::new(ProviderInstanceId::default_for(ProviderId::ClaudeCode))
+        }];
+        let instance = ProviderInstanceId::default_for(ProviderId::ClaudeCode);
+
+        let used = summary_label(&state, &instance, None, UsageDisplay::Used, Language::En);
+        assert_eq!(used, "Claude Code — 72%");
+        let left = summary_label(
+            &state,
+            &instance,
+            None,
+            UsageDisplay::Remaining,
+            Language::Tr,
+        );
+        assert_eq!(left, "Claude Code — 28% kaldı");
     }
 }

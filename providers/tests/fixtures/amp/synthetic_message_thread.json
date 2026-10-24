@@ -1,0 +1,8 @@
+{
+  "id": "T-messages",
+  "messages": [
+    {"role": "user", "content": "redacted"},
+    {"role": "assistant", "messageId": 1, "usage": {"model": "claude-haiku-4-5-20251001", "inputTokens": 10, "outputTokens": 178, "cacheCreationInputTokens": 986, "cacheReadInputTokens": 11372, "timestamp": "2026-10-20T11:42:10.652Z"}},
+    {"role": "assistant", "messageId": 3, "usage": {"model": "claude-haiku-4-5-20251001", "inputTokens": 5, "outputTokens": 42, "cacheCreationInputTokens": 0, "cacheReadInputTokens": 12000, "timestamp": "2026-10-20T11:43:00.000Z"}}
+  ]
+}

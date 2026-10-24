@@ -1,0 +1,7 @@
+{"type":"session","version":3,"id":"5f0c2d1e","timestamp":"2026-10-20T09:00:00.000Z","cwd":"/work/project"}
+{"type":"model_change","id":"e0","parentId":null,"timestamp":"2026-10-20T09:00:01.000Z","provider":"anthropic","modelId":"claude-sonnet-4-5"}
+{"type":"message","id":"e1","parentId":"e0","timestamp":"2026-10-20T09:00:02.000Z","message":{"role":"user","content":[{"type":"text","text":"redacted"}]}}
+{"type":"message","id":"e2","parentId":"e1","timestamp":"2026-10-20T09:00:09.000Z","message":{"role":"assistant","provider":"anthropic","model":"claude-sonnet-4-5","usage":{"input":1200,"output":350,"cacheRead":8000,"cacheWrite":400,"totalTokens":9950,"cost":{"input":0.0036,"output":0.00525,"cacheRead":0.0024,"cacheWrite":0.0015,"total":0.5}}}}
+{"type":"message","id":"e3","parentId":"e2","timestamp":"2026-10-20T09:01:00.000Z","message":{"role":"assistant","provider":"openrouter","model":"vendor/custom-model","usage":{"input":900,"output":120,"cacheRead":0,"cacheWrite":0,"totalTokens":1020,"cost":{"total":0.012}}}}
+{"type":"message","id":"e4","parentId":"e3","timestamp":"2026-10-20T09:02:00.000Z","message":{"role":"assistant","provider":"local","model":"local-model","usage":{"input":500,"output":80,"cacheRead":0,"cacheWrite":0,"totalTokens":580,"cost":{"total":0}}}}
+{"type":"message","id":"e5","parentId":"e4","timestamp":"2026-10-20T09:03:00.000Z","message":{"role":"assistant","provider":"anthropic","model":"claude-sonnet-4-5","usage":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"totalTokens":0}}}

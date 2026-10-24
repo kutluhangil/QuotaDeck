@@ -127,6 +127,39 @@ export const de: Catalogue = {
     limitLabel: (window) => `${window}-Limit`,
   },
 
+  tabs: {
+    label: "Werkzeuge",
+    overview: "Übersicht",
+  },
+
+  detail: {
+    updated: (when) => `Aktualisiert ${when}`,
+    used: (percent) => `${percent} verbraucht`,
+    left: (percent) => `${percent} übrig`,
+    resetsIn: (duration) => `Zurückgesetzt in ${duration}`,
+    pace: (risk, percent) => `Tempo: ${risk} (${percent})`,
+    runsOut: (clock) => `aufgebraucht ${clock}`,
+    windowTitle: {
+      session: "Sitzung",
+      weekly: "Wöchentlich",
+      monthly: "Monatlich",
+      other: (minutes) => `${minutes} Min.`,
+    },
+    tokensOnly: "Dieses Werkzeug schreibt kein Limit. Nur Nutzung und Kosten.",
+    openTool: (name) => `${name} anzeigen`,
+  },
+
+  cost: {
+    title: "Kosten",
+    today: (amount, tokens) => `Heute: ${amount} · ${tokens} Token`,
+    todayTokens: (tokens) => `Heute: ${tokens} Token`,
+    month: (amount, tokens) => `Letzte 30 Tage: ${amount} · ${tokens} Token`,
+    monthTokens: (tokens) => `Letzte 30 Tage: ${tokens} Token`,
+    unpriced: (tokens) => `${tokens} Token zu unbekanntem Preis`,
+    none: "Keine Nutzung in den letzten 30 Tagen",
+    open: "Dashboard öffnen",
+  },
+
   quiet: {
     heading: (count) =>
       count === 1 ? "1 Werkzeug nicht installiert" : `${count} Werkzeuge nicht installiert`,
@@ -225,6 +258,11 @@ export const de: Catalogue = {
     "claude-code": "Claude Code",
     codex: "Codex",
     "copilot-cli": "Copilot CLI",
+    "gemini-cli": "Gemini CLI",
+    "pi-agent": "pi",
+    amp: "Amp",
+    droid: "Droid",
+    opencode: "OpenCode",
   },
 
   settings: {
@@ -240,6 +278,9 @@ export const de: Catalogue = {
     themeSystem: "Wie das System",
     themeDark: "Dunkel",
     themeLight: "Hell",
+    usageDisplayTitle: "Prozentangaben",
+    usageDisplayUsed: "Verbraucht",
+    usageDisplayRemaining: "Übrig",
     retentionTitle: "Auf diesem Gerät aufbewahrter Verlauf",
     retentionDays: (days) => `${days} Tage`,
     retentionHint:

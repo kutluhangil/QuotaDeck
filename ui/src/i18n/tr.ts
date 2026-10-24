@@ -127,6 +127,39 @@ export const tr: Catalogue = {
     limitLabel: (window) => `${window} limiti`,
   },
 
+  tabs: {
+    label: "Araçlar",
+    overview: "Genel bakış",
+  },
+
+  detail: {
+    updated: (when) => `Güncellendi: ${when}`,
+    used: (percent) => `${percent} kullanıldı`,
+    left: (percent) => `${percent} kaldı`,
+    resetsIn: (duration) => `${duration} sonra sıfırlanır`,
+    pace: (risk, percent) => `Hız: ${risk} (${percent})`,
+    runsOut: (clock) => `${clock} itibarıyla biter`,
+    windowTitle: {
+      session: "Oturum",
+      weekly: "Haftalık",
+      monthly: "Aylık",
+      other: (minutes) => `${minutes} dk`,
+    },
+    tokensOnly: "Bu araç limit yazmıyor. Yalnızca kullanım ve maliyet.",
+    openTool: (name) => `${name} göster`,
+  },
+
+  cost: {
+    title: "Maliyet",
+    today: (amount, tokens) => `Bugün: ${amount} · ${tokens} token`,
+    todayTokens: (tokens) => `Bugün: ${tokens} token`,
+    month: (amount, tokens) => `Son 30 gün: ${amount} · ${tokens} token`,
+    monthTokens: (tokens) => `Son 30 gün: ${tokens} token`,
+    unpriced: (tokens) => `fiyatı bilinmeyen ${tokens} token`,
+    none: "Son 30 günde kullanım yok",
+    open: "Paneli aç",
+  },
+
   quiet: {
     /** Turkish does not mark the plural after a numeral, so one form serves every count. */
     heading: (count) => `${count} araç kurulu değil`,
@@ -223,6 +256,11 @@ export const tr: Catalogue = {
     "claude-code": "Claude Code",
     codex: "Codex",
     "copilot-cli": "Copilot CLI",
+    "gemini-cli": "Gemini CLI",
+    "pi-agent": "pi",
+    amp: "Amp",
+    droid: "Droid",
+    opencode: "OpenCode",
   },
 
   settings: {
@@ -238,6 +276,9 @@ export const tr: Catalogue = {
     themeSystem: "Sistemle aynı",
     themeDark: "Koyu",
     themeLight: "Açık",
+    usageDisplayTitle: "Yüzdeler",
+    usageDisplayUsed: "Kullanılan",
+    usageDisplayRemaining: "Kalan",
     retentionTitle: "Bu cihazda tutulan geçmiş",
     retentionDays: (days) => `${days} gün`,
     retentionHint: "Daha uzun bir dönem seçmek yalnız yerel günlükleri yeniden okur. Son tam geçmiş bitene kadar kullanılabilir kalır.",

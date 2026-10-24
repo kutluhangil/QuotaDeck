@@ -14,6 +14,11 @@ export const PROVIDER_IDS = [
   "claude-code",
   "codex",
   "copilot-cli",
+  "gemini-cli",
+  "pi-agent",
+  "amp",
+  "droid",
+  "opencode",
 ] as const;
 
 export type ProviderId = (typeof PROVIDER_IDS)[number];
@@ -117,6 +122,10 @@ export interface ProviderSnapshot {
   today: TokenRollup;
   /** Equivalent API cost over the same rolling day as `today`. */
   todayCost: CostRange;
+  /** Usage over the rolling 30 days, or as much of them as retention keeps. */
+  month: TokenRollup;
+  /** Equivalent API cost over the same span as `month`. */
+  monthCost: CostRange;
   series: Bucket[];
   pace: PaceForecast[];
   lastActivity: string | null;
@@ -342,6 +351,9 @@ export type TrayMode = "glyph" | "compact" | "strip";
  */
 export type Locale = "system" | "en" | "tr" | "de" | "es";
 
+/** Whether a percentage counts what is spent or what is left. Every surface follows it. */
+export type UsageDisplay = "used" | "remaining";
+
 export interface Settings {
   trayMode: TrayMode;
   theme: "system" | "dark" | "light";
@@ -376,6 +388,7 @@ export interface Settings {
   /** Named instances, keyed by instance key. Default instances are never listed. */
   instances: Partial<Record<ProviderInstanceId, { label: string | null }>>;
   retentionDays: RetentionDays;
+  usageDisplay: UsageDisplay;
 }
 
 export interface ProviderDescriptor {

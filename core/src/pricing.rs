@@ -292,6 +292,26 @@ pub fn cost_of_at(model: &str, at: DateTime<Utc>, usage: &PricedUsage) -> Option
     cost_of_in(table(), model, at, usage)
 }
 
+/// Cost of one record from a tool that may write its own figure.
+///
+/// The embedded table wins where it covers the model, so one model costs the same whichever
+/// tool ran it. A tool's own figure is used only past that, and only when it is a positive
+/// number: several tools write `0` for "not computed", which is not the same as free.
+pub fn cost_or_recorded(
+    model: Option<&str>,
+    at: DateTime<Utc>,
+    usage: &PricedUsage,
+    recorded: Option<f64>,
+) -> crate::types::Cost {
+    if let Some(usd) = model.and_then(|model| cost_of_at(model, at, usage)) {
+        return crate::types::Cost::Usd(usd);
+    }
+    match recorded {
+        Some(usd) if usd.is_finite() && usd > 0.0 => crate::types::Cost::Usd(usd),
+        _ => crate::types::Cost::Unpriced,
+    }
+}
+
 fn cost_of_in(table: &Table, model: &str, at: DateTime<Utc>, usage: &PricedUsage) -> Option<f64> {
     let period = period_for_in(table, model, at)?;
     // Each request is priced on its own prompt length, cache hits included.

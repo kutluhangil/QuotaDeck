@@ -19,6 +19,9 @@ serde_json = "1"
 thiserror = "2"
 notify = "8"
 redb = "2"
+# OpenCode keeps its history in SQLite. Bundled so no system library is assumed; opened
+# read-only. Adds ~1.3 MB to the binary and no network code.
+rusqlite = { version = "0.40", features = ["bundled"] }
 criterion = "0.7"
 
 # Already in the tree through tao and wry; naming them here adds no crate and no bytes.

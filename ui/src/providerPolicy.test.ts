@@ -21,6 +21,7 @@ const settings: Settings = {
   instances: {},
   providerOrder: ["claude-code", "codex", "copilot-cli"],
   retentionDays: 32,
+  usageDisplay: "used",
 };
 
 describe("provider policy", () => {

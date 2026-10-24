@@ -612,6 +612,10 @@ pub struct ProviderSnapshot {
     /// model released after this build has no price, and a dollar total that quietly omits it
     /// is worse than one that admits the gap.
     pub today_cost: CostRange,
+    /// Usage over the rolling 30 days, or as much of them as retention keeps.
+    pub month: TokenRollup,
+    /// Equivalent API cost over the same span as `month`.
+    pub month_cost: CostRange,
     pub series: Vec<Bucket>,
     pub pace: Vec<PaceForecast>,
     pub last_activity: Option<DateTime<Utc>>,
@@ -648,6 +652,8 @@ impl ProviderSnapshot {
             windows: Vec::new(),
             today: TokenRollup::default(),
             today_cost: CostRange::default(),
+            month: TokenRollup::default(),
+            month_cost: CostRange::default(),
             series: Vec::new(),
             pace: Vec::new(),
             last_activity: None,

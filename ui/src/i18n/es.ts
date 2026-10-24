@@ -127,6 +127,39 @@ export const es: Catalogue = {
     limitLabel: (window) => `Límite ${window}`,
   },
 
+  tabs: {
+    label: "Herramientas",
+    overview: "Resumen",
+  },
+
+  detail: {
+    updated: (when) => `Actualizado ${when}`,
+    used: (percent) => `${percent} usado`,
+    left: (percent) => `${percent} restante`,
+    resetsIn: (duration) => `Se restablece en ${duration}`,
+    pace: (risk, percent) => `Ritmo: ${risk} (${percent})`,
+    runsOut: (clock) => `se agota ${clock}`,
+    windowTitle: {
+      session: "Sesión",
+      weekly: "Semanal",
+      monthly: "Mensual",
+      other: (minutes) => `${minutes} min`,
+    },
+    tokensOnly: "Esta herramienta no escribe ningún límite. Solo uso y coste.",
+    openTool: (name) => `Mostrar ${name}`,
+  },
+
+  cost: {
+    title: "Coste",
+    today: (amount, tokens) => `Hoy: ${amount} · ${tokens} tokens`,
+    todayTokens: (tokens) => `Hoy: ${tokens} tokens`,
+    month: (amount, tokens) => `Últimos 30 días: ${amount} · ${tokens} tokens`,
+    monthTokens: (tokens) => `Últimos 30 días: ${tokens} tokens`,
+    unpriced: (tokens) => `${tokens} tokens a precio desconocido`,
+    none: "Sin uso en los últimos 30 días",
+    open: "Abrir el panel",
+  },
+
   quiet: {
     heading: (count) =>
       count === 1 ? "1 herramienta sin instalar" : `${count} herramientas sin instalar`,
@@ -223,6 +256,11 @@ export const es: Catalogue = {
     "claude-code": "Claude Code",
     codex: "Codex",
     "copilot-cli": "Copilot CLI",
+    "gemini-cli": "Gemini CLI",
+    "pi-agent": "pi",
+    amp: "Amp",
+    droid: "Droid",
+    opencode: "OpenCode",
   },
 
   settings: {
@@ -238,6 +276,9 @@ export const es: Catalogue = {
     themeSystem: "Como el sistema",
     themeDark: "Oscuro",
     themeLight: "Claro",
+    usageDisplayTitle: "Porcentajes",
+    usageDisplayUsed: "Usado",
+    usageDisplayRemaining: "Restante",
     retentionTitle: "Historial guardado en este equipo",
     retentionDays: (days) => `${days} días`,
     retentionHint:

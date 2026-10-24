@@ -171,6 +171,44 @@ export const en = {
     limitLabel: (window: string) => `${window} limit`,
   },
 
+  /** The strip of tools across the top of the panel. */
+  tabs: {
+    label: "Tools",
+    overview: "Overview",
+  },
+
+  /** One tool's detail, the view a tab opens. */
+  detail: {
+    updated: (when: string) => `Updated ${when}`,
+    used: (percent: string) => `${percent} used`,
+    left: (percent: string) => `${percent} left`,
+    resetsIn: (duration: string) => `Resets in ${duration}`,
+    /** The projection, named as one: "Pace: at risk (92%) · runs out 17:42". */
+    pace: (risk: string, percent: string) => `Pace: ${risk} (${percent})`,
+    runsOut: (clock: string) => `runs out ${clock}`,
+    windowTitle: {
+      session: "Session",
+      weekly: "Weekly",
+      monthly: "Monthly",
+      other: (minutes: number) => `${minutes} min`,
+    } satisfies Record<WindowKind, string | ((minutes: number) => string)>,
+    /** For a tool that never writes a limit: what it does show, so the card is not a blank. */
+    tokensOnly: "This tool writes no limit. Usage and cost only.",
+    openTool: (name: string) => `Show ${name}`,
+  },
+
+  cost: {
+    title: "Cost",
+    today: (amount: string, tokens: string) => `Today: ${amount} · ${tokens} tokens`,
+    todayTokens: (tokens: string) => `Today: ${tokens} tokens`,
+    month: (amount: string, tokens: string) => `Last 30 days: ${amount} · ${tokens} tokens`,
+    monthTokens: (tokens: string) => `Last 30 days: ${tokens} tokens`,
+    /** Says outright that a dollar figure is short, rather than quietly under-reporting. */
+    unpriced: (tokens: string) => `${tokens} tokens at an unknown price`,
+    none: "No usage in the last 30 days",
+    open: "Open the dashboard",
+  },
+
   quiet: {
     /** Collapsed section for tools that are not on this machine at all. */
     heading: (count: number) =>
@@ -306,6 +344,11 @@ export const en = {
     "claude-code": "Claude Code",
     codex: "Codex",
     "copilot-cli": "Copilot CLI",
+    "gemini-cli": "Gemini CLI",
+    "pi-agent": "pi",
+    amp: "Amp",
+    droid: "Droid",
+    opencode: "OpenCode",
   } satisfies Record<ProviderId, string>,
 
   settings: {
@@ -321,6 +364,9 @@ export const en = {
     themeSystem: "Match system",
     themeDark: "Dark",
     themeLight: "Light",
+    usageDisplayTitle: "Percentages",
+    usageDisplayUsed: "Used",
+    usageDisplayRemaining: "Remaining",
     retentionTitle: "History kept on this device",
     retentionDays: (days: number) => `${days} days`,
     retentionHint: "Changing to a longer period rereads only local logs. The last complete history stays available until that finishes.",

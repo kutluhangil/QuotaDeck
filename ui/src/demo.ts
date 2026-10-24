@@ -102,6 +102,8 @@ export function demoDeck(): DeckState {
     // Codex names no model in its records and the price table covers Anthropic only, so its
     // tokens are counted and left unpriced rather than billed at zero.
     todayCost: { usd: 0, unpricedTokens: 133_183_948 },
+    month: { input: 0, output: 0, cacheRead: 0, cacheCreation: 0, reasoning: 0 },
+    monthCost: { usd: 0, unpricedTokens: 0 },
     // A weekly window, so the strip draws seven days.
     series: series(now, 7 * 86_400, 0x5eed),
     // Only the weekly window: the monthly reading is stale, and a projection is never built
@@ -150,6 +152,8 @@ export function demoDeck(): DeckState {
       reasoning: 0,
     },
     todayCost: { usd: 86.42, unpricedTokens: 0 },
+    month: { input: 0, output: 0, cacheRead: 0, cacheCreation: 0, reasoning: 0 },
+    monthCost: { usd: 0, unpricedTokens: 0 },
     // The card leads with the fullest window, which here is the weekly one at 95%.
     series: series(now, 7 * 86_400, 0xc0ffee),
     // The weekly limit runs out before it resets; the session one coasts. Both shapes are
@@ -182,6 +186,8 @@ export function demoDeck(): DeckState {
     windows: [],
     today: { input: 0, output: 0, cacheRead: 0, cacheCreation: 0, reasoning: 0 },
     todayCost: { usd: 0, unpricedTokens: 0 },
+    month: { input: 0, output: 0, cacheRead: 0, cacheCreation: 0, reasoning: 0 },
+    monthCost: { usd: 0, unpricedTokens: 0 },
     series: [],
     pace: [],
     lastActivity: iso(-13 * 86_400_000),

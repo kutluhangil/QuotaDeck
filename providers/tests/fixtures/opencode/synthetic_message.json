@@ -1,0 +1,1 @@
+{"id":"msg_file","sessionID":"ses_1","role":"assistant","modelID":"claude-haiku-4-5","providerID":"anthropic","path":{"cwd":"/work/other","root":"/work/other"},"cost":0,"tokens":{"input":50,"output":40,"reasoning":0,"cache":{"read":900,"write":0}},"time":{"created":1792400000000,"completed":1792400004000}}

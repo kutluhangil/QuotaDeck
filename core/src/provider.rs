@@ -47,11 +47,24 @@ impl ProviderConfig {
 #[derive(Debug, Clone, Copy)]
 pub struct LineSource<'a> {
     pub path: &'a Path,
+    /// When the file last changed, for documents that write totals without a time of their
+    /// own. `None` for appended logs, whose records carry their own timestamps.
+    pub modified: Option<DateTime<Utc>>,
 }
 
 impl<'a> LineSource<'a> {
     pub fn new(path: &'a Path) -> Self {
-        LineSource { path }
+        LineSource {
+            path,
+            modified: None,
+        }
+    }
+
+    pub fn with_modified(self, modified: DateTime<Utc>) -> Self {
+        LineSource {
+            modified: Some(modified),
+            ..self
+        }
     }
 
     /// Which of a tool's transcript shapes this file is, read from the path alone.
@@ -131,6 +144,51 @@ pub trait Provider: Send + Sync {
         out: &mut Vec<ParsedEvent>,
     ) -> Result<()>;
 
+    /// Path suffixes for whole documents the tool rewrites in place instead of appending to:
+    /// one JSON file per session or thread.
+    ///
+    /// Such a file has no byte offset to resume from, so it is read in full whenever its size
+    /// or modification time changes. Every event parsed from it must therefore carry a stable
+    /// [`crate::events::DedupKey`] or [`crate::events::Accounting::Cumulative`] totals; anything
+    /// else would count the whole document again on every rewrite.
+    fn document_globs(&self) -> &'static [&'static str] {
+        &[]
+    }
+
+    /// Parse one whole document matched by [`Provider::document_globs`]. Pure, like
+    /// [`Provider::parse_line`]: a document of no interest appends nothing.
+    fn parse_document(
+        &self,
+        source: &LineSource<'_>,
+        text: &str,
+        out: &mut Vec<ParsedEvent>,
+    ) -> Result<()> {
+        let _ = (source, text, out);
+        Ok(())
+    }
+
+    /// Path suffixes for databases the tool keeps its history in.
+    fn database_globs(&self) -> &'static [&'static str] {
+        &[]
+    }
+
+    /// Read the rows newer than `watermark` from one database matched by
+    /// [`Provider::database_globs`], read-only, and return the new watermark.
+    ///
+    /// The one method allowed to do I/O beyond a directory walk: a database cannot be handed
+    /// over as lines. It must read a bounded batch per call; the next refresh continues from
+    /// the returned watermark. Rows at the watermark itself may be handed over again, so each
+    /// event needs a stable [`crate::events::DedupKey`].
+    fn read_database(
+        &self,
+        path: &Path,
+        watermark: i64,
+        out: &mut Vec<ParsedEvent>,
+    ) -> Result<i64> {
+        let _ = (path, out);
+        Ok(watermark)
+    }
+
     /// Fold the accumulated events into what the UI renders.
     fn build_snapshot(
         &self,
@@ -195,6 +253,8 @@ pub fn snapshot_with_windows(
         installed: true,
         today: index.rolling(now, chrono::Duration::days(1)),
         today_cost: index.rolling_cost(now, chrono::Duration::days(1)),
+        month: index.rolling(now, chrono::Duration::days(30)),
+        month_cost: index.rolling_cost(now, chrono::Duration::days(30)),
         // Only the span the Horizon strip can draw. The index keeps a month of retention for
         // the rolling sums, and re-serialising all of it on every tick would put megabytes
         // per minute through the IPC channel for buckets nothing ever renders.

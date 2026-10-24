@@ -3,9 +3,14 @@
 //! One tool is one module here, registered in [`all`]. Nothing outside this crate should
 //! ever match on a specific provider.
 
+pub mod amp;
 pub mod claude_code;
 pub mod codex;
 pub mod copilot_cli;
+pub mod droid;
+pub mod gemini_cli;
+pub mod opencode;
+pub mod pi_agent;
 
 use quotadeck_core::provider::Provider;
 use quotadeck_core::types::ProviderId;
@@ -16,6 +21,11 @@ pub fn all() -> Vec<Box<dyn Provider>> {
         Box::new(claude_code::ClaudeCode),
         Box::new(codex::Codex),
         Box::new(copilot_cli::CopilotCli),
+        Box::new(gemini_cli::GeminiCli),
+        Box::new(pi_agent::PiAgent),
+        Box::new(amp::Amp),
+        Box::new(droid::Droid),
+        Box::new(opencode::OpenCode),
     ]
 }
 
@@ -57,7 +67,12 @@ mod tests {
             vec![
                 ProviderId::ClaudeCode,
                 ProviderId::Codex,
-                ProviderId::CopilotCli
+                ProviderId::CopilotCli,
+                ProviderId::GeminiCli,
+                ProviderId::PiAgent,
+                ProviderId::Amp,
+                ProviderId::Droid,
+                ProviderId::OpenCode,
             ]
         );
     }
@@ -74,7 +89,9 @@ mod tests {
     fn every_registered_provider_declares_at_least_one_glob() {
         for provider in all() {
             assert!(
-                !provider.watch_globs().is_empty(),
+                !provider.watch_globs().is_empty()
+                    || !provider.document_globs().is_empty()
+                    || !provider.database_globs().is_empty(),
                 "{} declares no watch globs",
                 provider.display_name()
             );

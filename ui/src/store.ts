@@ -24,8 +24,9 @@ import type {
   StartupState,
   StatuslineState,
   TrayMode,
+  UsageDisplay,
 } from "./types";
-import { thresholdsFor } from "./types";
+import { PROVIDER_IDS, thresholdsFor } from "./types";
 
 /** True inside the Tauri shell, false when the UI runs in a plain browser during design work. */
 export const inShell = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -78,6 +79,7 @@ interface DeckStore {
   setTrayMode: (mode: TrayMode) => void;
   setTheme: (theme: Settings["theme"]) => void;
   setLocale: (locale: Locale) => void;
+  setUsageDisplay: (display: UsageDisplay) => void;
   setDemo: (demo: boolean) => void;
   setRetentionDays: (days: RetentionDays) => Promise<void>;
   setAdditionalRoots: (provider: ProviderInstanceId, roots: string[]) => Promise<void>;
@@ -168,8 +170,9 @@ export const useDeck = create<DeckStore>((set, get) => ({
     disabledProviders: [],
     additionalRoots: {},
     instances: {},
-    providerOrder: ["claude-code", "codex", "copilot-cli"],
+    providerOrder: [...PROVIDER_IDS],
     retentionDays: 32,
+    usageDisplay: "used",
   },
   plans: [],
   providerCatalogue: [],
@@ -223,6 +226,19 @@ export const useDeck = create<DeckStore>((set, get) => ({
         set({ settings: next.value, settingsAction: null });
         applyTheme(next.value.theme);
       } else set({ settingsError: next.error, settingsAction: null });
+    });
+  },
+
+  setUsageDisplay: (usageDisplay) => {
+    if (!inShell) {
+      set({ settings: { ...get().settings, usageDisplay } });
+      return;
+    }
+    if (get().settingsAction !== null) return;
+    set({ settingsError: null, settingsAction: "usage-display" });
+    void call<Settings>("set_usage_display", { display: usageDisplay }).then((next) => {
+      if (next.ok) set({ settings: next.value, settingsAction: null });
+      else set({ settingsError: next.error, settingsAction: null });
     });
   },
 

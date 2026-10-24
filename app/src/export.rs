@@ -433,6 +433,8 @@ mod tests {
             }],
             today: tokens(10),
             today_cost: priced(1.0),
+            month: Default::default(),
+            month_cost: Default::default(),
             series: Vec::new(),
             pace: Vec::new(),
             last_activity: None,

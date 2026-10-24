@@ -255,6 +255,26 @@ pub enum Theme {
     Light,
 }
 
+/// Whether a percentage counts what is spent or what is left. Every surface follows the same
+/// choice, so the panel, the tray and the widget never disagree about which way a number runs.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum UsageDisplay {
+    #[default]
+    Used,
+    Remaining,
+}
+
+impl UsageDisplay {
+    /// A used percentage, turned the way the user reads it.
+    pub fn shown(self, used_percent: f32) -> f32 {
+        match self {
+            UsageDisplay::Used => used_percent,
+            UsageDisplay::Remaining => (100.0 - used_percent).max(0.0),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(try_from = "u16", into = "u16")]
 pub enum RetentionDays {
@@ -349,6 +369,7 @@ pub struct Settings {
     /// already has one.
     pub instances: BTreeMap<String, InstanceConfig>,
     pub retention_days: RetentionDays,
+    pub usage_display: UsageDisplay,
 }
 
 /// What the user chose about one named instance.
@@ -399,6 +420,7 @@ impl Default for Settings {
                 .map(|id| id.key().to_string())
                 .collect(),
             retention_days: RetentionDays::Days32,
+            usage_display: UsageDisplay::Used,
         }
     }
 }
@@ -418,6 +440,7 @@ struct SettingsDocument {
     additional_roots: BTreeMap<String, Vec<PathBuf>>,
     instances: BTreeMap<String, InstanceConfig>,
     retention_days: RetentionDays,
+    usage_display: UsageDisplay,
 }
 
 impl Default for SettingsDocument {
@@ -436,6 +459,7 @@ impl Default for SettingsDocument {
             additional_roots: settings.additional_roots,
             instances: settings.instances,
             retention_days: settings.retention_days,
+            usage_display: settings.usage_display,
         }
     }
 }
@@ -461,6 +485,7 @@ impl<'de> Deserialize<'de> for Settings {
             additional_roots: document.additional_roots,
             instances: document.instances,
             retention_days: document.retention_days,
+            usage_display: document.usage_display,
         };
         let ordered = settings
             .instance_ids(&quotadeck_providers::ids())
@@ -917,6 +942,10 @@ impl Deck {
 
     pub fn set_theme(&self, theme: Theme) -> Result<Settings> {
         self.update_settings(|settings| settings.theme = theme)
+    }
+
+    pub fn set_usage_display(&self, display: UsageDisplay) -> Result<Settings> {
+        self.update_settings(|settings| settings.usage_display = display)
     }
 
     pub fn set_locale(&self, locale: Locale) -> Result<Settings> {
@@ -1489,6 +1518,8 @@ mod tests {
                 .collect(),
             today: TokenRollup::default(),
             today_cost: Default::default(),
+            month: Default::default(),
+            month_cost: Default::default(),
             series: Vec::new(),
             pace: Vec::new(),
             last_activity: None,
@@ -1591,7 +1622,10 @@ mod tests {
         assert!(settings.disabled_providers.is_empty());
         assert_eq!(
             settings.provider_order,
-            vec!["claude-code", "codex", "copilot-cli"]
+            quotadeck_providers::ids()
+                .into_iter()
+                .map(|id| id.key())
+                .collect::<Vec<_>>()
         );
         assert_eq!(settings.retention_days, RetentionDays::Days32);
     }
@@ -1743,7 +1777,12 @@ mod tests {
             [
                 ProviderId::Codex,
                 ProviderId::ClaudeCode,
-                ProviderId::CopilotCli
+                ProviderId::CopilotCli,
+                ProviderId::GeminiCli,
+                ProviderId::PiAgent,
+                ProviderId::Amp,
+                ProviderId::Droid,
+                ProviderId::OpenCode,
             ]
             .map(ProviderInstanceId::default_for)
             .to_vec()
@@ -1776,14 +1815,17 @@ mod tests {
 
     #[test]
     fn additional_log_folders_are_kept_per_provider_and_deduplicated() {
-        let settings = serde_json::from_str::<Settings>(
-            r#"{"additionalRoots":{"codex":["/tmp/one","/tmp/one","/tmp/two"]}}"#,
-        )
+        // `temp_dir` because `/tmp` is not absolute on Windows.
+        let one = std::env::temp_dir().join("one");
+        let two = std::env::temp_dir().join("two");
+        let settings = serde_json::from_value::<Settings>(serde_json::json!(
+            {"additionalRoots": {"codex": [&one, &one, &two]}}
+        ))
         .expect("valid additional roots");
 
         assert_eq!(
             settings.additional_roots_for(&ProviderInstanceId::default_for(ProviderId::Codex)),
-            [PathBuf::from("/tmp/one"), PathBuf::from("/tmp/two")]
+            [one, two]
         );
         // A provider the user never configured has none, not a default folder.
         assert!(settings
@@ -1817,24 +1859,20 @@ mod tests {
     fn two_instances_of_one_tool_keep_separate_plans_thresholds_and_folders() {
         let work = work_codex();
         let default = ProviderInstanceId::default_for(ProviderId::Codex);
-        let settings: Settings = serde_json::from_str(
-            r#"{
-                "instances": {"codex#work": {"label": "Work"}},
-                "plans": {"codex#work": "pro"},
-                "alerts": {"codex": [50], "codex#work": [95]},
-                "additionalRoots": {"codex#work": ["/tmp"]}
-            }"#,
-        )
+        let folder = std::env::temp_dir();
+        let settings: Settings = serde_json::from_value(serde_json::json!({
+            "instances": {"codex#work": {"label": "Work"}},
+            "plans": {"codex#work": "pro"},
+            "alerts": {"codex": [50], "codex#work": [95]},
+            "additionalRoots": {"codex#work": [&folder]}
+        }))
         .expect("two instances of one tool");
 
         assert_eq!(settings.config_for(&work).plan_id.as_deref(), Some("pro"));
         assert_eq!(settings.config_for(&default).plan_id, None);
         assert_eq!(settings.thresholds_for(&work), vec![95]);
         assert_eq!(settings.thresholds_for(&default), vec![50]);
-        assert_eq!(
-            settings.additional_roots_for(&work),
-            [PathBuf::from("/tmp")]
-        );
+        assert_eq!(settings.additional_roots_for(&work), [folder]);
         assert!(settings.additional_roots_for(&default).is_empty());
         assert_eq!(settings.label_for(&work).as_deref(), Some("Work"));
         assert_eq!(settings.label_for(&default), None);
@@ -2410,7 +2448,7 @@ mod tests {
         let json = serde_json::to_string(&settings).expect("serialise settings");
         assert_eq!(
             json,
-            r#"{"trayMode":"compact","theme":"dark","locale":"system","plans":{"claude-code":"max-20x"},"alerts":{"codex":[85,95]},"mutedUntil":null,"demo":false,"disabledProviders":[],"providerOrder":["claude-code","codex","copilot-cli"],"additionalRoots":{},"instances":{},"retentionDays":32}"#
+            r#"{"trayMode":"compact","theme":"dark","locale":"system","plans":{"claude-code":"max-20x"},"alerts":{"codex":[85,95]},"mutedUntil":null,"demo":false,"disabledProviders":[],"providerOrder":["claude-code","codex","copilot-cli","gemini-cli","pi-agent","amp","droid","opencode"],"additionalRoots":{},"instances":{},"retentionDays":32,"usageDisplay":"used"}"#
         );
     }
 

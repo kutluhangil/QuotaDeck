@@ -1,0 +1,14 @@
+{
+  "assistantActiveTimeMs": 48211,
+  "model": "Claude-Sonnet-4.5-[Anthropic]",
+  "reasoningEffort": "medium",
+  "providerLock": "anthropic",
+  "providerLockTimestamp": "2026-10-20T11:30:00.000Z",
+  "tokenUsage": {
+    "inputTokens": 100,
+    "outputTokens": 50,
+    "cacheCreationTokens": 20,
+    "cacheReadTokens": 10,
+    "thinkingTokens": 5
+  }
+}
