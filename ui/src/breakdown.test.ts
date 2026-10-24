@@ -127,6 +127,7 @@ describe("modelsFor", () => {
       projectsDropped: 7,
       agents: [point(1, "subagent", 100, 1)],
       agentsDropped: 0,
+      sessions: [],
     },
   ];
 
@@ -155,6 +156,7 @@ describe("projectsFor", () => {
       projectsDropped: 7,
       agents: [point(1, "subagent", 100, 1)],
       agentsDropped: 0,
+      sessions: [],
     },
   ];
 

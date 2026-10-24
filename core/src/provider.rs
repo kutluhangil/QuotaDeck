@@ -255,6 +255,7 @@ pub fn snapshot_with_windows(
         today_cost: index.rolling_cost(now, chrono::Duration::days(1)),
         month: index.rolling(now, chrono::Duration::days(30)),
         month_cost: index.rolling_cost(now, chrono::Duration::days(30)),
+        live: index.live().cloned(),
         // Only the span the Horizon strip can draw. The index keeps a month of retention for
         // the rolling sums, and re-serialising all of it on every tick would put megabytes
         // per minute through the IPC channel for buckets nothing ever renders.

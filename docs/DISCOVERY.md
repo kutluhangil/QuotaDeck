@@ -188,6 +188,8 @@ A shim script was installed as `statusLine.command`, an interactive session was 
 - `rate_limits` is absent before the first API response of a session and absent for non-subscribers.
 - Installing the shim requires editing the user's `settings.json` `statusLine` key — a destructive-if-careless operation, because it **replaces** whatever the user already had (this machine had `npx -y ccstatusline@latest`).
 
+- Since 2026-10-24 the shim also keeps two allow-listed counter groups from the documented payload: `context_window.{used_percentage, context_window_size}` and `prompt_cache.{warm, ttl, expires_at, hit_ratio}`. They describe the running session's context fill and cache lifetime as Claude Code computed them, so the panel shows them as measured instead of estimating a cache TTL. Nothing else is copied: `pick` in `app/src/statusline_helper.rs` copies named fields only, and `cwd`, `session_id`, `transcript_path`, `model` and the rest never reach disk.
+
 **Design consequence:** the shim must chain, not replace. It writes the payload to our data directory, then execs the user's previous command with the same stdin and passes its stdout through. Onboarding shows the exact before/after of `settings.json`. Unsandboxed builds can apply and revert it after explicit consent; the App Store build keeps its home grant read-only and therefore offers a copyable manual command and manual restore instructions. This is an opt-in upgrade path, never automatic.
 
 ---

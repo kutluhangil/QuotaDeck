@@ -17,7 +17,7 @@
 //!
 //! The quota the Gemini CLI enforces is not written to these files, so this provider reports
 //! tokens only. The embedded price table covers no Gemini model, so cost stays unpriced
-//! rather than guessed.
+//! rather than guessed, unless the user priced a model in `pricing-overrides.json`.
 
 use std::path::PathBuf;
 
@@ -27,8 +27,10 @@ use quotadeck_core::events::{
     Accounting, AgentOrigin, DedupKey, EventIndex, ParsedEvent, UsageEvent,
 };
 use quotadeck_core::paths;
+use quotadeck_core::pricing::{cost_or_recorded, embedded_pricing_revision, PricedUsage};
 use quotadeck_core::provider::{default_snapshot, LineSource, Provider, ProviderConfig};
-use quotadeck_core::types::{Cost, ProviderId, ProviderSnapshot, TokenRollup};
+use quotadeck_core::sessions::SERIES_SEPARATOR;
+use quotadeck_core::types::{ProviderId, ProviderSnapshot, TokenRollup};
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -117,9 +119,22 @@ fn push_message(session: &str, value: Value, out: &mut Vec<ParsedEvent>) {
     if tokens.is_zero() {
         return;
     }
+    // No Gemini model is in the embedded table; a user's `pricing-overrides.json` can price one.
+    let priced = PricedUsage {
+        input: tokens.input,
+        output: tokens.output + tokens.reasoning,
+        cache_read: tokens.cache_read,
+        cache_write_5m: 0,
+        cache_write_1h: 0,
+    };
+    let cost = cost_or_recorded(message.model.as_deref(), at, &priced, None);
     let (series, accounting, dedup) = match message.id {
         // Each message is its own running total, so a rewrite adds only its growth.
-        Some(id) => (format!("{session}:{id}"), Accounting::Cumulative, None),
+        Some(id) => (
+            format!("{session}{SERIES_SEPARATOR}{id}"),
+            Accounting::Cumulative,
+            None,
+        ),
         None => (
             session.to_string(),
             Accounting::Incremental,
@@ -143,7 +158,7 @@ fn push_message(session: &str, value: Value, out: &mut Vec<ParsedEvent>) {
         origin: AgentOrigin::Main,
         tokens,
         requests: 0.0,
-        cost: Cost::Unpriced,
+        cost,
         accounting,
     }));
 }
@@ -155,6 +170,10 @@ impl Provider for GeminiCli {
 
     fn display_name(&self) -> &'static str {
         "Gemini CLI"
+    }
+
+    fn pricing_revision(&self) -> u64 {
+        embedded_pricing_revision()
     }
 
     fn discover_roots(&self) -> Vec<PathBuf> {
@@ -225,6 +244,7 @@ impl Provider for GeminiCli {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use quotadeck_core::types::Cost;
     use std::path::Path;
 
     fn fixture(name: &str) -> String {
@@ -258,7 +278,7 @@ mod tests {
         let usages = document("synthetic_session.json");
         assert_eq!(usages.len(), 2, "user turns and zero replies carry nothing");
         let first = &usages[0];
-        assert_eq!(first.session, "a1b2c3d4:m2");
+        assert_eq!(first.session, format!("a1b2c3d4{SERIES_SEPARATOR}m2"));
         assert!(matches!(first.accounting, Accounting::Cumulative));
         // total 16276 = input + output + thoughts + tool, so input held the cache.
         assert_eq!(first.tokens.input, 15327 - 11526 + 7);

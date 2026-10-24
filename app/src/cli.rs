@@ -13,7 +13,7 @@
 //! - **A conflict is a conflict.** `--json --csv` is an error rather than last-one-wins; a
 //!   script that accidentally passes both is asking for two different files.
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, NaiveDate, Utc};
 
 use crate::export::ExportFormat;
 
@@ -41,6 +41,26 @@ pub enum Command {
         provider: String,
     },
     Statusline(StatuslineAction),
+    Report(ReportArgs),
+}
+
+/// How a usage report groups what it read.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReportPeriod {
+    Daily,
+    Monthly,
+    Session,
+}
+
+/// `report` as words. Dates are calendar days in this machine's own zone: a daily report is
+/// about the days the user lived, not about UTC midnights.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReportArgs {
+    pub period: ReportPeriod,
+    pub provider: Option<String>,
+    pub since: Option<NaiveDate>,
+    pub until: Option<NaiveDate>,
+    pub json: bool,
 }
 
 /// The Claude Code status line shim. The two mutating verbs are spelled out rather than
@@ -94,6 +114,8 @@ commands:
                                   parse the logs and print what each window reports
   export [--json|--csv] [--provider <key>] [--from <RFC3339> --to <RFC3339>]
                                   the deck to stdout; exits 0 ok, 10 near, 11 hit, 20 unknown
+  report daily|monthly|session [--provider <key>] [--since <YYYY-MM-DD>] [--until <YYYY-MM-DD>] [--json]
+                                  tokens and equivalent cost per local day, month or session
   config show                     the stored settings, as they are on disk
   config validate                 resolve the stored settings against this build's registry
   guard                           resolved home, data directory and per-root access
@@ -133,6 +155,7 @@ pub fn parse(args: &[String]) -> Result<Command, CliError> {
         }
         "status" => parse_status(rest),
         "export" => parse_export(rest).map(Command::Export),
+        "report" => parse_report(rest).map(Command::Report),
         "config" => match subcommand(rest, "config", &["show", "validate"])? {
             ("show", rest) => {
                 reject_extra(rest, "config show")?;
@@ -224,6 +247,52 @@ fn parse_export(args: &[String]) -> Result<ExportArgs, CliError> {
     })
 }
 
+fn parse_report(args: &[String]) -> Result<ReportArgs, CliError> {
+    let (period, rest) = subcommand(args, "report", &["daily", "monthly", "session"])?;
+    let period = match period {
+        "daily" => ReportPeriod::Daily,
+        "monthly" => ReportPeriod::Monthly,
+        _ => ReportPeriod::Session,
+    };
+    let mut report = ReportArgs {
+        period,
+        provider: None,
+        since: None,
+        until: None,
+        json: false,
+    };
+    let mut rest = rest.iter();
+    while let Some(arg) = rest.next() {
+        match arg.as_str() {
+            "--json" => report.json = true,
+            "--provider" => report.provider = Some(flag_value(&mut rest, "--provider")?),
+            "--since" => {
+                report.since = Some(parse_day("--since", &flag_value(&mut rest, "--since")?)?)
+            }
+            "--until" => {
+                report.until = Some(parse_day("--until", &flag_value(&mut rest, "--until")?)?)
+            }
+            other => return Err(unknown_option("report", other)),
+        }
+    }
+    if let (Some(since), Some(until)) = (report.since, report.until) {
+        if since > until {
+            return Err(CliError::new(format!(
+                "--since {since} is after --until {until}"
+            )));
+        }
+    }
+    Ok(report)
+}
+
+fn parse_day(flag: &str, value: &str) -> Result<NaiveDate, CliError> {
+    NaiveDate::parse_from_str(value, "%Y-%m-%d").map_err(|error| {
+        CliError::new(format!(
+            "{flag} must be a date as YYYY-MM-DD; received {value:?}: {error}"
+        ))
+    })
+}
+
 /// An RFC3339 instant, timezone included. A bare date is refused rather than assumed to be UTC:
 /// the caller's own midnight is the one they meant, and this process cannot know which it is.
 fn parse_rfc3339(flag: &str, value: &str) -> Result<DateTime<Utc>, CliError> {
@@ -302,6 +371,47 @@ mod tests {
         parse(&args.iter().map(|a| (*a).to_string()).collect::<Vec<_>>())
             .expect_err("the arguments are refused")
             .message
+    }
+
+    #[test]
+    fn report_takes_a_period_local_dates_and_a_format() {
+        assert_eq!(
+            parsed(&[
+                "report",
+                "daily",
+                "--since",
+                "2026-10-01",
+                "--until",
+                "2026-10-24",
+                "--json"
+            ]),
+            Command::Report(ReportArgs {
+                period: ReportPeriod::Daily,
+                provider: None,
+                since: NaiveDate::from_ymd_opt(2026, 10, 1),
+                until: NaiveDate::from_ymd_opt(2026, 10, 24),
+                json: true,
+            })
+        );
+        assert!(matches!(
+            parsed(&["report", "session", "--provider", "codex"]),
+            Command::Report(ReportArgs {
+                period: ReportPeriod::Session,
+                ..
+            })
+        ));
+        assert!(rejected(&["report"]).contains("daily, monthly, session"));
+        assert!(rejected(&["report", "weekly"]).contains("weekly"));
+        assert!(rejected(&["report", "daily", "--since", "24.10.2026"]).contains("YYYY-MM-DD"));
+        assert!(rejected(&[
+            "report",
+            "daily",
+            "--since",
+            "2026-10-24",
+            "--until",
+            "2026-10-01"
+        ])
+        .contains("after"));
     }
 
     fn instant(text: &str) -> DateTime<Utc> {

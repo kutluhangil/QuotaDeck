@@ -234,6 +234,8 @@ pub struct ProviderHistory {
     pub agents: Vec<BreakdownPoint>,
     /// Kept for symmetry with the other two dimensions; three fixed labels cannot overflow.
     pub agents_dropped: u64,
+    /// The most recent sessions, newest first, one row each.
+    pub sessions: Vec<quotadeck_core::sessions::SessionSummary>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -370,6 +372,9 @@ pub struct Settings {
     pub instances: BTreeMap<String, InstanceConfig>,
     pub retention_days: RetentionDays,
     pub usage_display: UsageDisplay,
+    /// Whether the panel hotkey is registered. Off until asked for: a global shortcut takes a
+    /// key combination away from every other app.
+    pub global_shortcut: bool,
 }
 
 /// What the user chose about one named instance.
@@ -421,6 +426,7 @@ impl Default for Settings {
                 .collect(),
             retention_days: RetentionDays::Days32,
             usage_display: UsageDisplay::Used,
+            global_shortcut: false,
         }
     }
 }
@@ -441,6 +447,7 @@ struct SettingsDocument {
     instances: BTreeMap<String, InstanceConfig>,
     retention_days: RetentionDays,
     usage_display: UsageDisplay,
+    global_shortcut: bool,
 }
 
 impl Default for SettingsDocument {
@@ -460,6 +467,7 @@ impl Default for SettingsDocument {
             instances: settings.instances,
             retention_days: settings.retention_days,
             usage_display: settings.usage_display,
+            global_shortcut: settings.global_shortcut,
         }
     }
 }
@@ -486,6 +494,7 @@ impl<'de> Deserialize<'de> for Settings {
             instances: document.instances,
             retention_days: document.retention_days,
             usage_display: document.usage_display,
+            global_shortcut: document.global_shortcut,
         };
         let ordered = settings
             .instance_ids(&quotadeck_providers::ids())
@@ -942,6 +951,10 @@ impl Deck {
 
     pub fn set_theme(&self, theme: Theme) -> Result<Settings> {
         self.update_settings(|settings| settings.theme = theme)
+    }
+
+    pub fn set_global_shortcut(&self, enabled: bool) -> Result<Settings> {
+        self.update_settings(|settings| settings.global_shortcut = enabled)
     }
 
     pub fn set_usage_display(&self, display: UsageDisplay) -> Result<Settings> {
@@ -1520,6 +1533,7 @@ mod tests {
             today_cost: Default::default(),
             month: Default::default(),
             month_cost: Default::default(),
+            live: None,
             series: Vec::new(),
             pace: Vec::new(),
             last_activity: None,
@@ -2052,6 +2066,7 @@ mod tests {
                 projects_dropped: 0,
                 agents: Vec::new(),
                 agents_dropped: 0,
+                sessions: Vec::new(),
             },
             ProviderHistory {
                 id: ProviderInstanceId::default_for(ProviderId::Codex),
@@ -2062,6 +2077,7 @@ mod tests {
                 projects_dropped: 0,
                 agents: Vec::new(),
                 agents_dropped: 0,
+                sessions: Vec::new(),
             },
         ]);
         let settings = Settings {
@@ -2448,7 +2464,7 @@ mod tests {
         let json = serde_json::to_string(&settings).expect("serialise settings");
         assert_eq!(
             json,
-            r#"{"trayMode":"compact","theme":"dark","locale":"system","plans":{"claude-code":"max-20x"},"alerts":{"codex":[85,95]},"mutedUntil":null,"demo":false,"disabledProviders":[],"providerOrder":["claude-code","codex","copilot-cli","gemini-cli","pi-agent","amp","droid","opencode"],"additionalRoots":{},"instances":{},"retentionDays":32,"usageDisplay":"used"}"#
+            r#"{"trayMode":"compact","theme":"dark","locale":"system","plans":{"claude-code":"max-20x"},"alerts":{"codex":[85,95]},"mutedUntil":null,"demo":false,"disabledProviders":[],"providerOrder":["claude-code","codex","copilot-cli","gemini-cli","pi-agent","amp","droid","opencode"],"additionalRoots":{},"instances":{},"retentionDays":32,"usageDisplay":"used","globalShortcut":false}"#
         );
     }
 

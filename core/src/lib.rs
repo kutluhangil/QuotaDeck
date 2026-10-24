@@ -22,6 +22,7 @@ pub mod plan;
 pub mod pricing;
 pub mod provider;
 pub mod reader;
+pub mod sessions;
 pub mod store;
 pub mod tail;
 pub mod types;

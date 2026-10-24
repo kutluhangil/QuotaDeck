@@ -294,6 +294,7 @@ mod tests {
                 today_cost: CostRange::default(),
                 month: Default::default(),
                 month_cost: Default::default(),
+                live: None,
                 series: Vec::new(),
                 pace: Vec::new(),
                 last_activity: None,

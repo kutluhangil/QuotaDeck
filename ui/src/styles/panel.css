@@ -313,25 +313,6 @@
   min-inline-size: 0;
 }
 
-.card__foot {
-  display: flex;
-  justify-content: space-between;
-  gap: var(--step-2);
-  color: var(--ink-tertiary);
-  padding-block-start: var(--step-1);
-  border-block-start: var(--hairline) solid var(--rule);
-}
-
-.card__foot-right {
-  text-align: end;
-  white-space: nowrap;
-}
-
-/* The part of a dollar figure that admits what it could not price. Recedes, but is there. */
-.card__foot-note {
-  color: var(--ink-tertiary);
-}
-
 .card__setup {
   display: block;
   margin-block-start: var(--step-2);
@@ -655,37 +636,6 @@
   color: var(--ink-tertiary);
 }
 
-/*
- * Narrowing the panel to one tool. Drawn only from two tools up, so the row never appears just
- * to offer a choice that cannot change anything.
- */
-.filters {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--step-1);
-}
-
-.filters__chip {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: var(--step-1) var(--step-2);
-  border: var(--hairline) solid transparent;
-  border-radius: var(--radius);
-  color: var(--ink-tertiary);
-}
-
-.filters__chip:hover {
-  color: var(--ink-secondary);
-  background: var(--surface-hull);
-}
-
-.filters__chip[aria-pressed="true"] {
-  color: var(--ink-primary);
-  background: var(--surface-raised);
-  border-color: var(--rule);
-}
-
 .quiet {
   border: var(--hairline) solid var(--rule);
   border-radius: var(--radius);
@@ -991,4 +941,292 @@
   background: var(--surface-raised);
   border-inline-start: 2px solid var(--ink-tertiary);
   border-radius: var(--radius);
+}
+
+/*
+ * The tool strip across the top. Each tab: a monogram in the tool's identity hue, its name,
+ * and a hairline meter of its fullest limit. Scrolls sideways rather than wrapping, so the
+ * panel's height does not depend on how many tools are installed.
+ */
+.tabs {
+  display: flex;
+  gap: var(--step-1);
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding-block-end: var(--step-1);
+  border-block-end: var(--hairline) solid var(--rule);
+}
+
+.tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.tab {
+  flex: 0 0 auto;
+  min-inline-size: 56px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: var(--step-1) var(--step-2);
+  border-radius: var(--radius);
+  color: var(--ink-tertiary);
+}
+
+.tab:hover {
+  color: var(--ink-secondary);
+  background: var(--surface-hull);
+}
+
+.tab[aria-selected="true"] {
+  color: var(--ink-primary);
+  background: var(--surface-raised);
+}
+
+.tab:focus-visible {
+  outline: 2px solid var(--measured);
+  outline-offset: -2px;
+}
+
+.tab__mark {
+  inline-size: 20px;
+  block-size: 20px;
+  display: grid;
+  place-items: center;
+  border-radius: 6px;
+  font: 600 11px/1 var(--face-ui);
+  color: var(--surface-abyss);
+  background: var(--id-0);
+}
+
+.tab__mark[data-hue="1"] {
+  background: var(--id-1);
+}
+
+.tab__mark[data-hue="2"] {
+  background: var(--id-2);
+}
+
+.tab__mark[data-hue="3"] {
+  background: var(--id-3);
+}
+
+/* Four squares: every tool at once. */
+.tab__mark--overview {
+  background:
+    linear-gradient(var(--ink-secondary) 0 0) 3px 3px / 6px 6px no-repeat,
+    linear-gradient(var(--ink-secondary) 0 0) 11px 3px / 6px 6px no-repeat,
+    linear-gradient(var(--ink-secondary) 0 0) 3px 11px / 6px 6px no-repeat,
+    linear-gradient(var(--ink-secondary) 0 0) 11px 11px / 6px 6px no-repeat,
+    var(--surface-hull);
+}
+
+.tab__name {
+  white-space: nowrap;
+  max-inline-size: 12ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tab__meter {
+  display: block;
+  inline-size: 100%;
+  block-size: 3px;
+  border-radius: 2px;
+  background: var(--track);
+  overflow: hidden;
+}
+
+.tab__meter-fill {
+  display: block;
+  block-size: 100%;
+  background: var(--level-ample);
+}
+
+.tab__meter-fill[data-level="tight"] {
+  background: var(--level-tight);
+}
+
+.tab__meter-fill[data-level="critical"] {
+  background: var(--level-critical);
+}
+
+.panel__detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--step-2);
+}
+
+/* One tool, as its tab opens it. */
+.detail {
+  background: var(--surface-hull);
+  border: var(--hairline) solid var(--rule);
+  border-radius: var(--radius);
+  padding: var(--step-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--step-3);
+}
+
+.detail__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--step-2);
+}
+
+.detail__title {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-inline-size: 0;
+}
+
+.detail__name {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--step-2);
+  color: var(--ink-primary);
+}
+
+.detail__updated,
+.detail__plan,
+.detail__note {
+  color: var(--ink-tertiary);
+}
+
+.detail__note {
+  margin: 0;
+}
+
+.detail__head-right {
+  display: flex;
+  align-items: center;
+  gap: var(--step-2);
+  flex: 0 0 auto;
+}
+
+.detail__blocks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--step-3);
+}
+
+.block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.block__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--ink-secondary);
+}
+
+.block__foot {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--step-2);
+  color: var(--ink-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.block__value {
+  color: var(--ink-secondary);
+}
+
+/* A projection, said as one: never drawn as a bar of its own, only coloured by its risk. */
+.detail__pace {
+  margin: 0;
+  color: var(--ink-secondary);
+}
+
+.detail__pace[data-level="tight"] {
+  color: var(--level-tight);
+}
+
+.detail__pace[data-level="critical"] {
+  color: var(--level-critical);
+}
+
+.cost {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-block-start: var(--step-2);
+  border-block-start: var(--hairline) solid var(--rule);
+}
+
+.cost__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--ink-secondary);
+}
+
+.cost__open {
+  color: var(--ink-tertiary);
+  padding: 0 var(--step-2);
+  border-radius: var(--radius);
+  font-size: 16px;
+  line-height: 1;
+}
+
+.cost__open:hover {
+  color: var(--ink-primary);
+  background: var(--surface-raised);
+}
+
+.cost__line {
+  margin: 0;
+  color: var(--ink-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Every tool, one row each; a row opens that tool's tab. */
+.overview {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--step-1);
+}
+
+.overview__row {
+  inline-size: 100%;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 6px;
+  text-align: start;
+  padding: var(--step-3);
+  background: var(--surface-hull);
+  border: var(--hairline) solid var(--rule);
+  border-radius: var(--radius);
+}
+
+.overview__row:hover {
+  background: var(--surface-raised);
+}
+
+.overview__name {
+  display: flex;
+  align-items: center;
+  gap: var(--step-2);
+  color: var(--ink-primary);
+}
+
+.overview__detail {
+  color: var(--ink-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.detail .card__burst {
+  margin: 0;
 }

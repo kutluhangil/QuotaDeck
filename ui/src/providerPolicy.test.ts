@@ -22,11 +22,21 @@ const settings: Settings = {
   providerOrder: ["claude-code", "codex", "copilot-cli"],
   retentionDays: 32,
   usageDisplay: "used",
+  globalShortcut: false,
 };
 
 describe("provider policy", () => {
   it("exposes only provider ids compiled into the backend registry", () => {
-    expect(PROVIDER_IDS).toEqual(["claude-code", "codex", "copilot-cli"]);
+    expect(PROVIDER_IDS).toEqual([
+      "claude-code",
+      "codex",
+      "copilot-cli",
+      "gemini-cli",
+      "pi-agent",
+      "amp",
+      "droid",
+      "opencode",
+    ]);
   });
 
   it("rolls an optimistic update back when persistence fails", async () => {

@@ -15,6 +15,7 @@ import type {
   ProviderHistory,
   ProviderPlans,
   ProviderSnapshot,
+  SessionSummary,
   StatuslineState,
 } from "./types";
 
@@ -102,8 +103,14 @@ export function demoDeck(): DeckState {
     // Codex names no model in its records and the price table covers Anthropic only, so its
     // tokens are counted and left unpriced rather than billed at zero.
     todayCost: { usd: 0, unpricedTokens: 133_183_948 },
-    month: { input: 0, output: 0, cacheRead: 0, cacheCreation: 0, reasoning: 0 },
-    monthCost: { usd: 0, unpricedTokens: 0 },
+    month: {
+      input: 412_880_114,
+      output: 21_480_330,
+      cacheRead: 2_870_114_052,
+      cacheCreation: 0,
+      reasoning: 6_104_772,
+    },
+    monthCost: { usd: 0, unpricedTokens: 3_304_474_496 },
     // A weekly window, so the strip draws seven days.
     series: series(now, 7 * 86_400, 0x5eed),
     // Only the weekly window: the monthly reading is stale, and a projection is never built
@@ -152,8 +159,23 @@ export function demoDeck(): DeckState {
       reasoning: 0,
     },
     todayCost: { usd: 86.42, unpricedTokens: 0 },
-    month: { input: 0, output: 0, cacheRead: 0, cacheCreation: 0, reasoning: 0 },
-    monthCost: { usd: 0, unpricedTokens: 0 },
+    month: {
+      input: 9_412_007,
+      output: 3_120_455,
+      cacheRead: 201_334_800,
+      cacheCreation: 4_870_112,
+      reasoning: 0,
+    },
+    monthCost: { usd: 1_240.18, unpricedTokens: 0 },
+    live: {
+      observedAt: iso(-60_000),
+      contextUsedPercent: 63,
+      contextWindowSize: 200_000,
+      cacheWarm: true,
+      cacheExpiresAt: iso(42 * 60_000),
+      cacheTtl: "1h",
+      cacheHitRatio: 0.91,
+    },
     // The card leads with the fullest window, which here is the weekly one at 95%.
     series: series(now, 7 * 86_400, 0xc0ffee),
     // The weekly limit runs out before it resets; the session one coasts. Both shapes are
@@ -194,9 +216,32 @@ export function demoDeck(): DeckState {
     unavailable: "never-reported",
   };
 
+  // A tool that writes no limit at all: tokens and cost only, never a guessed percentage.
+  const opencode: ProviderSnapshot = {
+    id: "opencode",
+    instance: "opencode",
+    label: null,
+    installed: true,
+    windows: [],
+    today: { input: 182_400, output: 41_020, cacheRead: 1_920_550, cacheCreation: 60_120, reasoning: 0 },
+    todayCost: { usd: 3.86, unpricedTokens: 0 },
+    month: {
+      input: 3_480_220,
+      output: 822_904,
+      cacheRead: 39_112_870,
+      cacheCreation: 1_204_400,
+      reasoning: 0,
+    },
+    monthCost: { usd: 71.4, unpricedTokens: 2_210_000 },
+    series: series(Date.now(), 86_400, 31),
+    pace: [],
+    lastActivity: iso(-3_600_000),
+    unavailable: "never-reported",
+  };
+
   return {
-    providers: [claude, codex, copilot],
-    health: ["claude-code", "codex", "copilot-cli"].map((provider) => ({
+    providers: [claude, codex, copilot, opencode],
+    health: ["claude-code", "codex", "copilot-cli", "opencode"].map((provider) => ({
       provider: provider as ProviderSnapshot["id"],
       state: "healthy" as const,
       lastAttemptAt: iso(0),
@@ -290,6 +335,34 @@ function split(
   return points;
 }
 
+/** A session that ended `hoursAgo` hours ago after running for `hours`. */
+function demoSession(
+  session: string,
+  hoursAgo: number,
+  hours: number,
+  model: string,
+  project: string,
+  usd: number,
+): SessionSummary {
+  const last = Date.now() - hoursAgo * 3_600_000;
+  const tokens = Math.round(usd * 160_000);
+  return {
+    session,
+    startedAt: new Date(last - hours * 3_600_000).toISOString(),
+    lastAt: new Date(last).toISOString(),
+    model,
+    project,
+    tokens: {
+      input: Math.round(tokens * 0.04),
+      output: Math.round(tokens * 0.02),
+      cacheRead: Math.round(tokens * 0.9),
+      cacheCreation: Math.round(tokens * 0.04),
+      reasoning: 0,
+    },
+    cost: { usd, unpricedTokens: 0 },
+  };
+}
+
 export function demoHistory(): ProviderHistory[] {
   const claude = hourly(30, 0xc0ffee, 1.4e-6);
   // Codex names no model in any record, so its history carries tokens and no dollars.
@@ -320,6 +393,11 @@ export function demoHistory(): ProviderHistory[] {
         ["workflow", 0.14],
       ]),
       agentsDropped: 0,
+      sessions: [
+        demoSession("c1", 0.4, 2.6, "claude-sonnet-4-5", "/Volumes/Vault/QuotaDeck", 61.2),
+        demoSession("c2", 5.5, 1.1, "claude-opus-4-8", "/Volumes/Vault/Archives/app", 18.9),
+        demoSession("c3", 26, 3.4, "claude-sonnet-4-5", "/Volumes/Vault/Ledger/app", 33.0),
+      ],
     },
     {
       id: "codex",
@@ -333,6 +411,7 @@ export function demoHistory(): ProviderHistory[] {
       projectsDropped: 0,
       agents: split(codex, [["main", 1]]),
       agentsDropped: 0,
+      sessions: [],
     },
     {
       id: "copilot-cli",
@@ -343,6 +422,7 @@ export function demoHistory(): ProviderHistory[] {
       projectsDropped: 0,
       agents: [],
       agentsDropped: 0,
+      sessions: [],
     },
   ];
 }

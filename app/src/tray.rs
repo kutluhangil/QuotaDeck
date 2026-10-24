@@ -407,6 +407,16 @@ fn toggle_panel<R: Runtime>(app: &AppHandle<R>, deck: &Deck) -> TrayResult {
     Ok(())
 }
 
+/// The panel hotkey: the same toggle a tray click performs.
+pub fn toggle_from_shortcut<R: Runtime>(app: &AppHandle<R>) {
+    let Some(deck) = app.try_state::<Deck>() else {
+        return;
+    };
+    if let Err(error) = toggle_panel(app, &deck) {
+        eprintln!("quotadeck: panel shortcut: {error}");
+    }
+}
+
 fn show_panel<R: Runtime>(app: &AppHandle<R>) -> TrayResult {
     let deck = app.try_state::<Deck>();
     if let Some(deck) = &deck {
@@ -475,6 +485,7 @@ mod tests {
             today_cost: CostRange::default(),
             month: Default::default(),
             month_cost: Default::default(),
+            live: None,
             series: Vec::new(),
             pace: Vec::new(),
             last_activity: None,

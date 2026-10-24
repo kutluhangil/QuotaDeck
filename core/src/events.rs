@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::breakdown::BreakdownSeries;
 use crate::error::{Error, Result};
+use crate::sessions::RecentSessions;
 use crate::types::{
     Bucket, BucketSeries, Confidence, Cost, CostRange, QuotaWindow, TokenRollup, WindowKind,
 };
@@ -169,6 +170,28 @@ pub enum ParsedEvent {
     Usage(UsageEvent),
     Limit(LimitEvent),
     Session(SessionEvent),
+    Live(LiveReading),
+}
+
+/// What the tool said about the session running right now: how full its context window is and
+/// whether its prompt cache is still warm.
+///
+/// Not a quota and never drawn as one. Only the newest reading is kept; an older one says
+/// nothing about the session that is running now.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LiveReading {
+    pub observed_at: DateTime<Utc>,
+    pub context_used_percent: Option<f32>,
+    pub context_window_size: Option<u64>,
+    /// Whether the cached prompt prefix was within its lifetime at `observed_at`.
+    pub cache_warm: Option<bool>,
+    /// When the cached prefix goes cold, as the tool computed it.
+    pub cache_expires_at: Option<DateTime<Utc>>,
+    /// `"5m"` or `"1h"`, verbatim.
+    pub cache_ttl: Option<String>,
+    /// Share of this session's prompt served from the cache, 0–1.
+    pub cache_hit_ratio: Option<f32>,
 }
 
 /// Accumulates parsed events into everything a snapshot needs.
@@ -195,6 +218,9 @@ pub struct EventIndex {
     /// unlike the other two dimensions this one cannot overflow — it exists to answer "how
     /// much of this did anybody actually ask for", which is what the burst rule reads.
     agents: BreakdownSeries,
+    /// One running row per recent session, for the dashboard's session list.
+    sessions: RecentSessions,
+    live: Option<LiveReading>,
     /// Newest observation per (limit_id, window_minutes).
     limits: BTreeMap<(String, u32), LimitEvent>,
     last_activity: Option<DateTime<Utc>>,
@@ -242,6 +268,11 @@ pub struct EventIndexCheckpoint {
     /// Defaulted on read for the same reason as `models`.
     #[serde(default)]
     agents: BreakdownSeries,
+    /// Defaulted on read for the same reason as `models`.
+    #[serde(default)]
+    sessions: RecentSessions,
+    #[serde(default)]
+    live: Option<LiveReading>,
     limits: Vec<LimitEvent>,
     last_activity: Option<DateTime<Utc>>,
     duplicates_skipped: u64,
@@ -259,6 +290,8 @@ impl EventIndex {
             projects: BreakdownSeries::new(),
             session_projects: HashMap::new(),
             agents: BreakdownSeries::new(),
+            sessions: RecentSessions::default(),
+            live: None,
             limits: BTreeMap::new(),
             last_activity: None,
             retention,
@@ -287,7 +320,23 @@ impl EventIndex {
             ParsedEvent::Limit(limit) => self.ingest_limit(limit),
             ParsedEvent::Usage(usage) => self.ingest_usage(usage),
             ParsedEvent::Session(session) => self.ingest_session(session),
+            ParsedEvent::Live(live) => self.ingest_live(live),
         }
+    }
+
+    fn ingest_live(&mut self, live: LiveReading) -> bool {
+        match &self.live {
+            Some(existing) if existing.observed_at >= live.observed_at => false,
+            _ => {
+                self.live = Some(live);
+                true
+            }
+        }
+    }
+
+    /// The newest reading about the running session, if the tool wrote one.
+    pub fn live(&self) -> Option<&LiveReading> {
+        self.live.as_ref()
     }
 
     /// Remember which project a session belongs to. Returns `false` when nothing changed.
@@ -403,6 +452,14 @@ impl EventIndex {
                     .map(|entry| entry.project.as_str())
             });
             self.projects.add(usage.at, project, &delta, cost);
+            self.sessions.add(
+                &usage.session,
+                usage.at,
+                usage.model.as_deref(),
+                project,
+                &delta,
+                cost,
+            );
             self.agents
                 .add(usage.at, Some(usage.origin.key()), &delta, cost);
         }
@@ -423,6 +480,7 @@ impl EventIndex {
         self.models.trim_before(cutoff);
         self.projects.trim_before(cutoff);
         self.agents.trim_before(cutoff);
+        self.sessions.trim_before(cutoff);
         let retained = self.seen_by_time.split_off(&cutoff.timestamp());
         let expired = std::mem::replace(&mut self.seen_by_time, retained);
         for fingerprints in expired.into_values() {
@@ -490,6 +548,10 @@ impl EventIndex {
         &self.agents
     }
 
+    pub fn sessions(&self) -> &RecentSessions {
+        &self.sessions
+    }
+
     pub fn last_activity(&self) -> Option<DateTime<Utc>> {
         self.last_activity
     }
@@ -554,6 +616,8 @@ impl EventIndex {
             projects: self.projects.clone(),
             session_projects,
             agents: self.agents.clone(),
+            sessions: self.sessions.clone(),
+            live: self.live.clone(),
             limits: self.limits.values().cloned().collect(),
             last_activity: self.last_activity,
             duplicates_skipped: self.duplicates_skipped,
@@ -636,6 +700,8 @@ impl EventIndex {
             projects: checkpoint.projects,
             session_projects,
             agents: checkpoint.agents,
+            sessions: checkpoint.sessions,
+            live: checkpoint.live,
             limits,
             last_activity: checkpoint.last_activity,
             retention: ChronoDuration::seconds(checkpoint.retention_seconds),

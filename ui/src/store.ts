@@ -80,6 +80,7 @@ interface DeckStore {
   setTheme: (theme: Settings["theme"]) => void;
   setLocale: (locale: Locale) => void;
   setUsageDisplay: (display: UsageDisplay) => void;
+  setGlobalShortcut: (enabled: boolean) => void;
   setDemo: (demo: boolean) => void;
   setRetentionDays: (days: RetentionDays) => Promise<void>;
   setAdditionalRoots: (provider: ProviderInstanceId, roots: string[]) => Promise<void>;
@@ -173,6 +174,7 @@ export const useDeck = create<DeckStore>((set, get) => ({
     providerOrder: [...PROVIDER_IDS],
     retentionDays: 32,
     usageDisplay: "used",
+    globalShortcut: false,
   },
   plans: [],
   providerCatalogue: [],
@@ -226,6 +228,19 @@ export const useDeck = create<DeckStore>((set, get) => ({
         set({ settings: next.value, settingsAction: null });
         applyTheme(next.value.theme);
       } else set({ settingsError: next.error, settingsAction: null });
+    });
+  },
+
+  setGlobalShortcut: (globalShortcut) => {
+    if (!inShell) {
+      set({ settings: { ...get().settings, globalShortcut } });
+      return;
+    }
+    if (get().settingsAction !== null) return;
+    set({ settingsError: null, settingsAction: "global-shortcut" });
+    void call<Settings>("set_global_shortcut", { enabled: globalShortcut }).then((next) => {
+      if (next.ok) set({ settings: next.value, settingsAction: null });
+      else set({ settingsError: next.error, settingsAction: null });
     });
   },
 

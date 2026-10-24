@@ -20,55 +20,50 @@ Commit/push yalnızca Kutluhan isteyince.
 - [x] Windows'ta 4 test: `/tmp` ve `.exe` varsayımları (`app/src/deck.rs`, `app/src/statusline.rs`).
 - [ ] CI'da doğrulama (push gerektirir).
 
-## F1 — Çekirdek: JSONL dışı kaynaklar
-Yeni sağlayıcıların üçü bütün halinde yeniden yazılan JSON, biri SQLite kullanıyor.
-- `Provider::document_globs` + `Provider::parse_document`: dosya boyutu ya da kimliği değişince
-  tamamı (üst sınır 32 MB) yeniden okunur. Her olay kararlı bir `DedupKey` taşır ya da
-  `Accounting::Cumulative` kullanır; yeniden okuma sayıyı iki katına çıkaramaz.
-- `Provider::database_globs` + `Provider::read_database`: yalnızca okuma kipinde, `time_created`
-  filigranından (watermark) sonraki satırlar. İmleç filigranı checkpoint'te saklanır.
-- Yeni bağımlılık: `rusqlite` (bundled). Etki: ikili dosyaya yaklaşık 1–1,5 MB, bellek yalnızca
-  sorgu sırasında. Ağ kodu içermez; `constraints` işi değişmez.
+## F1 — Çekirdek: JSONL dışı kaynaklar ✅
+- [x] `Provider::document_globs` + `parse_document`: boyut/değişiklik zamanı değişince tamamı
+  okunur (üst sınır 32 MB). Dosya değişiklik zamanı `LineSource::modified` ile gelir.
+- [x] `Provider::database_globs` + `read_database`: filigranlı, partili okuma; filigran
+  ilerledikçe sonraki geçiş kaldığı yerden sürer, yetişince damga oturur.
+- [x] Kümülatif kayıtlar artık maliyetin de yalnız artışını yazar.
+- [x] Keşif, sabit yol parçalarını listelemeden doğrudan kontrol eder (kimlik dosyalarının
+  adları bile okunmaz).
+- [x] `rusqlite` 0.40 (bundled) eklendi; ağaçta HTTP istemcisi yok.
 
-## F2 — Sağlayıcılar
-Her biri: tek dosya + sentetik fixture + `providers/mod.rs` kaydı. Gerçek log olmadığı için
-fixture'lar `synthetic_` önekli; gerçek logla doğrulama `USER_ACTIONS.md`'ye eklenir.
-| Sağlayıcı | Kaynak | Biçim | Kota |
-|---|---|---|---|
-| pi / OMP | `~/.pi/agent/sessions/**/*.jsonl`, `~/.omp/agent/sessions` | JSONL | yok |
-| Gemini CLI | `~/.gemini/tmp/*/chats/*.json(l)` | JSON belge / JSONL | yok |
-| Amp | `~/.local/share/amp/threads/*.json` | JSON belge | yok |
-| Droid | `~/.factory/sessions/**/*.settings.json` | JSON belge, kümülatif | yok |
-| OpenCode | `~/.local/share/opencode/opencode.db`, eski `storage/message/**/*.json` | SQLite / JSON | yok |
-Kota yazmayan araçlar yalnızca token ve maliyet gösterir; kota uydurulmaz. Fiyat: Claude
-modelleri mevcut tablodan; aracın kendi yazdığı maliyet varsa o kullanılır; yoksa `Unpriced`.
+## F2 — Sağlayıcılar ✅ (gerçek logla doğrulama Kutluhan'da)
+- [x] pi / OMP, Gemini CLI, Amp, Droid, OpenCode — her biri tek dosya + sentetik fixture + kayıt.
+- [x] Kurulu olmayan araç tepsi menüsünde satır almaz.
+- [ ] Gerçek logla karşılaştırma ve site listesine ekleme (`docs/USER_ACTIONS.md` §6).
 
-## F3 — CodexBar düzeninde panel
-- Üstte sekme çubuğu: Genel bakış + her sağlayıcı için ikon, ad ve altta mini kullanım çubuğu.
-- Ayrıntı kartı: başlık (ad, "şimdi güncellendi", plan), pencere başına çubuk +
-  "%X kullanıldı · N sonra sıfırlanır", hız satırı ("önde +18% · 11:20'de biter"), Horizon,
-  Maliyet bölümü (bugün / 30 gün, token), alt eylemler (Dashboard, Ayarlar, Çıkış).
-- Genel bakış: sağlayıcı başına sıkı satır; tıklayınca o sekmeye geçer.
-- Ayar: **kullanılan / kalan** gösterimi (panel, tepsi, widget aynı tercihi kullanır).
+## F3 — CodexBar düzeninde panel ✅
+- [x] Sekme çubuğu (Genel bakış + ikonlu sağlayıcılar, mini ölçer, ok tuşlarıyla gezinme).
+- [x] Ayrıntı kartı: pencere blokları, hız satırı, Horizon, Maliyet (bugün / 30 gün).
+- [x] Genel bakış satırları; limitsiz araçlar için token/maliyet satırı.
+- [x] Kullanılan / kalan ayarı: panel ve tepsi (menü + compact başlık).
+- [ ] Widget kalan gösterimi (Swift tarafı; bu oturumda yapılmadı).
 
-## F4 — Yeni ölçüler (yerel loglardan)
-- Prompt-cache geri sayımı: son asistan yanıtı + TTL (5 dk; 1 sa yazımı varsa 1 sa). Tahmini rozetli.
-- Önbellek isabet oranı: cache_read / (input + cache_read + cache_write).
-- Bağlam penceresi doluluğu: statusline yardımcısı `context_window` alanını da kaydeder.
-- Oturum listesi (Dashboard): oturum başına başlangıç, süre, model, token, maliyet.
+## F4 — Yeni ölçüler ✅
+- [x] Prompt-cache durumu ve bağlam doluluğu: Claude Code statusline'ının resmi
+  `prompt_cache` ve `context_window` alanlarından, ölçülmüş olarak (tahmin değil).
+- [x] 30 günlük önbellek isabet oranı.
+- [x] Dashboard'da oturum listesi (son 300 oturum, checkpoint'te saklanır).
+- [x] Checkpoint sürümü 3: eski checkpoint'ler bir kez yeniden okunur.
 
-## F5 — Veri
-- Saklama süresi seçeneği: 32 gün (varsayılan) / 90 gün / 365 gün.
-- Kullanıcı fiyat dosyası: uygulama veri klasöründe `pricing-overrides.json`; yerleşik tabloyu
-  model adına göre geçersiz kılar, doğrulanır, hatalı satır yok sayılır ve bildirilir.
-- Windows: WSL dağıtımlarındaki `~/.claude` ve `~/.codex` kökleri (`\\wsl.localhost\<distro>\home\*`).
+## F5 — Veri ✅
+- [x] Saklama 32/90/365 gün (zaten vardı).
+- [x] `pricing-overrides.json`: geçersiz satır atlanır ve loga yazılır; değişiklik geçmişi
+  yeniden fiyatlar.
+- [~] WSL: otomatik tarama yerine ek klasör ayarında Windows'a özel ipucu. Gerekçe: kapalı bir
+  WSL dağıtımına `\\wsl.localhost` üzerinden erişmek onu başlatabilir; Windows'ta test edilmeden
+  her yenilemede bunu yapmak riskli.
 
-## F6 — CLI raporları
-- `quotadeck report daily|monthly|session [--since YYYY-MM-DD] [--until …] [--provider …] [--json]`.
+## F6 — CLI raporları ✅
+- [x] `quotadeckctl report daily|monthly|session [--provider] [--since] [--until] [--json]`.
 
-## F7 — Kapanış
-- Genel klavye kısayolu (panel aç/kapat). Bağımlılık: `tauri-plugin-global-shortcut`.
-- Site, i18n (en/tr/de/es), mağaza metni, `RELEASE_CHECKLIST.md`, `USER_ACTIONS.md` güncellemesi.
+## F7 — Kapanış ✅
+- [x] Genel klavye kısayolu `⌘⌥Q` / `Ctrl+Alt+Q`, isteğe bağlı (varsayılan kapalı).
+- [x] i18n (en/tr/de/es), DISCOVERY, USER_ACTIONS, CI adım adı.
+- [ ] Commit/push ve CI'da Windows doğrulaması (Kutluhan isteyince).
 
 ## Kapsam dışı (bilerek)
 OAuth/çerez/API ile veri, güncelleme kontrolü, leaderboard/paylaşım, yerel HTTP sunucu,

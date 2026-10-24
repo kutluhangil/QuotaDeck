@@ -29,6 +29,8 @@ serde_json.workspace = true
 tauri = { version = "2", features = ["tray-icon", "image-png"] }
 tauri-plugin-positioner = { version = "2", features = ["tray-icon"] }
 tauri-plugin-notification = "2.3.3"
+# Opt-in panel hotkey. Registered from Rust only; the panel gets no shortcut permission.
+tauri-plugin-global-shortcut = "2"
 
 # The App Sandbox path: `NSOpenPanel` for the one grant the user makes, and security-scoped
 # bookmarks to keep it across launches. Both crates are already in the tree through tao and

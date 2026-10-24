@@ -1,0 +1,1 @@
+{"at":"2026-10-24T09:00:00.000Z","context_window":{"context_window_size":200000,"used_percentage":42},"prompt_cache":{"expires_at":1792839600,"hit_ratio":0.91,"ttl":"1h","warm":true},"rate_limits":{"five_hour":{"resets_at":1792843200,"used_percentage":30}},"type":"quotadeck.statusline","version":"2.1.290"}

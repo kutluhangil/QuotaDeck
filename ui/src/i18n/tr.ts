@@ -64,11 +64,6 @@ export const tr: Catalogue = {
       `Bu araç şu anda kullanılamıyor.${reason ? ` ${reason}` : ""}`,
   },
 
-  filters: {
-    all: "Tümü",
-    label: "Tek araç göster",
-  },
-
   units: {
     day: "g",
     hour: "sa",
@@ -114,14 +109,7 @@ export const tr: Catalogue = {
   },
 
   card: {
-    resetsAt: (time) => `${time} sıfırlanır`,
-    resetsIn: (duration) => `${duration} sonra boşalır`,
     noReset: "Sıfırlanma zamanı bildirilmedi",
-    todayTokens: (tokens) => `bugün ${tokens} token`,
-    todayCost: (amount) => `bugün ${amount}`,
-    costPartial: (tokens) => `artı fiyatı bilinmeyen ${tokens} token`,
-    lastActivity: (when) => `Son kullanım ${when}`,
-    neverUsed: "Henüz kullanım kaydı yok",
     pickPlan: "Tahmin görmek için planını seç",
     pickPlanAction: "Plan seç",
     limitLabel: (window) => `${window} limiti`,
@@ -146,6 +134,11 @@ export const tr: Catalogue = {
       other: (minutes) => `${minutes} dk`,
     },
     tokensOnly: "Bu araç limit yazmıyor. Yalnızca kullanım ve maliyet.",
+    contextTitle: "Bağlam · güncel oturum",
+    contextOf: (tokens) => `${tokens} token içinden`,
+    cacheWarm: (duration, ttl) => `Prompt önbelleği sıcak · ${duration} sonra soğur (${ttl})`,
+    cacheCold: "Prompt önbelleği soğuk · sıradaki tur tam fiyat",
+    cacheHits: (percent) => `bu oturumda ${percent} önbellek isabeti`,
     openTool: (name) => `${name} göster`,
   },
 
@@ -157,6 +150,7 @@ export const tr: Catalogue = {
     monthTokens: (tokens) => `Son 30 gün: ${tokens} token`,
     unpriced: (tokens) => `fiyatı bilinmeyen ${tokens} token`,
     none: "Son 30 günde kullanım yok",
+    cacheHits: (percent) => `Önbellek isabeti: girdinin ${percent} kadarı`,
     open: "Paneli aç",
   },
 
@@ -195,6 +189,11 @@ export const tr: Catalogue = {
   },
 
   breakdown: {
+    sessions: "Oturumlar",
+    sessionListLabel: (provider) => `Son ${provider} oturumları`,
+    sessionMeta: (duration, model) => `${duration} · ${model}`,
+    sessionModelUnreported: "model bildirilmedi",
+    sessionsEmpty: "Bu aralıkta oturum yok",
     models: "Nereye harcandı",
     projects: "Hangi dizinde harcandı",
     unreported: "Model bildirilmedi",
@@ -276,6 +275,10 @@ export const tr: Catalogue = {
     themeSystem: "Sistemle aynı",
     themeDark: "Koyu",
     themeLight: "Açık",
+    shortcutTitle: "Klavye kısayolu",
+    shortcutOn: "Açık",
+    shortcutOff: "Kapalı",
+    shortcutHint: (keys) => `${keys} paneli her uygulamadan açıp kapatır.`,
     usageDisplayTitle: "Yüzdeler",
     usageDisplayUsed: "Kullanılan",
     usageDisplayRemaining: "Kalan",
@@ -295,6 +298,8 @@ export const tr: Catalogue = {
     rootsTitle: (provider) => `${provider} · ek günlük klasörleri`,
     rootsHint:
       "Bu aracın kendi günlükleriyle aynı kotaya katılır. İkinci bir aboneliğin değil, ortak diskteki ikinci bir makinenin günlükleri için.",
+    rootsWsl:
+      "Aracı WSL içinde mi çalıştırıyorsun? Klasörünü yoluyla ekle, ör. \\\\wsl.localhost\\Ubuntu\\home\\sen\\.claude\\projects.",
     rootsUnsupported:
       "Bu sürüm ev klasörünü tek bir izinle okuyor ve ikincisini açamıyor; ek klasörler burada kullanılamaz.",
     rootsPlaceholder: "Klasörün tam yolu",

@@ -126,6 +126,8 @@ export interface ProviderSnapshot {
   month: TokenRollup;
   /** Equivalent API cost over the same span as `month`. */
   monthCost: CostRange;
+  /** The newest reading about the running session, where the tool writes one. */
+  live?: LiveReading | null;
   series: Bucket[];
   pace: PaceForecast[];
   lastActivity: string | null;
@@ -139,6 +141,23 @@ export interface ProviderSnapshot {
    * therefore never drawn on the level ramp.
    */
   burst?: Burst | null;
+}
+
+/**
+ * What the tool said about the session running right now. Not a quota: a context window that
+ * fills up is compacted, not refused.
+ */
+export interface LiveReading {
+  observedAt: string;
+  contextUsedPercent: number | null;
+  contextWindowSize: number | null;
+  cacheWarm: boolean | null;
+  /** When the cached prompt goes cold, as the tool computed it. */
+  cacheExpiresAt: string | null;
+  /** "5m" or "1h", verbatim. */
+  cacheTtl: string | null;
+  /** Share of this session's prompt served from the cache, 0–1. */
+  cacheHitRatio: number | null;
 }
 
 /** What the backend's own burst rule found. Its threshold is this user's median agent hour. */
@@ -202,6 +221,21 @@ export interface ProviderHistory {
   agents: BreakdownPoint[];
   /** Kept for symmetry; three fixed labels cannot overflow. */
   agentsDropped: number;
+  /** The most recent sessions, newest first, one row each. */
+  sessions: SessionSummary[];
+}
+
+/** One session folded to a row: when it ran, on what, and what it cost. */
+export interface SessionSummary {
+  session: string;
+  startedAt: string;
+  lastAt: string;
+  /** The model of the session's most recent counted record. */
+  model: string | null;
+  /** The directory the tool recorded, verbatim. */
+  project: string | null;
+  tokens: TokenRollup;
+  cost: CostRange;
 }
 
 /** A ceiling one tier is assumed to allow over one window, in equivalent API dollars. */
@@ -389,6 +423,8 @@ export interface Settings {
   instances: Partial<Record<ProviderInstanceId, { label: string | null }>>;
   retentionDays: RetentionDays;
   usageDisplay: UsageDisplay;
+  /** Whether the panel hotkey is registered. Off until asked for. */
+  globalShortcut: boolean;
 }
 
 export interface ProviderDescriptor {

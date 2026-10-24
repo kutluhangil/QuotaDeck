@@ -64,11 +64,6 @@ export const de: Catalogue = {
       `Dieses Werkzeug ist derzeit nicht verfügbar.${reason ? ` ${reason}` : ""}`,
   },
 
-  filters: {
-    all: "Alle",
-    label: "Nur ein Werkzeug zeigen",
-  },
-
   units: {
     day: "T",
     hour: "Std",
@@ -114,14 +109,7 @@ export const de: Catalogue = {
   },
 
   card: {
-    resetsAt: (time) => `Zurückgesetzt um ${time}`,
-    resetsIn: (duration) => `Frei in ${duration}`,
     noReset: "Kein Zurücksetzen gemeldet",
-    todayTokens: (tokens) => `heute ${tokens} Token`,
-    todayCost: (amount) => `heute ${amount}`,
-    costPartial: (tokens) => `plus ${tokens} Token ohne bekannten Preis`,
-    lastActivity: (when) => `Zuletzt benutzt ${when}`,
-    neverUsed: "Noch keine Nutzung aufgezeichnet",
     pickPlan: "Wähle deinen Tarif, um eine Schätzung zu sehen",
     pickPlanAction: "Tarif wählen",
     limitLabel: (window) => `${window}-Limit`,
@@ -146,6 +134,11 @@ export const de: Catalogue = {
       other: (minutes) => `${minutes} Min.`,
     },
     tokensOnly: "Dieses Werkzeug schreibt kein Limit. Nur Nutzung und Kosten.",
+    contextTitle: "Kontext · aktuelle Sitzung",
+    contextOf: (tokens) => `von ${tokens} Token`,
+    cacheWarm: (duration, ttl) => `Prompt-Cache warm · kalt in ${duration} (${ttl})`,
+    cacheCold: "Prompt-Cache kalt · der nächste Schritt kostet den vollen Preis",
+    cacheHits: (percent) => `${percent} Cache-Treffer in dieser Sitzung`,
     openTool: (name) => `${name} anzeigen`,
   },
 
@@ -157,6 +150,7 @@ export const de: Catalogue = {
     monthTokens: (tokens) => `Letzte 30 Tage: ${tokens} Token`,
     unpriced: (tokens) => `${tokens} Token zu unbekanntem Preis`,
     none: "Keine Nutzung in den letzten 30 Tagen",
+    cacheHits: (percent) => `Cache-Treffer: ${percent} der Eingabe`,
     open: "Dashboard öffnen",
   },
 
@@ -196,6 +190,11 @@ export const de: Catalogue = {
   },
 
   breakdown: {
+    sessions: "Sitzungen",
+    sessionListLabel: (provider) => `Letzte ${provider}-Sitzungen`,
+    sessionMeta: (duration, model) => `${duration} · ${model}`,
+    sessionModelUnreported: "Modell nicht angegeben",
+    sessionsEmpty: "Keine Sitzung in diesem Zeitraum",
     models: "Wofür es ausgegeben wurde",
     projects: "In welchem Verzeichnis",
     unreported: "Kein Modell gemeldet",
@@ -278,6 +277,10 @@ export const de: Catalogue = {
     themeSystem: "Wie das System",
     themeDark: "Dunkel",
     themeLight: "Hell",
+    shortcutTitle: "Tastenkürzel",
+    shortcutOn: "An",
+    shortcutOff: "Aus",
+    shortcutHint: (keys) => `${keys} öffnet und schließt das Panel aus jeder App.`,
     usageDisplayTitle: "Prozentangaben",
     usageDisplayUsed: "Verbraucht",
     usageDisplayRemaining: "Übrig",
@@ -299,6 +302,8 @@ export const de: Catalogue = {
     rootsTitle: (provider) => `${provider} · zusätzliche Protokollordner`,
     rootsHint:
       "Wird demselben Limit zugerechnet wie die eigenen Protokolle dieses Werkzeugs. Gedacht für die Protokolle einer zweiten Maschine auf einer gemeinsamen Platte, nicht für ein zweites Abo.",
+    rootsWsl:
+      "Läuft das Werkzeug in WSL? Füge seinen Ordner per Pfad hinzu, z. B. \\\\wsl.localhost\\Ubuntu\\home\\du\\.claude\\projects.",
     rootsUnsupported:
       "Diese Fassung liest deinen Persönlichen Ordner über eine einzige Freigabe und kann keine zweite öffnen; zusätzliche Ordner sind hier nicht verfügbar.",
     rootsPlaceholder: "Absoluter Pfad zu einem Ordner",

@@ -356,6 +356,17 @@ pub struct TokenRollup {
 }
 
 impl TokenRollup {
+    /// Component-wise sum, saturating rather than wrapping on a corrupt counter.
+    pub fn saturating_add(&self, other: &TokenRollup) -> TokenRollup {
+        TokenRollup {
+            input: self.input.saturating_add(other.input),
+            output: self.output.saturating_add(other.output),
+            cache_read: self.cache_read.saturating_add(other.cache_read),
+            cache_creation: self.cache_creation.saturating_add(other.cache_creation),
+            reasoning: self.reasoning.saturating_add(other.reasoning),
+        }
+    }
+
     pub fn total(&self) -> u64 {
         self.input
             .saturating_add(self.output)
@@ -616,6 +627,8 @@ pub struct ProviderSnapshot {
     pub month: TokenRollup,
     /// Equivalent API cost over the same span as `month`.
     pub month_cost: CostRange,
+    /// The newest reading about the running session, where the tool writes one.
+    pub live: Option<crate::events::LiveReading>,
     pub series: Vec<Bucket>,
     pub pace: Vec<PaceForecast>,
     pub last_activity: Option<DateTime<Utc>>,
@@ -654,6 +667,7 @@ impl ProviderSnapshot {
             today_cost: CostRange::default(),
             month: TokenRollup::default(),
             month_cost: CostRange::default(),
+            live: None,
             series: Vec::new(),
             pace: Vec::new(),
             last_activity: None,

@@ -22,7 +22,9 @@ use crate::types::{ProviderInstanceId, ProviderSnapshot};
 
 /// Default history kept in memory: long enough for a 30-day window plus a margin.
 pub const DEFAULT_RETENTION_DAYS: i64 = 32;
-pub const PROVIDER_CHECKPOINT_VERSION: u32 = 2;
+/// 3 added the session list and the live session reading, which an older checkpoint cannot
+/// supply: it is rebuilt from the logs once rather than shown with them missing.
+pub const PROVIDER_CHECKPOINT_VERSION: u32 = 3;
 pub const MAX_WATCH_DIRECTORIES: usize = 256;
 const MAX_PERSISTENT_READ_ERRORS: usize = 256;
 
@@ -112,6 +114,12 @@ pub enum CheckpointRestoreError {
         provider: crate::types::ProviderId,
         checkpoint_revision: u64,
         current_revision: u64,
+    },
+    /// Written by an older build that kept less. Rebuilt from the logs, like a price change.
+    #[error("provider checkpoint for {provider:?} is version {version}, older than {PROVIDER_CHECKPOINT_VERSION}")]
+    Outdated {
+        provider: crate::types::ProviderId,
+        version: u32,
     },
     #[error(transparent)]
     Invalid(#[from] crate::Error),
@@ -505,7 +513,13 @@ impl ProviderEngine {
     ) -> std::result::Result<Self, CheckpointRestoreError> {
         let checkpoint: ProviderCheckpoint =
             serde_json::from_slice(bytes).map_err(crate::Error::from)?;
-        if checkpoint.version != 1 && checkpoint.version != PROVIDER_CHECKPOINT_VERSION {
+        if checkpoint.version < PROVIDER_CHECKPOINT_VERSION {
+            return Err(CheckpointRestoreError::Outdated {
+                provider: provider.id(),
+                version: checkpoint.version,
+            });
+        }
+        if checkpoint.version != PROVIDER_CHECKPOINT_VERSION {
             return Err(crate::Error::Invalid(format!(
                 "unsupported provider checkpoint version {} for {}; expected {}",
                 checkpoint.version,
@@ -1482,6 +1496,30 @@ mod tests {
         assert!(error
             .to_string()
             .contains("unsupported provider checkpoint version"));
+    }
+
+    /// A checkpoint from an older build lacks what this one keeps, so it asks for a rebuild
+    /// instead of restoring with those parts silently empty.
+    #[test]
+    fn an_older_checkpoint_asks_for_a_rebuild() {
+        let (engine, root) = engine_for("outdated-version");
+        let mut value: serde_json::Value =
+            serde_json::from_slice(&engine.checkpoint().expect("checkpoint")).expect("decode");
+        value["version"] = serde_json::Value::from(PROVIDER_CHECKPOINT_VERSION - 1);
+        let bytes = serde_json::to_vec(&value).expect("encode");
+
+        let error = ProviderEngine::restore(
+            Box::new(Counter {
+                root,
+                pricing_revision: 0,
+            }),
+            &bytes,
+        )
+        .err()
+        .expect("outdated version");
+        assert!(
+            matches!(error, CheckpointRestoreError::Outdated { version, .. } if version == PROVIDER_CHECKPOINT_VERSION - 1)
+        );
     }
 
     #[test]

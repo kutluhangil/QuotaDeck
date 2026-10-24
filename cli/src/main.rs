@@ -62,6 +62,7 @@ fn main() -> ExitCode {
         Command::ConfigValidate => config_validate(),
         Command::Status { provider, plan } => status(provider.as_deref(), plan),
         Command::Export(args) => export(&args),
+        Command::Report(args) => report(&args),
         Command::Tray { provider } => tray_preview(&provider),
         Command::Statusline(action) => match action {
             StatuslineAction::Preview => statusline_preview(),
@@ -354,6 +355,7 @@ fn export(args: &cli::ExportArgs) -> ExitCode {
             projects_dropped: engine.index().projects().labels_dropped(),
             agents: engine.index().agents().points(history_from, now),
             agents_dropped: engine.index().agents().labels_dropped(),
+            sessions: engine.index().sessions().newest(),
         });
         snapshots.push(engine.snapshot(now));
     }
@@ -403,6 +405,160 @@ fn export(args: &cli::ExportArgs) -> ExitCode {
         }
     }
     ExitCode::from(export::exit_code(&state))
+}
+
+/// Tokens and equivalent cost per local day, local month or session, one row per provider.
+///
+/// Reads each selected provider once, like `export`. A tool that is missing or unreadable is
+/// named on stderr and left out of the rows rather than reported as an idle zero.
+fn report(args: &cli::ReportArgs) -> ExitCode {
+    let settings = match Settings::load() {
+        Ok(settings) => settings,
+        Err(e) => {
+            eprintln!("settings could not be read: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let selected = match selected_instances(&settings, args.provider.as_deref()) {
+        Ok(selected) => selected,
+        Err(error) => {
+            eprintln!("{error}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let now = Utc::now();
+    let in_range = |day: chrono::NaiveDate| {
+        args.since.is_none_or(|since| day >= since) && args.until.is_none_or(|until| day <= until)
+    };
+
+    let mut rows = Vec::new();
+    for (id, provider) in selected {
+        let mut engine =
+            ProviderEngine::with_retention(provider, settings.retention_days.duration());
+        if let Err(error) = engine.set_instance(id.clone(), settings.label_for(&id)) {
+            eprintln!("{error}");
+            return ExitCode::from(EXIT_USAGE);
+        }
+        engine.set_config(settings.config_for(&id));
+        engine.set_additional_roots(additional_roots(&settings, &id));
+        if !matches!(engine.access(), RootAccess::Readable) {
+            continue;
+        }
+        if let Err(e) = engine.refresh(None) {
+            eprintln!("{}: could not be read: {e}", id.key());
+            continue;
+        }
+        let key = id.key();
+        match args.period {
+            cli::ReportPeriod::Session => {
+                for session in engine.index().sessions().newest() {
+                    let started = session.started_at.with_timezone(&Local);
+                    if !in_range(started.date_naive()) {
+                        continue;
+                    }
+                    rows.push(serde_json::json!({
+                        "provider": key,
+                        "period": started.format("%Y-%m-%d %H:%M").to_string(),
+                        "session": session.session,
+                        "minutes": (session.last_at - session.started_at).num_minutes(),
+                        "model": session.model,
+                        "project": session.project,
+                        "tokens": session.tokens.total(),
+                        "costUsd": session.cost.usd,
+                        "unpricedTokens": session.cost.unpriced_tokens,
+                    }));
+                }
+            }
+            period => {
+                let mut folded: std::collections::BTreeMap<String, (u64, f64, u64)> =
+                    std::collections::BTreeMap::new();
+                let from = now - settings.retention_days.duration();
+                for hour in
+                    quotadeck_core::history::hours(engine.index().bucket_series(), from, now)
+                {
+                    let Some(at) = DateTime::from_timestamp(hour.start, 0) else {
+                        continue;
+                    };
+                    let day = at.with_timezone(&Local).date_naive();
+                    if !in_range(day) {
+                        continue;
+                    }
+                    let label = match period {
+                        cli::ReportPeriod::Monthly => day.format("%Y-%m").to_string(),
+                        _ => day.format("%Y-%m-%d").to_string(),
+                    };
+                    let entry = folded.entry(label).or_default();
+                    entry.0 += hour.tokens.total();
+                    entry.1 += hour.cost.usd;
+                    entry.2 += hour.cost.unpriced_tokens;
+                }
+                for (label, (tokens, usd, unpriced)) in folded {
+                    rows.push(serde_json::json!({
+                        "provider": key,
+                        "period": label,
+                        "tokens": tokens,
+                        "costUsd": usd,
+                        "unpricedTokens": unpriced,
+                    }));
+                }
+            }
+        }
+    }
+
+    if args.json {
+        match serde_json::to_string_pretty(&rows) {
+            Ok(text) => println!("{text}"),
+            Err(e) => {
+                eprintln!("report could not be serialised: {e}");
+                return ExitCode::FAILURE;
+            }
+        }
+        return ExitCode::SUCCESS;
+    }
+    if rows.is_empty() {
+        eprintln!("nothing counted in this range");
+        return ExitCode::SUCCESS;
+    }
+    let session = args.period == cli::ReportPeriod::Session;
+    println!(
+        "{:<14} {:<17} {:>14} {:>10}{}",
+        "provider",
+        if session { "started" } else { "period" },
+        "tokens",
+        "cost",
+        if session { "  minutes  model" } else { "" }
+    );
+    for row in &rows {
+        let cost = row["costUsd"].as_f64().unwrap_or(0.0);
+        // A figure that left tokens out says so rather than passing for a full total.
+        let marker = if row["unpricedTokens"].as_u64().unwrap_or(0) > 0 {
+            "+"
+        } else {
+            " "
+        };
+        print!(
+            "{:<14} {:<17} {:>14} {:>9.2}{marker}",
+            row["provider"].as_str().unwrap_or(""),
+            row["period"].as_str().unwrap_or(""),
+            row["tokens"].as_u64().unwrap_or(0),
+            cost,
+        );
+        if session {
+            print!(
+                "  {:>7}  {}",
+                row["minutes"].as_i64().unwrap_or(0),
+                row["model"].as_str().unwrap_or("-")
+            );
+        }
+        println!();
+    }
+    if rows
+        .iter()
+        .any(|row| row["unpricedTokens"].as_u64().unwrap_or(0) > 0)
+    {
+        println!("+ includes tokens at an unknown price; the dollar figure is short by them");
+    }
+    ExitCode::SUCCESS
 }
 
 fn clamp_notice(prepared: &export::PreparedExport) -> Option<String> {

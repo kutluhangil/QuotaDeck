@@ -87,9 +87,20 @@ fn record(dir: &Path, payload: &str) -> std::io::Result<()> {
             ));
         }
     };
-    let Some(limits) = parsed.get("rate_limits").filter(|value| !value.is_null()) else {
+    let limits = parsed.get("rate_limits").filter(|value| !value.is_null());
+    let context = pick(
+        &parsed,
+        "context_window",
+        &["used_percentage", "context_window_size"],
+    );
+    let cache = pick(
+        &parsed,
+        "prompt_cache",
+        &["warm", "ttl", "expires_at", "hit_ratio"],
+    );
+    if limits.is_none() && context.is_none() && cache.is_none() {
         return Ok(());
-    };
+    }
 
     let now = chrono::Utc::now();
     let record = serde_json::json!({
@@ -97,6 +108,8 @@ fn record(dir: &Path, payload: &str) -> std::io::Result<()> {
         "at": now,
         "version": parsed.get("version"),
         "rate_limits": limits,
+        "context_window": context,
+        "prompt_cache": cache,
     });
 
     std::fs::create_dir_all(dir)?;
@@ -108,6 +121,19 @@ fn record(dir: &Path, payload: &str) -> std::io::Result<()> {
     let mut line = serde_json::to_vec(&record)?;
     line.push(b'\n');
     file.write_all(&line)
+}
+
+/// Only the named counters of one payload object, copied by allow-list.
+///
+/// The payload also carries the working directory, the transcript path and the session id;
+/// none of that may be persisted, so nothing is copied that is not named here.
+fn pick(parsed: &serde_json::Value, object: &str, fields: &[&str]) -> Option<serde_json::Value> {
+    let source = parsed.get(object)?.as_object()?;
+    let picked: serde_json::Map<String, serde_json::Value> = fields
+        .iter()
+        .filter_map(|field| Some((field.to_string(), source.get(*field)?.clone())))
+        .collect();
+    (!picked.is_empty()).then_some(serde_json::Value::Object(picked))
 }
 
 fn chain(command: Option<&str>, payload: &str) -> i32 {
@@ -186,7 +212,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         record(
             &dir,
-            r#"{"version":"2.1","cwd":"/private","session_id":"secret","rate_limits":{"five_hour":{"used_percentage":12}}}"#,
+            r#"{"version":"2.1","cwd":"/private","session_id":"secret","rate_limits":{"five_hour":{"used_percentage":12}},"context_window":{"used_percentage":8,"context_window_size":200000,"current_usage":{"input_tokens":8500}},"prompt_cache":{"warm":true,"ttl":"1h","expires_at":1738429200,"hit_ratio":0.91,"last_miss_cause":{"causes":["tools_changed"]}}}"#,
         )
         .expect("capture");
         let path = std::fs::read_dir(&dir)
@@ -202,6 +228,11 @@ mod tests {
         assert!(row.get("rate_limits").is_some());
         assert!(row.get("cwd").is_none());
         assert!(row.get("session_id").is_none());
+        // Allow-listed counters only: nothing nested that was not named.
+        assert_eq!(row["context_window"]["used_percentage"], 8);
+        assert!(row["context_window"].get("current_usage").is_none());
+        assert_eq!(row["prompt_cache"]["ttl"], "1h");
+        assert!(row["prompt_cache"].get("last_miss_cause").is_none());
         std::fs::remove_dir_all(dir).expect("remove capture directory");
     }
 }

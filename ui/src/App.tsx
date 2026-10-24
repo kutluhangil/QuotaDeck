@@ -1,73 +1,34 @@
 import { useEffect, useRef, useState } from "react";
 
 import { EmptyState } from "./components/EmptyState";
-import { ProviderCard } from "./components/ProviderCard";
+import { Overview } from "./components/Overview";
+import { ProviderDetail } from "./components/ProviderDetail";
+import { ProviderTabs, type TabKey } from "./components/ProviderTabs";
 import { QuietTools } from "./components/QuietTools";
 import { SettingsView } from "./components/SettingsView";
 import { formatClock } from "./format";
-import { identityHue } from "./identity";
 import { visibleProviderHealth } from "./providerHealth";
 import { reportPanelHeight, useDeck, useDeckState, useLocale, useStrings } from "./store";
-import { awaitingSetup, type ProviderInstanceId, type ProviderSnapshot } from "./types";
+import { awaitingSetup, totalTokens, type ProviderSnapshot } from "./types";
+
+const DETAIL_ID = "panel-detail";
 
 function hasReading(snapshot: ProviderSnapshot): boolean {
   return snapshot.windows.some((window) => window.usedPercent !== null);
 }
 
 /**
- * A provider earns a card once it has a window to show — or once it is working but waiting on
- * something the user can supply. Folding "pick your plan" into the quiet section would hide
- * the one action that turns a blank card into a reading.
+ * A tool earns a tab once it is on this machine and has something to show: a limit, a plan to
+ * pick, or usage. A tool that writes no limit still gets one — its tokens and cost are real —
+ * while one that is installed but has never been used stays in the quiet list.
  */
-function earnsCard(snapshot: ProviderSnapshot): boolean {
-  return hasReading(snapshot) || awaitingSetup(snapshot);
-}
-
-/**
- * One chip per tool with a card, plus the one that clears the narrowing.
- *
- * Only drawn from two tools up: a filter offering a single choice is a control that cannot
- * change anything, and it would cost a row of panel height to say so.
- */
-function FilterChips({
-  snapshots,
-  filter,
-  onPick,
-}: {
-  snapshots: ProviderSnapshot[];
-  filter: ProviderInstanceId | "all";
-  onPick: (filter: ProviderInstanceId | "all") => void;
-}) {
-  const strings = useStrings();
-  if (snapshots.length < 2) return null;
-
+function earnsTab(snapshot: ProviderSnapshot): boolean {
   return (
-    <div className="filters" role="group" aria-label={strings.filters.label}>
-      <button
-        type="button"
-        className="type-caption filters__chip"
-        aria-pressed={filter === "all"}
-        onClick={() => onPick("all")}
-      >
-        {strings.filters.all}
-      </button>
-      {snapshots.map((snapshot) => (
-        <button
-          key={snapshot.instance}
-          type="button"
-          className="type-caption filters__chip"
-          aria-pressed={filter === snapshot.instance}
-          onClick={() => onPick(snapshot.instance)}
-        >
-          <span
-            className="card__dot"
-            data-hue={identityHue(snapshot.instance)}
-            aria-hidden="true"
-          />
-          {snapshot.label ?? strings.provider[snapshot.id]}
-        </button>
-      ))}
-    </div>
+    snapshot.installed &&
+    (hasReading(snapshot) ||
+      awaitingSetup(snapshot) ||
+      totalTokens(snapshot.month) > 0 ||
+      snapshot.burst != null)
   );
 }
 
@@ -146,16 +107,21 @@ export function App() {
     bodyRef.current?.focus();
   }, [view]);
 
-  const active = deck.providers.filter(earnsCard);
-  const quiet = deck.providers.filter((snapshot) => !earnsCard(snapshot));
+  const active = deck.providers.filter(earnsTab);
+  const quiet = deck.providers.filter((snapshot) => !earnsTab(snapshot));
   const reporting = deck.providers.filter(hasReading).length;
   const updated = formatClock(deck.updatedAt, locale);
   /*
-   * A narrowing to a tool that has since stopped reporting would empty the panel and leave
-   * no visible reason why. The chip for it is gone by then, so the filter goes with it.
+   * A tab for a tool that has since gone quiet would open onto nothing, so the selection falls
+   * back. With one tool there is nothing to overview: its detail is the panel.
    */
-  const narrowed = active.some((snapshot) => snapshot.instance === filter) ? filter : "all";
-  const shown = narrowed === "all" ? active : active.filter((s) => s.instance === narrowed);
+  const selected: TabKey =
+    active.length === 1
+      ? (active[0]?.instance ?? "all")
+      : active.some((snapshot) => snapshot.instance === filter)
+        ? filter
+        : "all";
+  const detail = active.find((snapshot) => snapshot.instance === selected) ?? null;
   /*
    * Asked for before anything else. Without the grant every provider root is unreadable, and
    * the panel would report three working tools as broken instead of asking for the one thing
@@ -238,18 +204,38 @@ export function App() {
           )
         ) : (
           <>
-            <FilterChips snapshots={active} filter={narrowed} onPick={setFilter} />
-            {shown.map((snapshot) => (
-              <ProviderCard
-                key={snapshot.instance}
-                snapshot={snapshot}
-                health={visibleProviderHealth(snapshot, deck.health)}
-                now={now}
-                onSetUp={() => setView("settings")}
+            {active.length > 1 && (
+              <ProviderTabs
+                snapshots={active}
+                selected={selected}
+                onSelect={setFilter}
+                panelId={DETAIL_ID}
               />
-            ))}
-            {/* Narrowed to one tool, the other tools are not the answer to anything. */}
-            {narrowed === "all" && <QuietTools snapshots={quiet} />}
+            )}
+            <div
+              id={DETAIL_ID}
+              role={active.length > 1 ? "tabpanel" : undefined}
+              className="panel__detail"
+            >
+              {detail !== null ? (
+                <ProviderDetail
+                  key={detail.instance}
+                  snapshot={detail}
+                  health={visibleProviderHealth(detail, deck.health)}
+                  now={now}
+                  updatedAt={deck.updatedAt}
+                  onSetUp={() => setView("settings")}
+                  onOpenDashboard={() => void openDashboard()}
+                />
+              ) : null}
+              {detail !== null && active.length === 1 && <QuietTools snapshots={quiet} />}
+              {detail === null && (
+                <>
+                  <Overview snapshots={active} now={now} onOpen={setFilter} />
+                  <QuietTools snapshots={quiet} />
+                </>
+              )}
+            </div>
           </>
         )}
       </main>

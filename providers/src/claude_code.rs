@@ -33,7 +33,7 @@ use std::path::PathBuf;
 use chrono::{DateTime, Duration, Utc};
 use quotadeck_core::error::{Error, Result};
 use quotadeck_core::events::{
-    Accounting, DedupKey, EventIndex, LimitEvent, ParsedEvent, UsageEvent,
+    Accounting, DedupKey, EventIndex, LimitEvent, LiveReading, ParsedEvent, UsageEvent,
 };
 use quotadeck_core::pricing::{cost_of_at, embedded_pricing_revision, PricedUsage};
 use quotadeck_core::provider::{snapshot_with_windows, LineSource, Provider, ProviderConfig};
@@ -146,6 +146,32 @@ struct Record {
     message: Option<Message>,
     #[serde(default)]
     rate_limits: Option<RateLimits>,
+    /// On our own statusline records only, copied from Claude Code's statusline payload.
+    #[serde(default)]
+    context_window: Option<ContextWindow>,
+    #[serde(default)]
+    prompt_cache: Option<PromptCache>,
+}
+
+#[derive(Deserialize)]
+struct ContextWindow {
+    #[serde(default)]
+    used_percentage: Option<f32>,
+    #[serde(default)]
+    context_window_size: Option<u64>,
+}
+
+#[derive(Deserialize)]
+struct PromptCache {
+    #[serde(default)]
+    warm: Option<bool>,
+    #[serde(default)]
+    ttl: Option<String>,
+    /// Epoch seconds; `null` when the last response reported no cache tokens.
+    #[serde(default)]
+    expires_at: Option<i64>,
+    #[serde(default)]
+    hit_ratio: Option<f32>,
 }
 
 #[derive(Deserialize)]
@@ -312,6 +338,7 @@ impl Provider for ClaudeCode {
 
         if statusline && record.kind.as_deref() == Some(STATUSLINE_TYPE) {
             push_limits(&record, out);
+            push_live(&record, out);
             return Ok(());
         }
 
@@ -450,6 +477,28 @@ fn push_limits(record: &Record, out: &mut Vec<ParsedEvent>) {
                 .and_then(|secs| DateTime::from_timestamp(secs, 0)),
         }));
     }
+}
+
+/// The running session's context fill and prompt-cache state, as Claude Code computed them.
+fn push_live(record: &Record, out: &mut Vec<ParsedEvent>) {
+    let Some(observed_at) = record.at.or(record.timestamp) else {
+        return;
+    };
+    let (context, cache) = (record.context_window.as_ref(), record.prompt_cache.as_ref());
+    if context.is_none() && cache.is_none() {
+        return;
+    }
+    out.push(ParsedEvent::Live(LiveReading {
+        observed_at,
+        context_used_percent: context.and_then(|context| context.used_percentage),
+        context_window_size: context.and_then(|context| context.context_window_size),
+        cache_warm: cache.and_then(|cache| cache.warm),
+        cache_expires_at: cache
+            .and_then(|cache| cache.expires_at)
+            .and_then(|secs| DateTime::from_timestamp(secs, 0)),
+        cache_ttl: cache.and_then(|cache| cache.ttl.clone()),
+        cache_hit_ratio: cache.and_then(|cache| cache.hit_ratio),
+    }));
 }
 
 /// How far the plan seed is out, learned from any window the tool measured itself.
@@ -815,6 +864,32 @@ mod tests {
         assert_eq!(limits[1].window_minutes, SEVEN_DAY_MINUTES);
         assert_eq!(limits[1].used_percent, 95.0);
         assert!(limits.iter().all(|limit| limit.limit_id == LIMIT_ID));
+    }
+
+    #[test]
+    fn a_statusline_reading_carries_the_running_sessions_context_and_cache() {
+        let events = parse_fixture("synthetic_statusline_live.jsonl");
+        let live = events
+            .iter()
+            .find_map(|event| match event {
+                ParsedEvent::Live(live) => Some(live),
+                _ => None,
+            })
+            .expect("a live reading");
+        assert_eq!(live.context_used_percent, Some(42.0));
+        assert_eq!(live.context_window_size, Some(200_000));
+        assert_eq!(live.cache_warm, Some(true));
+        assert_eq!(live.cache_ttl.as_deref(), Some("1h"));
+        assert_eq!(
+            live.cache_expires_at,
+            DateTime::from_timestamp(1_792_839_600, 0)
+        );
+        // The rate limit on the same record still becomes a window.
+        assert_eq!(limits(&events).len(), 1);
+        // A record without either object yields no live reading.
+        assert!(!parse_fixture("statusline_reading.jsonl")
+            .iter()
+            .any(|event| matches!(event, ParsedEvent::Live(_))));
     }
 
     #[test]

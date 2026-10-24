@@ -266,6 +266,12 @@ pub fn prepare(
                 .cloned()
                 .collect(),
             agents_dropped: entry.agents_dropped,
+            sessions: entry
+                .sessions
+                .iter()
+                .filter(|row| row.last_at.timestamp() >= from && row.started_at.timestamp() < to)
+                .cloned()
+                .collect(),
         })
         .collect();
     let rows = filtered_history
@@ -435,6 +441,7 @@ mod tests {
             today_cost: priced(1.0),
             month: Default::default(),
             month_cost: Default::default(),
+            live: None,
             series: Vec::new(),
             pace: Vec::new(),
             last_activity: None,
@@ -463,6 +470,7 @@ mod tests {
             projects_dropped: 0,
             agents: Vec::new(),
             agents_dropped: 0,
+            sessions: Vec::new(),
         }
     }
 

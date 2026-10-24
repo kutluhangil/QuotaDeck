@@ -128,7 +128,16 @@ pub fn run() -> Result<()> {
 
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_positioner::init())
-        .plugin(tauri_plugin_notification::init());
+        .plugin(tauri_plugin_notification::init())
+        .plugin(
+            tauri_plugin_global_shortcut::Builder::new()
+                .with_handler(|app, _shortcut, event| {
+                    if event.state == tauri_plugin_global_shortcut::ShortcutState::Pressed {
+                        tray::toggle_from_shortcut(app);
+                    }
+                })
+                .build(),
+        );
 
     let app = builder
         .manage(deck.clone())
@@ -149,6 +158,7 @@ pub fn run() -> Result<()> {
             set_tray_mode,
             set_theme,
             set_usage_display,
+            set_global_shortcut,
             set_locale,
             set_demo,
             set_retention_days,
@@ -180,6 +190,13 @@ pub fn run() -> Result<()> {
             deck.restore_access();
 
             tray::install(app.handle(), deck.clone())?;
+            if deck.settings().global_shortcut {
+                // A combination another app already holds is reported, not fatal: the tray
+                // still opens the panel.
+                if let Err(error) = apply_global_shortcut(app.handle(), true) {
+                    eprintln!("quotadeck: {error}");
+                }
+            }
             let control = spawn_read_loop(app.handle().clone(), deck.clone())?;
             match setup_read_loop.lock() {
                 Ok(mut slot) => *slot = Some(control),
@@ -666,6 +683,37 @@ fn set_theme(deck: tauri::State<'_, Deck>, theme: Theme) -> std::result::Result<
     deck.set_theme(theme).map_err(|e| e.to_string())
 }
 
+/// The panel hotkey. Fixed rather than configurable: Q for quota, with the two modifiers few
+/// apps claim together.
+pub const PANEL_SHORTCUT: &str = "CommandOrControl+Alt+Q";
+
+fn apply_global_shortcut(app: &AppHandle, enabled: bool) -> std::result::Result<(), String> {
+    use tauri_plugin_global_shortcut::GlobalShortcutExt;
+    let shortcuts = app.global_shortcut();
+    let registered = shortcuts.is_registered(PANEL_SHORTCUT);
+    let outcome = match (enabled, registered) {
+        (true, false) => shortcuts.register(PANEL_SHORTCUT),
+        (false, true) => shortcuts.unregister(PANEL_SHORTCUT),
+        _ => Ok(()),
+    };
+    outcome.map_err(|error| format!("could not change the {PANEL_SHORTCUT} shortcut: {error}"))
+}
+
+/// Register or drop the panel hotkey, and keep the setting only if that worked.
+#[tauri::command]
+fn set_global_shortcut(
+    app: AppHandle,
+    deck: tauri::State<'_, Deck>,
+    enabled: bool,
+) -> std::result::Result<Settings, String> {
+    apply_global_shortcut(&app, enabled)?;
+    deck.set_global_shortcut(enabled).map_err(|e| {
+        // The registration already changed; put it back so it matches what is stored.
+        let _ = apply_global_shortcut(&app, !enabled);
+        e.to_string()
+    })
+}
+
 /// Flip every percentage between spent and left, and redraw the tray to match.
 #[tauri::command]
 fn set_usage_display(
@@ -1086,7 +1134,8 @@ fn apply_retention_change(
         )
         .map_err(|error| match error {
             CheckpointRestoreError::Invalid(error) => error,
-            mismatch @ CheckpointRestoreError::PricingRevisionMismatch { .. } => {
+            mismatch @ (CheckpointRestoreError::PricingRevisionMismatch { .. }
+            | CheckpointRestoreError::Outdated { .. }) => {
                 Error::Invalid(format!(
                     "retention decrease encountered an unexpected pricing checkpoint mismatch for provider {:?}: {mismatch}",
                     provider_id.key()
@@ -1609,7 +1658,10 @@ fn restore_provider_from_checkpoint(
                 }),
             }
         }
-        Err(CheckpointRestoreError::PricingRevisionMismatch { .. }) => {
+        Err(
+            CheckpointRestoreError::PricingRevisionMismatch { .. }
+            | CheckpointRestoreError::Outdated { .. },
+        ) => {
             let mut health = ProviderHealth::new(instance.clone());
             match delete_checkpoint() {
                 Ok(()) => health.record_rebuilding(now),
@@ -2009,6 +2061,7 @@ fn publish(
                     projects_dropped: engine.index().projects().labels_dropped(),
                     agents: engine.index().agents().points(history_from, now),
                     agents_dropped: engine.index().agents().labels_dropped(),
+                    sessions: engine.index().sessions().newest(),
                 });
                 if report.parse_errors > 0 {
                     diagnostics.push(format!(

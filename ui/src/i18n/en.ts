@@ -84,11 +84,6 @@ export const en = {
       `This tool is currently unavailable.${reason ? ` ${reason}` : ""}`,
   },
 
-  filters: {
-    all: "All",
-    label: "Show one tool",
-  },
-
   /**
    * Duration units, as the compact forms the panel sets them in. Kept to one or two letters:
    * these appear inside a 380px row beside a number and must not push it around.
@@ -148,15 +143,7 @@ export const en = {
   },
 
   card: {
-    resetsAt: (time: string) => `Resets ${time}`,
-    resetsIn: (duration: string) => `Frees up in ${duration}`,
     noReset: "Reset time not reported",
-    todayTokens: (tokens: string) => `${tokens} tokens today`,
-    todayCost: (amount: string) => `${amount} today`,
-    /** Says outright that a dollar figure is short, rather than quietly under-reporting. */
-    costPartial: (tokens: string) => `plus ${tokens} tokens at an unknown price`,
-    lastActivity: (when: string) => `Last used ${when}`,
-    neverUsed: "No usage recorded yet",
     /**
      * Shown when a tool is logging but no tier has been picked. The app will not guess one:
      * an unrequested percentage reads as a real reading.
@@ -194,6 +181,13 @@ export const en = {
     } satisfies Record<WindowKind, string | ((minutes: number) => string)>,
     /** For a tool that never writes a limit: what it does show, so the card is not a blank. */
     tokensOnly: "This tool writes no limit. Usage and cost only.",
+    /** The running session's context window. Not a quota: a full one is compacted. */
+    contextTitle: "Context · current session",
+    contextOf: (tokens: string) => `of ${tokens} tokens`,
+    /** From Claude Code itself: the next turn inside this reads the prompt at the cache rate. */
+    cacheWarm: (duration: string, ttl: string) => `Prompt cache warm · cold in ${duration} (${ttl})`,
+    cacheCold: "Prompt cache cold · the next turn pays full price",
+    cacheHits: (percent: string) => `${percent} cache hits this session`,
     openTool: (name: string) => `Show ${name}`,
   },
 
@@ -206,6 +200,8 @@ export const en = {
     /** Says outright that a dollar figure is short, rather than quietly under-reporting. */
     unpriced: (tokens: string) => `${tokens} tokens at an unknown price`,
     none: "No usage in the last 30 days",
+    /** Share of prompt tokens served from the cache over the same 30 days. */
+    cacheHits: (percent: string) => `Cache hits: ${percent} of input`,
     open: "Open the dashboard",
   },
 
@@ -255,6 +251,12 @@ export const en = {
    * neutral ink ramp and why none of this copy borrows the ramp's words.
    */
   breakdown: {
+    sessions: "Sessions",
+    sessionListLabel: (provider: string) => `Recent ${provider} sessions`,
+    /** "3h 05m · claude-sonnet-4-5" under a session's start time. */
+    sessionMeta: (duration: string, model: string) => `${duration} · ${model}`,
+    sessionModelUnreported: "model not reported",
+    sessionsEmpty: "No session in this range",
     models: "Spent on",
     projects: "Spent where",
     /**
@@ -364,6 +366,11 @@ export const en = {
     themeSystem: "Match system",
     themeDark: "Dark",
     themeLight: "Light",
+    shortcutTitle: "Keyboard shortcut",
+    shortcutOn: "On",
+    shortcutOff: "Off",
+    /** The combination is fixed; this names it in the platform's own spelling. */
+    shortcutHint: (keys: string) => `${keys} opens and closes the panel from any app.`,
     usageDisplayTitle: "Percentages",
     usageDisplayUsed: "Used",
     usageDisplayRemaining: "Remaining",
@@ -388,6 +395,9 @@ export const en = {
     rootsTitle: (provider: string) => `${provider} · additional log folders`,
     rootsHint:
       "Folded into the same quota as this tool's own logs. Use it for a second machine's logs on a shared disk, not for a second subscription.",
+    /** Windows only: a tool run inside WSL keeps its logs in the Linux home, reached by UNC path. */
+    rootsWsl:
+      "Running the tool inside WSL? Add its folder by path, e.g. \\\\wsl.localhost\\Ubuntu\\home\\you\\.claude\\projects.",
     rootsUnsupported:
       "This build reads your home folder through a single grant and cannot open a second one, so additional folders are unavailable here.",
     rootsPlaceholder: "Absolute path to a folder",

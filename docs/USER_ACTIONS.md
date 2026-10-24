@@ -53,7 +53,14 @@ Quota Deck şema tahmin ederek parser yazmaz. Eklenmesini istediğin her araç i
 
 - [ ] **Copilot CLI (mevcut sağlayıcı):** araç yeni native runtime'a geçmiş ve 2026-10-19 itibarıyla `~/.copilot/session-state` altında `events.jsonl` bırakmıyor; Quota Deck bu yüzden Copilot için hiçbir şey okuyamıyor. Bir Copilot oturumunu normal şekilde başlatıp kapat, ardından oturumun nereye yazıldığını bildir. Kimlik bilgisi dosyası gönderme.
 
-Öncelikli adaylar: OpenCode, Windsurf, JetBrains, Cursor, Kimi, Gemini CLI ve Qwen Code. Bir aracın yalnız OAuth/cookie/API ile kota sunduğu anlaşılırsa o araç Quota Deck’e eklenmez.
+- [ ] **Gemini CLI, OpenCode, pi/OMP, Amp, Droid (2026-10-24'te eklendi):** parser'lar gerçek dosya yerine ccusage'ın açık kaynak okuyucularındaki biçimden yazıldı; fixture'ların hepsi `synthetic_`. Her biri için aracı kurup iki oturum çalıştır, ardından şunları karşılaştır:
+  - `quotadeckctl report daily --provider <anahtar>` çıktısı aracın kendi kullanım ekranıyla aynı mı (anahtarlar: `gemini-cli`, `opencode`, `pi-agent`, `amp`, `droid`).
+  - Dosya konumları: `~/.gemini/tmp/*/chats/`, `~/.local/share/opencode/opencode.db`, `~/.pi/agent/sessions/`, `~/.local/share/amp/threads/`, `~/.factory/sessions/`.
+  - Uyuşursa birkaç anonim satırı `providers/tests/fixtures/<sağlayıcı>/` altına gerçek fixture olarak ekle, sonra sitedeki "Tools it reads" listesine (`site/src/copy/en.ts`, `tr.ts`) ekle. Site, doğrulanmamış aracı listelemez.
+- [ ] **Fiyat geçersiz kılma:** Gemini veya tabloda olmayan bir modeli fiyatlamak istersen uygulama veri klasörüne `pricing-overrides.json` koy (`{"models": {"gemini-2.5-pro": {"input": 0.00000125, "output": 0.00001, "cacheRead": 0.000000125}}}`, USD/token). Değişiklik bir sonraki açılışta geçmişi yeniden fiyatlar.
+- [ ] **Kısayol:** Ayarlar → Klavye kısayolu → Açık; `⌘⌥Q` (Windows/Linux `Ctrl+Alt+Q`) paneli açıp kapatmalı. Linux Wayland'da çalışmaz; hata mesajı görünmeli.
+
+Bir aracın yalnız OAuth/cookie/API ile kota sunduğu anlaşılırsa o araç Quota Deck’e eklenmez (Cursor, Windsurf, JetBrains bu yüzden yok).
 
 ## Güvenlik notu
 

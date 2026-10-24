@@ -320,6 +320,9 @@ function LogFolderGroup({
       <p className="type-caption settings__hint">
         {supported ? strings.settings.rootsHint : strings.settings.rootsUnsupported}
       </p>
+      {supported && hostPlatform() === "windows" && (
+        <p className="type-caption settings__hint">{strings.settings.rootsWsl}</p>
+      )}
       {roots.length === 0 ? (
         <p className="type-caption settings__hint">{strings.settings.rootsEmpty}</p>
       ) : (
@@ -568,6 +571,39 @@ function DemoGroup() {
 }
 
 /** The UI reflects the exact Run registration, not Windows' separate Startup Apps override. */
+/** The panel hotkey, spelled the way this desktop writes modifier keys. */
+function shortcutKeys(): string {
+  return hostPlatform() === "macos" ? "⌘⌥Q" : "Ctrl+Alt+Q";
+}
+
+function ShortcutGroup({ busy }: { busy: boolean }) {
+  const strings = useStrings();
+  const enabled = useDeck((state) => state.settings.globalShortcut);
+  const setGlobalShortcut = useDeck((state) => state.setGlobalShortcut);
+  return (
+    <fieldset className="settings__group" disabled={busy}>
+      <legend className="type-label settings__legend">{strings.settings.shortcutTitle}</legend>
+      <div className="settings__row">
+        {[
+          { on: false, label: strings.settings.shortcutOff },
+          { on: true, label: strings.settings.shortcutOn },
+        ].map(({ on, label }) => (
+          <label key={String(on)} className="settings__chip">
+            <input
+              type="radio"
+              name="global-shortcut"
+              checked={enabled === on}
+              onChange={() => setGlobalShortcut(on)}
+            />
+            <span className="type-body">{label}</span>
+          </label>
+        ))}
+      </div>
+      <p className="type-caption settings__hint">{strings.settings.shortcutHint(shortcutKeys())}</p>
+    </fieldset>
+  );
+}
+
 function StartupGroup() {
   const strings = useStrings();
   const startup = useDeck((state) => state.startup);
@@ -661,6 +697,7 @@ export function SettingsView({ now }: { now: number }) {
   const settingsBusy = useDeck((state) => state.settingsAction !== null);
   const setTrayMode = useDeck((state) => state.setTrayMode);
   const setTheme = useDeck((state) => state.setTheme);
+  const setUsageDisplay = useDeck((state) => state.setUsageDisplay);
   const setLocale = useDeck((state) => state.setLocale);
   const plans = useDeck((state) => state.plans);
   // Selected whole and filtered here: a selector returning a fresh array every call gives
@@ -699,7 +736,34 @@ export function SettingsView({ now }: { now: number }) {
 
       <StartupGroup />
 
+      <ShortcutGroup busy={settingsBusy} />
+
       <RetentionGroup />
+
+      <fieldset className="settings__group" disabled={settingsBusy}>
+        <legend className="type-label settings__legend">
+          {strings.settings.usageDisplayTitle}
+        </legend>
+        <div className="settings__row">
+          {(
+            [
+              ["used", strings.settings.usageDisplayUsed],
+              ["remaining", strings.settings.usageDisplayRemaining],
+            ] as const
+          ).map(([display, label]) => (
+            <label key={display} className="settings__chip">
+              <input
+                type="radio"
+                name="usage-display"
+                value={display}
+                checked={settings.usageDisplay === display}
+                onChange={() => setUsageDisplay(display)}
+              />
+              <span className="type-body">{label}</span>
+            </label>
+          ))}
+        </div>
+      </fieldset>
 
       <fieldset className="settings__group" disabled={settingsBusy}>
         <legend className="type-label settings__legend">{strings.settings.themeTitle}</legend>

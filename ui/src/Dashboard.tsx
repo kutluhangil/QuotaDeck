@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 
 import { BreakdownList } from "./components/BreakdownList";
+import { SessionList } from "./components/SessionList";
 import { ConfidenceBadge } from "./components/ConfidenceBadge";
 import { EmptyState } from "./components/EmptyState";
 import { Heatmap } from "./components/Heatmap";
@@ -147,6 +148,14 @@ function ProviderPanel({
   const projectNames = shortenPaths(
     projects.map((row) => row.label).filter((label): label is string => label !== null),
   );
+  const sessions = (history.find((entry) => entry.id === snapshot.instance)?.sessions ?? []).filter(
+    (row) =>
+      Date.parse(row.lastAt) / 1000 >= historyRange.from &&
+      Date.parse(row.startedAt) / 1000 < historyRange.to,
+  );
+  const sessionProjects = shortenPaths(
+    sessions.map((row) => row.project).filter((path): path is string => path !== null),
+  );
 
   const name = snapshot.label ?? strings.provider[snapshot.id];
   const headline = worstWindow(snapshot.windows);
@@ -270,6 +279,16 @@ function ProviderPanel({
           unreported={strings.breakdown.unattributed}
           droppedNote={strings.breakdown.droppedAgents}
           display={(label) => originName(label, strings)}
+        />
+      </section>
+
+      {/* The unit people think in. An hourly total cannot say what one long session cost. */}
+      <section className="board__breakdown">
+        <h3 className="type-caption board__total-label">{strings.breakdown.sessions}</h3>
+        <SessionList
+          sessions={sessions}
+          label={strings.breakdown.sessionListLabel(name)}
+          display={(path) => sessionProjects.get(path) ?? path}
         />
       </section>
 

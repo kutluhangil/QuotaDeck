@@ -256,9 +256,115 @@ fn normalise(model: &str) -> String {
     id
 }
 
-/// The embedded Anthropic table revision persisted with provider checkpoints.
+/// The price file a user can put beside the app's own data, for a model the embedded table does
+/// not cover or a rate that changed after this build.
+pub const OVERRIDES_FILE: &str = "pricing-overrides.json";
+
+/// USD per token for one model, as a user wrote it. Input and output are required; a cache
+/// rate left out is a cache the model does not bill.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct UserRate {
+    input: f64,
+    output: f64,
+    #[serde(default)]
+    cache_read: f64,
+    #[serde(default)]
+    cache_write_5m: f64,
+    #[serde(default)]
+    cache_write_1h: f64,
+}
+
+#[derive(Debug, Default)]
+struct Overrides {
+    rates: BTreeMap<String, ModelPrice>,
+    /// Folded into the pricing revision, so editing the file rebuilds costs already counted.
+    fingerprint: u64,
+}
+
+/// Parse an override document. Entries that fail validation are skipped and named, so one typo
+/// does not discard the rest of the file.
+fn parse_overrides(json: &str) -> (Overrides, Vec<String>) {
+    use std::hash::{Hash, Hasher};
+    let mut errors = Vec::new();
+    let raw: BTreeMap<String, serde_json::Value> =
+        match serde_json::from_str::<serde_json::Value>(json).map(|doc| doc.get("models").cloned())
+        {
+            Ok(Some(serde_json::Value::Object(models))) => models.into_iter().collect(),
+            Ok(_) => {
+                errors.push(format!("{OVERRIDES_FILE} has no \"models\" object"));
+                BTreeMap::new()
+            }
+            Err(error) => {
+                errors.push(format!("{OVERRIDES_FILE} is not valid JSON: {error}"));
+                BTreeMap::new()
+            }
+        };
+    let mut overrides = Overrides::default();
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    for (model, value) in raw {
+        let rate = match serde_json::from_value::<UserRate>(value) {
+            Ok(rate) => rate,
+            Err(error) => {
+                errors.push(format!("{OVERRIDES_FILE}: {model} skipped: {error}"));
+                continue;
+            }
+        };
+        let required = [rate.input, rate.output];
+        let optional = [rate.cache_read, rate.cache_write_5m, rate.cache_write_1h];
+        if required.iter().any(|v| !v.is_finite() || *v <= 0.0)
+            || optional.iter().any(|v| !v.is_finite() || *v < 0.0)
+        {
+            errors.push(format!(
+                "{OVERRIDES_FILE}: {model} skipped: rates are USD per token; input and output must be positive, cache rates zero or more"
+            ));
+            continue;
+        }
+        let id = normalise(&model);
+        id.hash(&mut hasher);
+        for value in required.iter().chain(optional.iter()) {
+            value.to_bits().hash(&mut hasher);
+        }
+        overrides.rates.insert(
+            id,
+            ModelPrice {
+                input: rate.input,
+                output: rate.output,
+                cache_read: rate.cache_read,
+                cache_write_5m: rate.cache_write_5m,
+                cache_write_1h: rate.cache_write_1h,
+            },
+        );
+    }
+    if !overrides.rates.is_empty() {
+        overrides.fingerprint = hasher.finish();
+    }
+    (overrides, errors)
+}
+
+/// Read once per process. Editing the file takes effect on the next launch, and the changed
+/// revision then re-prices what was already counted.
+fn overrides() -> &'static Overrides {
+    static OVERRIDES: OnceLock<Overrides> = OnceLock::new();
+    OVERRIDES.get_or_init(|| {
+        let Some(path) = crate::paths::data_dir().map(|dir| dir.join(OVERRIDES_FILE)) else {
+            return Overrides::default();
+        };
+        let Ok(json) = std::fs::read_to_string(&path) else {
+            return Overrides::default();
+        };
+        let (overrides, errors) = parse_overrides(&json);
+        for error in errors {
+            eprintln!("quotadeck: {error}");
+        }
+        overrides
+    })
+}
+
+/// The pricing revision persisted with provider checkpoints: the embedded table's, moved by
+/// any user override so a changed rate re-prices history.
 pub fn embedded_pricing_revision() -> u64 {
-    table().revision
+    table().revision.wrapping_add(overrides().fingerprint)
 }
 
 /// The base price for `model` at `at`, or `None` when the model or instant is uncovered.
@@ -267,7 +373,10 @@ pub fn embedded_pricing_revision() -> u64 {
 /// the longest exact table key is selected. An arbitrary prefix is not enough: treating a
 /// future `claude-opus-4-50` as `claude-opus-4-5` would invent a price.
 pub fn price_for_at(model: &str, at: DateTime<Utc>) -> Option<&'static ModelPrice> {
-    price_for_in(table(), model, at)
+    overrides()
+        .rates
+        .get(&normalise(model))
+        .or_else(|| price_for_in(table(), model, at))
 }
 
 fn price_for_in<'a>(table: &'a Table, model: &str, at: DateTime<Utc>) -> Option<&'a ModelPrice> {
@@ -289,7 +398,19 @@ fn period_for_in<'a>(table: &'a Table, model: &str, at: DateTime<Utc>) -> Option
 
 /// Equivalent API cost in USD, or `None` when the model or instant is uncovered.
 pub fn cost_of_at(model: &str, at: DateTime<Utc>, usage: &PricedUsage) -> Option<f64> {
+    // A user's rate wins: it exists because the embedded one is missing or out of date.
+    if let Some(rates) = overrides().rates.get(&normalise(model)) {
+        return Some(charge(rates, usage));
+    }
     cost_of_in(table(), model, at, usage)
+}
+
+fn charge(price: &ModelPrice, usage: &PricedUsage) -> f64 {
+    usage.input as f64 * price.input
+        + usage.output as f64 * price.output
+        + usage.cache_read as f64 * price.cache_read
+        + usage.cache_write_5m as f64 * price.cache_write_5m
+        + usage.cache_write_1h as f64 * price.cache_write_1h
 }
 
 /// Cost of one record from a tool that may write its own figure.
@@ -324,13 +445,7 @@ fn cost_of_in(table: &Table, model: &str, at: DateTime<Utc>, usage: &PricedUsage
         Some(tier) if prompt > tier.above_tokens => &tier.rates,
         _ => &period.rates,
     };
-    Some(
-        usage.input as f64 * price.input
-            + usage.output as f64 * price.output
-            + usage.cache_read as f64 * price.cache_read
-            + usage.cache_write_5m as f64 * price.cache_write_5m
-            + usage.cache_write_1h as f64 * price.cache_write_1h,
-    )
+    Some(charge(price, usage))
 }
 
 #[cfg(test)]
@@ -372,6 +487,32 @@ mod tests {
 
     fn at(value: &str) -> DateTime<Utc> {
         value.parse().expect("valid test timestamp")
+    }
+
+    #[test]
+    fn user_overrides_keep_valid_entries_and_name_the_rest() {
+        let (overrides, errors) = parse_overrides(
+            r#"{"models": {
+                "Gemini-2.5-Pro": {"input": 0.00000125, "output": 0.00001, "cacheRead": 0.0000003},
+                "free-model": {"input": 0, "output": 0.00001},
+                "typo-model": {"input": 0.000001, "outptu": 0.00001}
+            }}"#,
+        );
+        assert_eq!(overrides.rates.len(), 1);
+        let rate = overrides
+            .rates
+            .get("gemini-2.5-pro")
+            .expect("normalised key");
+        assert_eq!(rate.cache_write_1h, 0.0);
+        assert_ne!(overrides.fingerprint, 0);
+        assert_eq!(errors.len(), 2, "{errors:?}");
+        assert!(errors.iter().any(|e| e.contains("free-model")));
+        assert!(errors.iter().any(|e| e.contains("typo-model")));
+
+        let (empty, errors) = parse_overrides("not json");
+        assert!(empty.rates.is_empty());
+        assert_eq!(empty.fingerprint, 0);
+        assert_eq!(errors.len(), 1);
     }
 
     #[test]

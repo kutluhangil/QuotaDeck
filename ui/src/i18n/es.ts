@@ -64,11 +64,6 @@ export const es: Catalogue = {
       `Esta herramienta no está disponible ahora mismo.${reason ? ` ${reason}` : ""}`,
   },
 
-  filters: {
-    all: "Todas",
-    label: "Mostrar una sola herramienta",
-  },
-
   units: {
     day: "d",
     hour: "h",
@@ -114,14 +109,7 @@ export const es: Catalogue = {
   },
 
   card: {
-    resetsAt: (time) => `Se restablece a las ${time}`,
-    resetsIn: (duration) => `Se libera en ${duration}`,
     noReset: "No informa cuándo se restablece",
-    todayTokens: (tokens) => `hoy ${tokens} tokens`,
-    todayCost: (amount) => `hoy ${amount}`,
-    costPartial: (tokens) => `más ${tokens} tokens sin precio conocido`,
-    lastActivity: (when) => `Último uso ${when}`,
-    neverUsed: "Todavía no hay uso registrado",
     pickPlan: "Elige tu plan para ver una estimación",
     pickPlanAction: "Elegir plan",
     limitLabel: (window) => `Límite ${window}`,
@@ -146,6 +134,11 @@ export const es: Catalogue = {
       other: (minutes) => `${minutes} min`,
     },
     tokensOnly: "Esta herramienta no escribe ningún límite. Solo uso y coste.",
+    contextTitle: "Contexto · sesión actual",
+    contextOf: (tokens) => `de ${tokens} tokens`,
+    cacheWarm: (duration, ttl) => `Caché del prompt activa · se enfría en ${duration} (${ttl})`,
+    cacheCold: "Caché del prompt fría · el siguiente turno paga el precio completo",
+    cacheHits: (percent) => `${percent} de aciertos de caché en esta sesión`,
     openTool: (name) => `Mostrar ${name}`,
   },
 
@@ -157,6 +150,7 @@ export const es: Catalogue = {
     monthTokens: (tokens) => `Últimos 30 días: ${tokens} tokens`,
     unpriced: (tokens) => `${tokens} tokens a precio desconocido`,
     none: "Sin uso en los últimos 30 días",
+    cacheHits: (percent) => `Aciertos de caché: ${percent} de la entrada`,
     open: "Abrir el panel",
   },
 
@@ -196,6 +190,11 @@ export const es: Catalogue = {
   },
 
   breakdown: {
+    sessions: "Sesiones",
+    sessionListLabel: (provider) => `Sesiones recientes de ${provider}`,
+    sessionMeta: (duration, model) => `${duration} · ${model}`,
+    sessionModelUnreported: "modelo no indicado",
+    sessionsEmpty: "Ninguna sesión en este intervalo",
     models: "En qué se gastó",
     projects: "En qué directorio",
     unreported: "No informó el modelo",
@@ -276,6 +275,10 @@ export const es: Catalogue = {
     themeSystem: "Como el sistema",
     themeDark: "Oscuro",
     themeLight: "Claro",
+    shortcutTitle: "Atajo de teclado",
+    shortcutOn: "Activado",
+    shortcutOff: "Desactivado",
+    shortcutHint: (keys) => `${keys} abre y cierra el panel desde cualquier aplicación.`,
     usageDisplayTitle: "Porcentajes",
     usageDisplayUsed: "Usado",
     usageDisplayRemaining: "Restante",
@@ -297,6 +300,8 @@ export const es: Catalogue = {
     rootsTitle: (provider) => `${provider} · carpetas de registro adicionales`,
     rootsHint:
       "Se suman al mismo límite que los registros propios de esta herramienta. Para los registros de otra máquina en un disco compartido, no para una segunda suscripción.",
+    rootsWsl:
+      "¿Usas la herramienta dentro de WSL? Añade su carpeta por ruta, p. ej. \\\\wsl.localhost\\Ubuntu\\home\\tu\\.claude\\projects.",
     rootsUnsupported:
       "Esta versión lee tu carpeta personal con un único permiso y no puede abrir otro; las carpetas adicionales no están disponibles aquí.",
     rootsPlaceholder: "Ruta absoluta a una carpeta",

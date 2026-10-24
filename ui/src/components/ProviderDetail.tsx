@@ -24,6 +24,7 @@ import {
   totalTokens,
   worstWindow,
   type CostRange,
+  type LiveReading,
   type ProviderSnapshot,
   type QuotaWindow,
   type TokenRollup,
@@ -51,6 +52,51 @@ export function windowTitle(window: QuotaWindow, strings: Catalogue): string {
   const title =
     window.kind === "other" ? titles.other(window.windowMinutes) : titles[window.kind];
   return window.kind === "other" ? title : `${title} · ${formatSpan(window.windowMinutes * 60, strings)}`;
+}
+
+/** A live reading older than this describes a session that has since gone quiet. */
+const LIVE_FRESH_MS = 2 * 60 * 60 * 1000;
+
+/**
+ * The running session, as the tool reported it: a context bar, and whether the prompt cache is
+ * still warm. Both come from Claude Code's own status line, so nothing here is estimated.
+ */
+function LiveSession({ live, now }: { live: LiveReading; now: number }) {
+  const strings = useStrings();
+  const locale = useLocale();
+  if (now - Date.parse(live.observedAt) > LIVE_FRESH_MS) return null;
+  const expires = secondsUntil(live.cacheExpiresAt, now);
+  const cache =
+    live.cacheWarm === true && expires !== null && expires > 0
+      ? strings.detail.cacheWarm(formatDuration(expires, strings), live.cacheTtl ?? "")
+      : live.cacheWarm === null
+        ? null
+        : strings.detail.cacheCold;
+  const hits =
+    live.cacheHitRatio === null ? null : strings.detail.cacheHits(formatPercent(live.cacheHitRatio * 100, locale));
+  return (
+    <>
+      {live.contextUsedPercent !== null && (
+        <div className="block">
+          <div className="block__head">
+            <span className="type-label block__title">{strings.detail.contextTitle}</span>
+          </div>
+          <UsageBar percent={live.contextUsedPercent} windowName={strings.detail.contextTitle} />
+          <div className="type-caption block__foot">
+            <span className="block__value">
+              {strings.detail.used(formatPercent(live.contextUsedPercent, locale))}
+            </span>
+            {live.contextWindowSize !== null && (
+              <span>{strings.detail.contextOf(formatTokens(live.contextWindowSize, locale))}</span>
+            )}
+          </div>
+        </div>
+      )}
+      {(cache !== null || hits !== null) && (
+        <p className="type-caption detail__note">{[cache, hits].filter(Boolean).join(" · ")}</p>
+      )}
+    </>
+  );
 }
 
 /** One limit: its name, a full-width bar, how much is spent or left, and when it lets go. */
@@ -120,6 +166,8 @@ export function CostSection({
   }
 
   const idle = totalTokens(snapshot.month) === 0;
+  const prompt = snapshot.month.input + snapshot.month.cacheRead + snapshot.month.cacheCreation;
+  const hitRate = snapshot.month.cacheRead > 0 && prompt > 0 ? (snapshot.month.cacheRead / prompt) * 100 : null;
   return (
     <section className="cost" aria-label={strings.cost.title}>
       <div className="cost__head">
@@ -145,6 +193,11 @@ export function CostSection({
           <p className="type-caption cost__line">
             {line(snapshot.month, snapshot.monthCost, strings.cost.month, strings.cost.monthTokens)}
           </p>
+          {hitRate !== null && (
+            <p className="type-caption cost__line">
+              {strings.cost.cacheHits(formatPercent(hitRate, locale))}
+            </p>
+          )}
         </>
       )}
     </section>
@@ -176,6 +229,10 @@ export function ProviderDetail({
   const display = useDeck((state) => state.settings.usageDisplay);
   const planId = useDeck((state) => state.settings.plans[snapshot.instance] ?? null);
   const plans = useDeck((state) => state.plans);
+  // Only a tool that sells tiers can be set up; one that writes no limit is shown as it is.
+  const offersPlans = plans.some(
+    (entry) => entry.provider === snapshot.id && entry.plans.length > 0,
+  );
   const nameId = useId();
   const name = snapshot.label ?? strings.provider[snapshot.id];
   const headline = worstWindow(snapshot.windows);
@@ -208,13 +265,10 @@ export function ProviderDetail({
         </div>
         <span className="detail__head-right">
           {plan && <span className="type-caption detail__plan">{plan}</span>}
-          <ConfidenceBadge
-            confidence={
-              headline
-                ? confidenceForHealth(headline.confidence, health, now)
-                : { level: "unavailable", reason: snapshot.unavailable ?? "never-reported" }
-            }
-          />
+          {/* A tool without a limit says so once, in the body, not again as a badge. */}
+          {headline && (
+            <ConfidenceBadge confidence={confidenceForHealth(headline.confidence, health, now)} />
+          )}
         </span>
       </header>
 
@@ -237,7 +291,7 @@ export function ProviderDetail({
             />
           ))}
         </ul>
-      ) : awaitingSetup(snapshot) ? (
+      ) : awaitingSetup(snapshot) && offersPlans ? (
         <p className="type-body card__quiet">
           {strings.card.pickPlan}
           {onSetUp && (
@@ -259,6 +313,8 @@ export function ProviderDetail({
           {paceClock && ` · ${strings.detail.runsOut(paceClock)}`}
         </p>
       )}
+
+      {snapshot.live && <LiveSession live={snapshot.live} now={now} />}
 
       {snapshot.burst && (
         <p className="type-caption card__burst" role="note">

@@ -27,6 +27,7 @@ proof of what the shim does **not** write: the source payload carried `cwd`, `se
 
 | File | What it covers |
 |---|---|
+| `synthetic_statusline_live.jsonl` | A shim record carrying the allow-listed `context_window` and `prompt_cache` counters (shape from Claude Code's statusline documentation) beside a rate limit |
 | `synthetic_statusline_partial.jsonl` | `five_hour` absent, then `rate_limits` empty — both documented as possible before a session's first API response |
 | `synthetic_unpriced_model.jsonl` | A model id the embedded price table does not know. Its tokens count; its cost does not, and the estimate says so |
 | `synthetic_usage_without_cwd.jsonl` | A usage row carrying no `cwd`. All 9655 rows measured here carried one; a row that does not is left unattributed rather than labelled from the encoded directory name |
