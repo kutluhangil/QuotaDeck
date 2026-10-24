@@ -1,0 +1,131 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="640" viewBox="0 0 1280 640" role="img" aria-labelledby="t d">
+  <title id="t">How Quota Deck works</title>
+  <desc id="d">Eight tools write logs on your disk. A read-only Rust core reads only what was appended, deduplicates and buckets it, and feeds the menu bar item, the panel, the dashboard, the macOS widget and the command line. Nothing goes to the network.</desc>
+  <defs>
+    <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse"><path d="M32 0H0V32" fill="none" stroke="#e6ebf4" stroke-opacity="0.035"/></pattern>
+    <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5"><stop offset="0" stop-color="#6ba8ff" stop-opacity="0.18"/><stop offset="1" stop-color="#6ba8ff" stop-opacity="0"/></radialGradient>
+    <clipPath id="frame"><rect width="1280" height="640" rx="28"/></clipPath>
+  </defs>
+  <style>
+    .ui { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", Helvetica, Arial, sans-serif; }
+    .mono { font-family: SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; }
+    .wire { fill: none; stroke: #2b3a52; stroke-width: 1.5; }
+    .flow { fill: none; stroke-width: 1.5; stroke-dasharray: 3 9; animation: flow 1.1s linear infinite; }
+    @keyframes flow { to { stroke-dashoffset: -12; } }
+    .packet { offset-rotate: 0deg; animation: travel 2.8s cubic-bezier(.45,0,.55,1) infinite; }
+    @keyframes travel { 0% { offset-distance: 0%; opacity: 0; } 12% { opacity: 1; } 88% { opacity: 1; } 100% { offset-distance: 100%; opacity: 0; } }
+    .breathe { animation: breathe 3.2s ease-in-out infinite; }
+    @keyframes breathe { 0%, 100% { stroke-opacity: .35; } 50% { stroke-opacity: 1; } }
+    .tick { transform-box: fill-box; transform-origin: center; animation: tick 3.2s ease-in-out infinite; }
+    @keyframes tick { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.25); } }
+    .deny { animation: deny 2.4s ease-in-out infinite; }
+    @keyframes deny { 0%, 100% { opacity: .55; } 50% { opacity: 1; } }
+    @media (prefers-reduced-motion: reduce) { .flow, .packet, .breathe, .tick, .deny { animation: none !important; } .packet { display: none; } }
+  </style>
+  <g clip-path="url(#frame)"><rect width="1280" height="640" fill="#0a0e17"/><rect width="1280" height="640" fill="url(#grid)"/>
+  <ellipse cx="640.0" cy="320.0" rx="300" ry="240" fill="url(#glow)"/></g>
+  <rect x="0.5" y="0.5" width="1279" height="639" rx="27.5" fill="none" stroke="#232e40"/>
+  <g class="ui">
+  <text x="56" y="62" fill="#8a99b0" font-size="13" font-weight="600" letter-spacing="2.4">YOUR DISK · READ-ONLY</text>
+  <text x="640.0" y="62" fill="#8a99b0" font-size="13" font-weight="600" letter-spacing="2.4" text-anchor="middle">RUST CORE</text>
+  <text x="920" y="62" fill="#8a99b0" font-size="13" font-weight="600" letter-spacing="2.4">WHAT YOU SEE</text>
+  <g transform="translate(56 84)"><rect width="316" height="50" rx="12" fill="#131a26" stroke="#232e40"/>
+    <rect x="14" y="15" width="20" height="20" rx="6" fill="#a78bfa"/><text x="24" y="29.5" fill="#0a0e17" font-size="11" font-weight="700" text-anchor="middle">C</text>
+    <text x="46" y="22" fill="#e6ebf4" font-size="14" font-weight="600">Claude Code</text>
+    <text class="mono" x="46" y="39" fill="#55637a" font-size="11">~/.claude/projects</text></g>
+  <g transform="translate(56 140)"><rect width="316" height="50" rx="12" fill="#131a26" stroke="#232e40"/>
+    <rect x="14" y="15" width="20" height="20" rx="6" fill="#f472b6"/><text x="24" y="29.5" fill="#0a0e17" font-size="11" font-weight="700" text-anchor="middle">C</text>
+    <text x="46" y="22" fill="#e6ebf4" font-size="14" font-weight="600">Codex</text>
+    <text class="mono" x="46" y="39" fill="#55637a" font-size="11">~/.codex/sessions</text></g>
+  <g transform="translate(56 196)"><rect width="316" height="50" rx="12" fill="#131a26" stroke="#232e40"/>
+    <rect x="14" y="15" width="20" height="20" rx="6" fill="#22d3ee"/><text x="24" y="29.5" fill="#0a0e17" font-size="11" font-weight="700" text-anchor="middle">C</text>
+    <text x="46" y="22" fill="#e6ebf4" font-size="14" font-weight="600">Copilot CLI</text>
+    <text class="mono" x="46" y="39" fill="#55637a" font-size="11">~/.copilot/session-state</text></g>
+  <g transform="translate(56 252)"><rect width="316" height="50" rx="12" fill="#131a26" stroke="#232e40"/>
+    <rect x="14" y="15" width="20" height="20" rx="6" fill="#e879f9"/><text x="24" y="29.5" fill="#0a0e17" font-size="11" font-weight="700" text-anchor="middle">G</text>
+    <text x="46" y="22" fill="#e6ebf4" font-size="14" font-weight="600">Gemini CLI</text>
+    <text class="mono" x="46" y="39" fill="#55637a" font-size="11">~/.gemini/tmp/*/chats</text></g>
+  <g transform="translate(56 308)"><rect width="316" height="50" rx="12" fill="#131a26" stroke="#232e40"/>
+    <rect x="14" y="15" width="20" height="20" rx="6" fill="#a78bfa"/><text x="24" y="29.5" fill="#0a0e17" font-size="11" font-weight="700" text-anchor="middle">O</text>
+    <text x="46" y="22" fill="#e6ebf4" font-size="14" font-weight="600">OpenCode</text>
+    <text class="mono" x="46" y="39" fill="#55637a" font-size="11">~/.local/share/opencode · SQLite</text></g>
+  <g transform="translate(56 364)"><rect width="316" height="50" rx="12" fill="#131a26" stroke="#232e40"/>
+    <rect x="14" y="15" width="20" height="20" rx="6" fill="#f472b6"/><text x="24" y="29.5" fill="#0a0e17" font-size="11" font-weight="700" text-anchor="middle">p</text>
+    <text x="46" y="22" fill="#e6ebf4" font-size="14" font-weight="600">pi / OMP</text>
+    <text class="mono" x="46" y="39" fill="#55637a" font-size="11">~/.pi/agent/sessions</text></g>
+  <g transform="translate(56 420)"><rect width="316" height="50" rx="12" fill="#131a26" stroke="#232e40"/>
+    <rect x="14" y="15" width="20" height="20" rx="6" fill="#22d3ee"/><text x="24" y="29.5" fill="#0a0e17" font-size="11" font-weight="700" text-anchor="middle">A</text>
+    <text x="46" y="22" fill="#e6ebf4" font-size="14" font-weight="600">Amp</text>
+    <text class="mono" x="46" y="39" fill="#55637a" font-size="11">~/.local/share/amp/threads</text></g>
+  <g transform="translate(56 476)"><rect width="316" height="50" rx="12" fill="#131a26" stroke="#232e40"/>
+    <rect x="14" y="15" width="20" height="20" rx="6" fill="#e879f9"/><text x="24" y="29.5" fill="#0a0e17" font-size="11" font-weight="700" text-anchor="middle">D</text>
+    <text x="46" y="22" fill="#e6ebf4" font-size="14" font-weight="600">Droid</text>
+    <text class="mono" x="46" y="39" fill="#55637a" font-size="11">~/.factory/sessions</text></g>
+  <g transform="translate(920 139.0)"><rect width="304" height="58" rx="12" fill="#131a26" stroke="#232e40"/>
+    <text x="18" y="25" fill="#e6ebf4" font-size="15" font-weight="600">Menu bar · tray</text>
+    <text x="18" y="44" fill="#55637a" font-size="12">one glyph, colour only past 85%</text>
+    <circle cx="284" cy="29.0" r="4" fill="#45c4a0"/></g>
+  <g transform="translate(920 215.0)"><rect width="304" height="58" rx="12" fill="#131a26" stroke="#232e40"/>
+    <text x="18" y="25" fill="#e6ebf4" font-size="15" font-weight="600">Panel</text>
+    <text x="18" y="44" fill="#55637a" font-size="12">tabs, limits, pace, cost</text>
+    <circle cx="284" cy="29.0" r="4" fill="#45c4a0"/></g>
+  <g transform="translate(920 291.0)"><rect width="304" height="58" rx="12" fill="#131a26" stroke="#232e40"/>
+    <text x="18" y="25" fill="#e6ebf4" font-size="15" font-weight="600">Dashboard</text>
+    <text x="18" y="44" fill="#55637a" font-size="12">history, models, projects, sessions</text>
+    <circle cx="284" cy="29.0" r="4" fill="#45c4a0"/></g>
+  <g transform="translate(920 367.0)"><rect width="304" height="58" rx="12" fill="#131a26" stroke="#232e40"/>
+    <text x="18" y="25" fill="#e6ebf4" font-size="15" font-weight="600">macOS widget</text>
+    <text x="18" y="44" fill="#55637a" font-size="12">App Group snapshot</text>
+    <circle cx="284" cy="29.0" r="4" fill="#45c4a0"/></g>
+  <g transform="translate(920 443.0)"><rect width="304" height="58" rx="12" fill="#131a26" stroke="#232e40"/>
+    <text x="18" y="25" fill="#e6ebf4" font-size="15" font-weight="600">quotadeckctl</text>
+    <text x="18" y="44" fill="#55637a" font-size="12">status · export · report</text>
+    <circle cx="284" cy="29.0" r="4" fill="#45c4a0"/></g>
+  <path class="wire" d="M372 109.0 C432 109.0 416 320.0 476 320.0"/><path class="flow" d="M372 109.0 C432 109.0 416 320.0 476 320.0" stroke="#a78bfa" stroke-opacity=".8"/>
+  <circle class="packet" r="3.5" fill="#a78bfa" style="offset-path: path('M372 109.0 C432 109.0 416 320.0 476 320.0'); animation-delay: 0.00s"/>
+  <path class="wire" d="M372 165.0 C432 165.0 416 320.0 476 320.0"/><path class="flow" d="M372 165.0 C432 165.0 416 320.0 476 320.0" stroke="#f472b6" stroke-opacity=".8"/>
+  <circle class="packet" r="3.5" fill="#f472b6" style="offset-path: path('M372 165.0 C432 165.0 416 320.0 476 320.0'); animation-delay: 0.33s"/>
+  <path class="wire" d="M372 221.0 C432 221.0 416 320.0 476 320.0"/><path class="flow" d="M372 221.0 C432 221.0 416 320.0 476 320.0" stroke="#22d3ee" stroke-opacity=".8"/>
+  <circle class="packet" r="3.5" fill="#22d3ee" style="offset-path: path('M372 221.0 C432 221.0 416 320.0 476 320.0'); animation-delay: 0.66s"/>
+  <path class="wire" d="M372 277.0 C432 277.0 416 320.0 476 320.0"/><path class="flow" d="M372 277.0 C432 277.0 416 320.0 476 320.0" stroke="#e879f9" stroke-opacity=".8"/>
+  <circle class="packet" r="3.5" fill="#e879f9" style="offset-path: path('M372 277.0 C432 277.0 416 320.0 476 320.0'); animation-delay: 0.99s"/>
+  <path class="wire" d="M372 333.0 C432 333.0 416 320.0 476 320.0"/><path class="flow" d="M372 333.0 C432 333.0 416 320.0 476 320.0" stroke="#a78bfa" stroke-opacity=".8"/>
+  <circle class="packet" r="3.5" fill="#a78bfa" style="offset-path: path('M372 333.0 C432 333.0 416 320.0 476 320.0'); animation-delay: 1.32s"/>
+  <path class="wire" d="M372 389.0 C432 389.0 416 320.0 476 320.0"/><path class="flow" d="M372 389.0 C432 389.0 416 320.0 476 320.0" stroke="#f472b6" stroke-opacity=".8"/>
+  <circle class="packet" r="3.5" fill="#f472b6" style="offset-path: path('M372 389.0 C432 389.0 416 320.0 476 320.0'); animation-delay: 1.65s"/>
+  <path class="wire" d="M372 445.0 C432 445.0 416 320.0 476 320.0"/><path class="flow" d="M372 445.0 C432 445.0 416 320.0 476 320.0" stroke="#22d3ee" stroke-opacity=".8"/>
+  <circle class="packet" r="3.5" fill="#22d3ee" style="offset-path: path('M372 445.0 C432 445.0 416 320.0 476 320.0'); animation-delay: 1.98s"/>
+  <path class="wire" d="M372 501.0 C432 501.0 416 320.0 476 320.0"/><path class="flow" d="M372 501.0 C432 501.0 416 320.0 476 320.0" stroke="#e879f9" stroke-opacity=".8"/>
+  <circle class="packet" r="3.5" fill="#e879f9" style="offset-path: path('M372 501.0 C432 501.0 416 320.0 476 320.0'); animation-delay: 2.31s"/>
+  <path class="wire" d="M804 320.0 C864 320.0 860 168.0 920 168.0"/><path class="flow" d="M804 320.0 C864 320.0 860 168.0 920 168.0" stroke="#45c4a0" stroke-opacity=".8"/>
+  <circle class="packet" r="3.5" fill="#45c4a0" style="offset-path: path('M804 320.0 C864 320.0 860 168.0 920 168.0'); animation-delay: 1.40s"/>
+  <path class="wire" d="M804 320.0 C864 320.0 860 244.0 920 244.0"/><path class="flow" d="M804 320.0 C864 320.0 860 244.0 920 244.0" stroke="#45c4a0" stroke-opacity=".8"/>
+  <circle class="packet" r="3.5" fill="#45c4a0" style="offset-path: path('M804 320.0 C864 320.0 860 244.0 920 244.0'); animation-delay: 1.70s"/>
+  <path class="wire" d="M804 320.0 C864 320.0 860 320.0 920 320.0"/><path class="flow" d="M804 320.0 C864 320.0 860 320.0 920 320.0" stroke="#45c4a0" stroke-opacity=".8"/>
+  <circle class="packet" r="3.5" fill="#45c4a0" style="offset-path: path('M804 320.0 C864 320.0 860 320.0 920 320.0'); animation-delay: 2.00s"/>
+  <path class="wire" d="M804 320.0 C864 320.0 860 396.0 920 396.0"/><path class="flow" d="M804 320.0 C864 320.0 860 396.0 920 396.0" stroke="#45c4a0" stroke-opacity=".8"/>
+  <circle class="packet" r="3.5" fill="#45c4a0" style="offset-path: path('M804 320.0 C864 320.0 860 396.0 920 396.0'); animation-delay: 2.30s"/>
+  <path class="wire" d="M804 320.0 C864 320.0 860 472.0 920 472.0"/><path class="flow" d="M804 320.0 C864 320.0 860 472.0 920 472.0" stroke="#45c4a0" stroke-opacity=".8"/>
+  <circle class="packet" r="3.5" fill="#45c4a0" style="offset-path: path('M804 320.0 C864 320.0 860 472.0 920 472.0'); animation-delay: 2.60s"/>
+  <rect x="476" y="168" width="328" height="332" rx="18" fill="#131a26" stroke="#232e40"/>
+  <rect class="breathe" x="476" y="168" width="328" height="332" rx="18" fill="none" stroke="#6ba8ff"/>
+  <g transform="translate(504 208)"><circle class="tick" cx="9" cy="9" r="9" fill="#45c4a0" fill-opacity=".14" style="animation-delay:0.0s"/><path d="M5 9.2l2.8 2.8L13 6.6" fill="none" stroke="#45c4a0" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="30" y="8" fill="#e6ebf4" font-size="15" font-weight="600">Byte-offset cursors</text><text x="30" y="27" fill="#8a99b0" font-size="12.5">a quiet minute reads 0 bytes</text></g>
+  <g transform="translate(504 270)"><circle class="tick" cx="9" cy="9" r="9" fill="#45c4a0" fill-opacity=".14" style="animation-delay:0.4s"/><path d="M5 9.2l2.8 2.8L13 6.6" fill="none" stroke="#45c4a0" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="30" y="8" fill="#e6ebf4" font-size="15" font-weight="600">Dedup on message id</text><text x="30" y="27" fill="#8a99b0" font-size="12.5">a resumed session is not billed twice</text></g>
+  <g transform="translate(504 332)"><circle class="tick" cx="9" cy="9" r="9" fill="#45c4a0" fill-opacity=".14" style="animation-delay:0.8s"/><path d="M5 9.2l2.8 2.8L13 6.6" fill="none" stroke="#45c4a0" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="30" y="8" fill="#e6ebf4" font-size="15" font-weight="600">Buckets · history · sessions</text><text x="30" y="27" fill="#8a99b0" font-size="12.5">five-minute series, hourly history</text></g>
+  <g transform="translate(504 394)"><circle class="tick" cx="9" cy="9" r="9" fill="#45c4a0" fill-opacity=".14" style="animation-delay:1.2s"/><path d="M5 9.2l2.8 2.8L13 6.6" fill="none" stroke="#45c4a0" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="30" y="8" fill="#e6ebf4" font-size="15" font-weight="600">Measured ≠ estimated</text><text x="30" y="27" fill="#8a99b0" font-size="12.5">a guess is never shown as a reading</text></g>
+  <g transform="translate(504 456)" class="mono" font-size="12">
+    <rect width="132" height="26" rx="13" fill="#0e141f" stroke="#232e40"/><text x="66" y="17" fill="#8a99b0" text-anchor="middle">160 MB · 76 ms</text>
+    <rect x="142" width="128" height="26" rx="13" fill="#0e141f" stroke="#232e40"/><text x="206" y="17" fill="#8a99b0" text-anchor="middle">peak RSS 7 MB</text></g>
+  <path d="M640.0 500 V556" stroke="#ff5e5b" stroke-width="1.5" stroke-dasharray="3 6" fill="none" opacity=".6"/>
+  <g class="deny" transform="translate(640.0 582)">
+    <path d="M-26 8a12 12 0 0 1 2-23.5a16 16 0 0 1 30-4a12 12 0 0 1 20 9a10 10 0 0 1-2 18.5z" transform="translate(-2 2)" fill="#131a26" stroke="#ff5e5b" stroke-width="1.5"/>
+    <path d="M-30 -24L30 22" stroke="#ff5e5b" stroke-width="2.2" stroke-linecap="round"/>
+  </g>
+  <text x="692.0" y="580" fill="#e6ebf4" font-size="15" font-weight="600">0 network requests</text>
+  <text x="692.0" y="600" fill="#8a99b0" font-size="12.5">no HTTP client in the tree · Keychain and auth files never read</text>
+  </g>
+</svg>

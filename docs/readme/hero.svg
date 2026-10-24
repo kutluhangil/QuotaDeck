@@ -1,0 +1,194 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="520" viewBox="0 0 1280 520" role="img" aria-labelledby="title desc">
+  <title id="title">Quota Deck</title>
+  <desc id="desc">Every AI coding limit, read from your own disk. A panel shows Claude Code at 44 percent of its five-hour window and 95 percent of its week, and Codex at 80 percent.</desc>
+  <defs>
+    <radialGradient id="glow-a" cx="0.82" cy="0.18" r="0.6">
+      <stop offset="0" stop-color="#a78bfa" stop-opacity="0.22"/>
+      <stop offset="1" stop-color="#a78bfa" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glow-b" cx="0.12" cy="1" r="0.55">
+      <stop offset="0" stop-color="#22d3ee" stop-opacity="0.14"/>
+      <stop offset="1" stop-color="#22d3ee" stop-opacity="0"/>
+    </radialGradient>
+    <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse">
+      <path d="M32 0H0V32" fill="none" stroke="#e6ebf4" stroke-opacity="0.035"/>
+    </pattern>
+    <pattern id="hatch-red" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <rect width="7" height="7" fill="#ff5e5b"/>
+      <rect width="2.4" height="7" fill="#0a0e17" fill-opacity="0.35"/>
+    </pattern>
+    <pattern id="hatch-amber" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <rect width="7" height="7" fill="#e3a83c"/>
+      <rect width="2.4" height="7" fill="#0a0e17" fill-opacity="0.35"/>
+    </pattern>
+    <linearGradient id="card" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#151d2b"/>
+      <stop offset="1" stop-color="#111824"/>
+    </linearGradient>
+    <clipPath id="frame"><rect width="1280" height="520" rx="28"/></clipPath>
+  </defs>
+
+  <style>
+    .ui { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", Helvetica, Arial, sans-serif; }
+    .mono { font-family: SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; }
+    .rise { animation: rise 900ms cubic-bezier(.2,.8,.2,1) both; }
+    .d1 { animation-delay: 120ms; } .d2 { animation-delay: 240ms; } .d3 { animation-delay: 360ms; } .d4 { animation-delay: 480ms; }
+    @keyframes rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+
+    .fill { transform-box: fill-box; transform-origin: left center; animation: fill 8s cubic-bezier(.2,.8,.2,1) infinite; }
+    .f2 { animation-delay: 250ms; } .f3 { animation-delay: 500ms; } .f4 { animation-delay: 750ms; }
+    @keyframes fill { 0% { transform: scaleX(0); } 22%, 88% { transform: scaleX(1); } 100% { transform: scaleX(0); } }
+
+    .bar { transform-box: fill-box; transform-origin: center bottom; animation: grow 8s cubic-bezier(.2,.8,.2,1) infinite; }
+    @keyframes grow { 0%, 6% { transform: scaleY(0); } 30%, 88% { transform: scaleY(1); } 100% { transform: scaleY(0); } }
+
+    .pulse { transform-box: fill-box; transform-origin: center; animation: pulse 2.4s ease-in-out infinite; }
+    @keyframes pulse { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.9); opacity: 0; } }
+
+    .sweep { animation: sweep 8s linear infinite; }
+    @keyframes sweep { 0% { transform: translateX(0); opacity: 0; } 8% { opacity: .9; } 88% { opacity: .9; } 100% { transform: translateX(352px); opacity: 0; } }
+
+    .blink { animation: blink 1.2s steps(1) infinite; }
+    @keyframes blink { 50% { opacity: 0; } }
+
+    @media (prefers-reduced-motion: reduce) {
+      .rise, .fill, .bar, .pulse, .sweep, .blink { animation: none !important; }
+      .sweep { opacity: 0; }
+    }
+  </style>
+
+  <g clip-path="url(#frame)">
+    <rect width="1280" height="520" fill="#0a0e17"/>
+    <rect width="1280" height="520" fill="url(#grid)"/>
+    <rect width="1280" height="520" fill="url(#glow-a)"/>
+    <rect width="1280" height="520" fill="url(#glow-b)"/>
+  </g>
+  <rect x="0.5" y="0.5" width="1279" height="519" rx="27.5" fill="none" stroke="#232e40"/>
+
+  <!-- Left: the claim -->
+  <g class="ui">
+    <g class="rise">
+      <g transform="translate(72 76)">
+        <rect x="0" y="9" width="5" height="7" rx="1" fill="#55637a"/>
+        <rect x="8" y="4" width="5" height="12" rx="1" fill="#8a99b0"/>
+        <rect x="16" y="0" width="6" height="16" rx="1" fill="#e6ebf4"/>
+        <rect x="0" y="17" width="22" height="2" rx="1" fill="#e6ebf4"/>
+      </g>
+      <text x="108" y="93" fill="#e6ebf4" font-size="15" font-weight="600" letter-spacing="3.2">QUOTA DECK</text>
+    </g>
+    <text class="rise d1" x="70" y="172" fill="#e6ebf4" font-size="54" font-weight="700" letter-spacing="-1.4">Every AI coding limit.</text>
+    <text class="rise d2" x="70" y="234" fill="#8a99b0" font-size="54" font-weight="700" letter-spacing="-1.4">Read from your own disk.</text>
+    <g class="rise d3" fill="#8a99b0" font-size="19">
+      <text x="72" y="292">A menu bar app that reads the logs your coding agents already write,</text>
+      <text x="72" y="320">and shows how full each quota is and when it lets go.</text>
+    </g>
+    <g class="rise d4" font-size="14" font-weight="600">
+      <g transform="translate(72 362)">
+        <rect width="178" height="34" rx="17" fill="#131a26" stroke="#232e40"/>
+        <circle cx="20" cy="17" r="4" fill="#45c4a0"/>
+        <text x="34" y="22" fill="#e6ebf4">0 network requests</text>
+      </g>
+      <g transform="translate(262 362)">
+        <rect width="196" height="34" rx="17" fill="#131a26" stroke="#232e40"/>
+        <circle cx="20" cy="17" r="4" fill="#6ba8ff"/>
+        <text x="34" y="22" fill="#e6ebf4">measured vs estimated</text>
+      </g>
+      <g transform="translate(470 362)">
+        <rect width="170" height="34" rx="17" fill="#131a26" stroke="#232e40"/>
+        <circle cx="20" cy="17" r="4" fill="#a78bfa"/>
+        <text x="34" y="22" fill="#e6ebf4">macOS · Win · Linux</text>
+      </g>
+    </g>
+    <text class="rise d4" x="72" y="448" fill="#55637a" font-size="14">Claude Code · Codex · Copilot CLI · Gemini CLI · OpenCode · pi · Amp · Droid</text>
+  </g>
+
+  <!-- Right: the panel -->
+  <g transform="translate(792 64)">
+    <rect width="420" height="392" rx="16" fill="url(#card)" stroke="#232e40"/>
+
+    <g class="ui">
+      <!-- tabs -->
+      <g font-size="12" text-anchor="middle">
+        <rect x="16" y="16" width="86" height="46" rx="9" fill="#1a2331"/>
+        <rect x="47" y="22" width="20" height="20" rx="6" fill="#a78bfa"/>
+        <text x="57" y="36.5" fill="#0a0e17" font-weight="700" font-size="11">C</text>
+        <text x="59" y="56" fill="#e6ebf4">Claude Code</text>
+        <rect x="132" y="22" width="20" height="20" rx="6" fill="#f472b6"/>
+        <text x="142" y="36.5" fill="#0a0e17" font-weight="700" font-size="11">C</text>
+        <text x="142" y="56" fill="#55637a">Codex</text>
+        <rect x="198" y="22" width="20" height="20" rx="6" fill="#22d3ee"/>
+        <text x="208" y="36.5" fill="#0a0e17" font-weight="700" font-size="11">G</text>
+        <text x="208" y="56" fill="#55637a">Gemini</text>
+        <rect x="266" y="22" width="20" height="20" rx="6" fill="#e879f9"/>
+        <text x="276" y="36.5" fill="#0a0e17" font-weight="700" font-size="11">O</text>
+        <text x="276" y="56" fill="#55637a">OpenCode</text>
+      </g>
+      <rect x="16" y="72" width="388" height="1" fill="#232e40"/>
+
+      <!-- header -->
+      <text x="20" y="102" fill="#e6ebf4" font-size="14" font-weight="600" letter-spacing="1.6">CLAUDE CODE</text>
+      <text x="20" y="121" fill="#55637a" font-size="12">Updated just now</text>
+      <circle cx="318" cy="98" r="4" fill="#6ba8ff"/>
+      <circle class="pulse" cx="318" cy="98" r="4" fill="#6ba8ff"/>
+      <text x="330" y="102" fill="#6ba8ff" font-size="13">measured</text>
+
+      <!-- session -->
+      <text x="20" y="152" fill="#8a99b0" font-size="12" font-weight="600" letter-spacing="1.2">SESSION · 5H</text>
+      <rect x="20" y="161" width="380" height="6" rx="3" fill="#1f2937"/>
+      <rect class="fill" x="20" y="161" width="167" height="6" rx="3" fill="#45c4a0"/>
+      <text x="20" y="184" fill="#8a99b0" font-size="12">44% used</text>
+      <text x="400" y="184" fill="#55637a" font-size="12" text-anchor="end">Resets in 1h 15m</text>
+
+      <!-- weekly -->
+      <text x="20" y="214" fill="#8a99b0" font-size="12" font-weight="600" letter-spacing="1.2">WEEKLY · 7D</text>
+      <rect x="20" y="223" width="380" height="6" rx="3" fill="#1f2937"/>
+      <rect class="fill f2" x="20" y="223" width="361" height="6" rx="3" fill="url(#hatch-red)"/>
+      <text x="20" y="246" fill="#8a99b0" font-size="12">95% used</text>
+      <text x="400" y="246" fill="#55637a" font-size="12" text-anchor="end">Resets in 2d 14h</text>
+
+      <text x="20" y="272" fill="#ff5e5b" font-size="12">Pace: over (118%) · runs out 07:33<tspan class="blink">▍</tspan></text>
+
+      <!-- horizon -->
+      <g transform="translate(20 286)">
+        <rect width="380" height="46" rx="3" fill="#0e141f"/>
+        <g fill="#ff5e5b">
+          <rect class="bar" x="8" y="30" width="5" height="14" opacity=".25" style="animation-delay:0ms"/>
+          <rect class="bar" x="16" y="34" width="5" height="10" opacity=".3" style="animation-delay:40ms"/>
+          <rect class="bar" x="24" y="38" width="5" height="6" opacity=".3" style="animation-delay:80ms"/>
+          <rect class="bar" x="44" y="26" width="5" height="18" opacity=".35" style="animation-delay:120ms"/>
+          <rect class="bar" x="52" y="10" width="5" height="34" opacity=".4" style="animation-delay:160ms"/>
+          <rect class="bar" x="60" y="32" width="5" height="12" opacity=".4" style="animation-delay:200ms"/>
+          <rect class="bar" x="84" y="30" width="5" height="14" opacity=".45" style="animation-delay:240ms"/>
+          <rect class="bar" x="92" y="36" width="5" height="8" opacity=".45" style="animation-delay:280ms"/>
+          <rect class="bar" x="100" y="28" width="5" height="16" opacity=".5" style="animation-delay:320ms"/>
+          <rect class="bar" x="124" y="16" width="5" height="28" opacity=".55" style="animation-delay:360ms"/>
+          <rect class="bar" x="132" y="30" width="5" height="14" opacity=".55" style="animation-delay:400ms"/>
+          <rect class="bar" x="140" y="34" width="5" height="10" opacity=".6" style="animation-delay:440ms"/>
+          <rect class="bar" x="164" y="6" width="5" height="38" opacity=".65" style="animation-delay:480ms"/>
+          <rect class="bar" x="172" y="24" width="5" height="20" opacity=".65" style="animation-delay:520ms"/>
+          <rect class="bar" x="180" y="32" width="5" height="12" opacity=".7" style="animation-delay:560ms"/>
+          <rect class="bar" x="204" y="20" width="5" height="24" opacity=".7" style="animation-delay:600ms"/>
+          <rect class="bar" x="212" y="28" width="5" height="16" opacity=".75" style="animation-delay:640ms"/>
+          <rect class="bar" x="220" y="12" width="5" height="32" opacity=".75" style="animation-delay:680ms"/>
+          <rect class="bar" x="244" y="30" width="5" height="14" opacity=".8" style="animation-delay:720ms"/>
+          <rect class="bar" x="252" y="22" width="5" height="22" opacity=".8" style="animation-delay:760ms"/>
+          <rect class="bar" x="260" y="34" width="5" height="10" opacity=".85" style="animation-delay:800ms"/>
+          <rect class="bar" x="284" y="18" width="5" height="26" opacity=".85" style="animation-delay:840ms"/>
+          <rect class="bar" x="292" y="8" width="5" height="36" opacity=".9" style="animation-delay:880ms"/>
+          <rect class="bar" x="300" y="26" width="5" height="18" opacity=".9" style="animation-delay:920ms"/>
+          <rect class="bar" x="324" y="14" width="5" height="30" opacity=".95" style="animation-delay:960ms"/>
+          <rect class="bar" x="332" y="4" width="5" height="40" style="animation-delay:1000ms"/>
+          <rect class="bar" x="340" y="20" width="5" height="24" style="animation-delay:1040ms"/>
+          <rect class="bar" x="356" y="28" width="5" height="16" style="animation-delay:1080ms"/>
+          <rect class="bar" x="364" y="12" width="5" height="32" style="animation-delay:1120ms"/>
+        </g>
+        <rect class="sweep" x="10" y="2" width="1.5" height="42" fill="#e6ebf4"/>
+      </g>
+
+      <!-- cost -->
+      <rect x="20" y="344" width="380" height="1" fill="#232e40"/>
+      <text x="20" y="368" fill="#8a99b0" font-size="12" font-weight="600" letter-spacing="1.2">COST</text>
+      <text x="80" y="368" fill="#55637a" font-size="12">Today $86 · 30 days $1,240 · cache hits 93%</text>
+    </g>
+  </g>
+</svg>
