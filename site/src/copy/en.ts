@@ -5,7 +5,7 @@
  * here fails the Turkish build until it is translated.
  *
  * Every claim on this page has to be true of the shipped code. Where a number appears, it is a
- * number CI asserts (`core/tests/perf.rs`) or a decision recorded in `docs/STORE.md` — not a
+ * number CI asserts (`core/tests/perf.rs`) or a decision recorded in `docs/V2_PLAN.md` — not a
  * marketing round figure.
  */
 
@@ -16,7 +16,7 @@ export const en = {
   meta: {
     title: "Quota Deck — see your AI coding quotas",
     description:
-      "A menu bar app that reads the session logs your AI coding tools already write, and shows how much of each rolling quota window you have used. No account, no login, no network requests.",
+      "A menu bar app that reads the session logs your AI coding tools already write, shows how much of each rolling quota window you have used, and on macOS watches your Mac and Docker too. Open source. No account, no login, no network requests.",
   },
 
   nav: {
@@ -39,13 +39,13 @@ export const en = {
     lede: "Quota Deck reads the session logs your coding tools already write to your own disk, and shows how much of each rolling window you have used — before the tool stops answering.",
     claim: "No account. No login. No network. Ever.",
     claimNote:
-      "No HTTP client is permitted in a shipping desktop dependency tree; CI checks macOS, Windows and Linux separately. The Mac App Store signature also carries no outbound-network entitlement.",
+      "No HTTP client is permitted in a shipping desktop dependency tree; CI checks macOS, Windows and Linux separately. The signed macOS build carries no network entitlement.",
     download: "Download",
     how: "How it can be true",
     shot: {
-      src: "/panel.png",
-      alt: "The Quota Deck panel showing two tools, each with its five-hour, weekly and pace rows.",
-      caption: "The panel, showing the sample deck. No real usage or path is in this image.",
+      src: "/popover.png",
+      alt: "The Quota Deck popover: Mac health, Claude and Codex quota, CPU, memory, disk, Docker, fan, power, network and a thermal strip.",
+      caption: "The popover, showing sample data. No real usage or path is in this image.",
     },
   },
 
@@ -75,6 +75,14 @@ export const en = {
       {
         title: "A month of history, here",
         body: "Hourly totals and equivalent API cost, kept on this device for a month and nowhere else.",
+      },
+      {
+        title: "Your Mac, too",
+        body: "On macOS: CPU, GPU, SSD and SoC temperatures, fan, power, memory pressure, disk, network, processes and a health score — read-only, and nothing a Mac does not expose is ever estimated.",
+      },
+      {
+        title: "Docker, read-only",
+        body: "Containers grouped by Compose project with health, CPU and memory, through docker info, ps, stats and system df only. It never starts, stops or removes anything.",
       },
     ],
   },
@@ -118,7 +126,7 @@ export const en = {
       },
       {
         title: "No outbound-connection entitlement",
-        body: "The macOS entitlements file does not carry com.apple.security.network.client. On Linux, where no entitlement backs the claim, the packaging script checks the dependency tree instead.",
+        body: "The signed macOS build carries no com.apple.security.network.client entitlement. On Linux, where no entitlement backs the claim, the packaging script checks the dependency tree instead.",
       },
       {
         title: "Credentials are never read",
@@ -126,7 +134,7 @@ export const en = {
       },
       {
         title: "Reads are read-only",
-        body: "Session and telemetry logs, never written to. The App Store build keeps home-folder access read-only; its optional Claude Code status line setup shows and copies the exact chained command for you to apply manually.",
+        body: "Session and telemetry logs and the Mac's sensors, never written to. The optional Claude Code status line is changed only with your consent, chained to what was there, and revertible in one click.",
       },
     ],
     why: {
@@ -158,6 +166,7 @@ export const en = {
     list: [
       { name: "Claude Code", detail: "Measured, once the status line is connected. Estimated before that." },
       { name: "Codex", detail: "Measured. Codex writes its real rate limits into its own logs." },
+      { name: "Antigravity", detail: "Measured: when a model runs out and when it reopens, from the CLI's own log. Weekly percentages if you turn on live quota, which runs agy." },
       { name: "Copilot CLI", detail: "Exact ceiling from the published plan allowance; the spend is command-line sessions only." },
     ],
   },
@@ -167,11 +176,11 @@ export const en = {
     items: [
       {
         name: "macOS",
-        body: "A menu bar item with no dock icon. Sandboxed for the Mac App Store, which means one folder grant, asked for once, in the system's own panel.",
+        body: "A menu bar item with no dock icon and a Liquid Glass popover. Signed with a Developer ID and notarized by Apple. The Mac monitor, Docker and fan modes are macOS only.",
       },
       {
         name: "Windows",
-        body: "A taskbar tray item. Signed x64 and arm64 installers through the Microsoft Store's Win32 route, with launch at sign-in controlled in the app.",
+        body: "A taskbar tray item for the AI quota side, built from source with the Tauri bundler. Launch at sign-in is controlled in the app.",
       },
       {
         name: "Linux",
@@ -196,16 +205,16 @@ export const en = {
         a: "No — that risk comes from tools that authenticate as you against a provider's API. This app never authenticates and never connects. It reads files your own tools wrote to your own disk.",
       },
       {
-        q: "Why does macOS ask for my home folder?",
-        a: "Because a sandboxed app can read nothing outside its own container until you hand it something. It is one grant, asked for once, in the system's own panel, and it can be revoked from Settings at any time. Nothing leaves the device either way.",
+        q: "Why does macOS ask for approval when I pick Cool or Max?",
+        a: "Fan speed can only be set by a privileged helper. It is installed the first time you ask for it — never at install — and macOS asks you once. It writes fan keys and nothing else, and hands the fans back to Auto when the app quits, the Mac sleeps or the app stops checking in.",
       },
       {
         q: "Why is a number sometimes an estimate?",
         a: "Because not every tool publishes its remaining quota. Where one does, the panel shows the measurement. Where one does not, it shows an estimate and says so on the same line. It never shows one dressed as the other.",
       },
       {
-        q: "Subscription?",
-        a: "No. One-time purchase. A tool that tells you what you already paid for should not bill monthly.",
+        q: "What does it cost?",
+        a: "Nothing. It is open source under GPL-3.0. A tool that tells you what you already paid for should not bill you again.",
       },
       {
         q: "Is the sample data real?",
@@ -216,7 +225,7 @@ export const en = {
 
   download: {
     title: "Download",
-    lede: "Nothing is released yet. The app compiles on all three platforms in CI; signed store packaging and hands-on desktop verification still need the matching account, certificate and machine.",
+    lede: "Releases are published on GitHub. The macOS download is a signed, notarized DMG; Windows and Linux are built from source.",
     statusPending: "Not released yet",
     copyCommand: "Copy",
     copiedCommand: "Copied",
@@ -226,15 +235,15 @@ export const en = {
     items: [
       {
         name: "macOS",
-        detail: "Mac App Store, as a signed .pkg. Sandboxed, with the folder grant asked for once.",
-        blocked: "Waiting on: Apple Distribution certificate and an App Store Connect submission.",
-        command: "TEAM_ID=... scripts/appstore.sh",
+        detail: "A Developer ID-signed, notarized DMG on GitHub Releases, with the fan helper inside.",
+        blocked: "Waiting on: the first tagged release.",
+        command: "TEAM_ID=... scripts/release-macos.sh",
       },
       {
         name: "Windows",
-        detail: "Microsoft Store, as CA-signed offline NSIS installers for x64 and arm64, submitted from immutable HTTPS URLs.",
-        blocked: "Waiting on: a Windows signing certificate, Partner Center account, hosted installer URLs and a reserved product name.",
-        command: "scripts/msstore.ps1",
+        detail: "An NSIS installer from the Tauri bundler, AI quota only.",
+        blocked: "No signed installer is published; build it yourself.",
+        command: "npm --prefix ui exec tauri -- build",
       },
       {
         name: "Linux",
@@ -255,11 +264,11 @@ export const en = {
     sections: [
       {
         title: "What leaves your device",
-        body: "Nothing. There is no HTTP client in any shipping desktop dependency tree, and CI checks the macOS, Windows and Linux builds separately. The Mac App Store build additionally carries no outbound-network entitlement.",
+        body: "Nothing. There is no HTTP client in any shipping desktop dependency tree, and CI checks the macOS, Windows and Linux builds separately. The signed macOS build carries no network entitlement. The one exception is yours to make: Antigravity live quota, off by default, runs agy, and agy talks to Google with your account.",
       },
       {
         title: "What is read",
-        body: "The session and telemetry log files that supported tools write to your home folder are read-only, from a byte offset rather than from the beginning. To inspect the optional Claude Code status-line integration, ~/.claude/settings.json is also opened and statusLine.command is used. Before either setup flow changes, or asks you to change, that object, the complete prior statusLine value is stored in Quota Deck's local data directory for exact restoration.",
+        body: "The session and telemetry log files that supported tools write to your home folder are read-only, from a byte offset rather than from the beginning. On macOS, the Mac's sensors (SMC, IOReport, HID) and the docker CLI's info, ps, stats and system df output are read as well. To inspect the optional Claude Code status-line integration, ~/.claude/settings.json is also opened and statusLine.command is used. Before either setup flow changes, or asks you to change, that object, the complete prior statusLine value is stored in Quota Deck's local data directory for exact restoration.",
       },
       {
         title: "What is never read",
@@ -267,15 +276,15 @@ export const en = {
       },
       {
         title: "What is written",
-        body: "Hourly usage totals, your settings and — after you choose to connect the optional integration — the complete prior statusLine value are written inside the app's own data directory. The App Store build writes nowhere else; it gives you the exact chained JSON and restore object, but you edit Claude's setting yourself.",
+        body: "Hourly usage totals, a week of one-minute Mac readings, your settings and — after you choose to connect the optional integration — the complete prior statusLine value are written inside the app's own data directory. The fan helper, once you approve it, writes fan speed keys to the SMC and nothing else.",
       },
       {
         title: "Analytics, crash reports, telemetry",
         body: "None of the three. There is no endpoint for them to go to.",
       },
       {
-        title: "The store declaration",
-        body: "Data Not Collected, on every question in App Store Connect's privacy questionnaire and its Partner Center equivalent.",
+        title: "Open source",
+        body: "Every line of this is on GitHub under GPL-3.0, so each claim on this page can be checked rather than trusted.",
       },
     ],
   },

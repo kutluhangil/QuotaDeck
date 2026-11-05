@@ -337,8 +337,8 @@ export const en = {
   } satisfies Record<UnavailableReason, string>,
 
   /**
-   * Provider names are set as spaced uppercase text, never as vendor logos. Reproducing a
-   * third-party mark in the app is a trademark risk and would break the design language.
+   * Provider names as text. The v2 Liquid surfaces also show the tools' marks (decision K7,
+   * `docs/V2_PLAN.md`), to be re-evaluated before a commercial release.
    *
    * These are product names and stay in their original form in every language.
    */
@@ -351,6 +351,7 @@ export const en = {
     amp: "Amp",
     droid: "Droid",
     opencode: "OpenCode",
+    antigravity: "Antigravity",
   } satisfies Record<ProviderId, string>,
 
   settings: {

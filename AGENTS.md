@@ -12,13 +12,24 @@ Blueprint §10 forbade commits. On 2026-07-25 Kutluhan allowed commit and push a
 
 ## Architecture red lines
 
-- **No network requests.** `reqwest`, `hyper`, `ureq` or any other HTTP client must never be added as a dependency. This is required for ToS and App Store compliance, and `com.apple.security.network.client` is deliberately absent from the entitlements.
+- **No network requests.** `reqwest`, `hyper`, `ureq` or any other HTTP client must never be added as a dependency. This keeps the privacy claim true and the tools' ToS respected; no entitlement for outbound connections exists.
 - **No listening sockets either.** Ruled out in Phase 0 (`docs/DISCOVERY.md` §4) — it would require `com.apple.security.network.server` and break the same claim.
 - **Keychain / Credential Manager is never read.**
 - Provider auth files (`auth.json`, `credentials.json`, `.credentials`) are never opened, listed, or even probed for existence.
 - Only session and telemetry log files are read. Read-only. Never written to.
 - `tauri-plugin-fs` is never exposed to the frontend. All file access lives in Rust behind a capability whitelist.
-- The App Store build never writes outside its own container. It shows a copyable Codex statusline command for manual setup because the selected home grant stays read-only. Unsandboxed builds may edit `settings.json` only with explicit consent, chain the previous command, and offer one-click revert.
+- `settings.json` (status line) is edited only with explicit consent, chains the previous command, and offers one-click revert.
+
+### Distribution and v2 exceptions (Kutluhan, 2026-11-04 / 2026-11-05, `docs/V2_PLAN.md`)
+
+Quota Deck ships only from GitHub, open source (GPL-3.0-only), as a Developer ID-signed, notarized DMG (`scripts/release-macos.sh`). The Mac App Store and Microsoft Store builds are parked in `stores/` and are not built or checked in CI.
+
+These live behind the `system-monitor` Cargo feature (on by default). The parked App Store build compiled without it. The direct build also enables `macOSPrivateApi` for the transparent Liquid Glass popover.
+
+- **Hardware sensors** are read through IOKit/AppleSMC, IOHIDEventSystemClient and IOReport (private APIs). Read-only.
+- **Docker** is read by running the `docker` CLI with read-only subcommands only (`info`, `ps`, `stats --no-stream`, `system df`). Never `run`, `start`, `stop`, `rm` or anything that changes state.
+- **Antigravity live quota** may run `agy -p /usage --output-format json` only when the user turns that setting on. The network request is made by `agy`, not by Quota Deck, and the setting says so. Antigravity account files (`google_accounts.json`, OAuth/token files) are never opened, listed or probed.
+- **Fan control** goes through a privileged helper that the user installs on first use (macOS admin prompt). It writes only fan SMC keys (`F*md`, `F*Tg`, `Ftst`), always returns fans to Auto when the app quits, sleeps or disconnects, and can be removed from Settings. Nothing else is ever written to the SMC.
 
 ## Performance rules
 

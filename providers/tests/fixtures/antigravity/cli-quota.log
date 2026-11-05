@@ -1,0 +1,41 @@
+I1103 02:46:37.693633   16939 http_helpers.go:359] URL: https://daily-cloudcode-pa.googleapis.com/v1internal:streamGenerateContent?alt=sse Trace: 0x0000000000000001 ResponseID: anonymized
+I1103 02:46:38.089727   14157 http_helpers.go:359] URL: https://daily-cloudcode-pa.googleapis.com/v1internal:generateContent Trace: 0x0000000000000002
+E1103 02:46:38.090261   14157 generate_image.go:170] error generating image: failed to generate content: 429 Too Many Requests, body: {
+  "error": {
+    "code": 429,
+    "message": "You have exhausted your capacity on this model. Your quota will reset after 4h52m1s.",
+    "status": "RESOURCE_EXHAUSTED",
+    "details": [
+      {
+        "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+        "reason": "QUOTA_EXHAUSTED",
+        "domain": "cloudcode-pa.googleapis.com",
+        "metadata": {
+          "uiMessage": "true",
+          "model": "gemini-3.1-flash-image",
+          "quotaResetDelay": "4h52m1.940848244s",
+          "quotaResetTimeStamp": "2026-11-03T04:38:40Z"
+        }
+      },
+      {
+        "@type": "type.googleapis.com/google.rpc.RetryInfo",
+        "retryDelay": "17521.940848244s"
+      }
+    ]
+  }
+}
+I1103 02:47:01.000000   14157 server.go:100] request body {"model": "gemini-3.8-flash-high", "contents": []}
+E1103 03:10:00.000000   14157 planner.go:88] failed: 429 Too Many Requests, body: {
+  "error": {
+    "details": [
+      {
+        "reason": "QUOTA_EXHAUSTED",
+        "metadata": {
+          "model": "gemini-3.8-pro-high",
+          "quotaResetDelay": "1h0m0s",
+          "quotaResetTimeStamp": "2026-11-03T04:10:00Z"
+        }
+      }
+    ]
+  }
+}

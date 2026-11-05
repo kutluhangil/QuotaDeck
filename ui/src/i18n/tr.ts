@@ -260,6 +260,7 @@ export const tr: Catalogue = {
     amp: "Amp",
     droid: "Droid",
     opencode: "OpenCode",
+    antigravity: "Antigravity",
   },
 
   settings: {

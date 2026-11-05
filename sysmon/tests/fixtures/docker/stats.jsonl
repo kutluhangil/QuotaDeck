@@ -1,0 +1,4 @@
+{"BlockIO":"0B / 6.94MB","CPUPerc":"0.05%","Container":"19b2cbff0922cea36f671243d634015064ab59faacf24b6e3f1211c054651c73","ID":"19b2cbff0922","MemPerc":"0.12%","MemUsage":"19.6MiB / 15.53GiB","Name":"portainer","NetIO":"797kB / 4.55MB","PIDs":"11"}
+{"BlockIO":"12.3MB / 88.1MB","CPUPerc":"1.73%","Container":"a1b2c3d4e5f6","ID":"a1b2c3d4e5f6","MemPerc":"0.61%","MemUsage":"96.8MiB / 15.53GiB","Name":"shop-db-1","NetIO":"1.1MB / 2.4MB","PIDs":"9"}
+{"BlockIO":"0B / 0B","CPUPerc":"112.40%","Container":"b2c3d4e5f6a1","ID":"b2c3d4e5f6a1","MemPerc":"3.02%","MemUsage":"480MiB / 15.53GiB","Name":"shop-web-1","NetIO":"0B / 0B","PIDs":"23"}
+not json at all

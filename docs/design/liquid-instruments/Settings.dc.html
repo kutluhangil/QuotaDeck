@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Alerts and Settings sheet</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="./qd.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="qd {{themeClass}}" style="width: 760px; height: 880px; position: relative; overflow: hidden; display: flex; justify-content: center; padding-top: 36px">
+  <div aria-hidden="true" style="position: absolute; inset: 0; background: var(--bg); opacity: 1"></div>
+  <div aria-hidden="true" style="position: absolute; inset: 0; background: rgba(0,0,0,0.35)"></div>
+  <div role="dialog" aria-label="Alerts and Settings" class="glass" style="position: relative; width: 580px; height: fit-content; border-radius: 26px; padding: 22px 24px 24px; display: flex; flex-direction: column; gap: 18px; background: var(--material)">
+    <div class="row" style="justify-content: space-between"><span class="h1" style="font-size: 18px">Alerts &amp; Settings</span><a href="Main.dc.html" class="btn primary">Done</a></div>
+
+    <div style="display: flex; flex-direction: column; gap: 8px">
+      <span class="cap">Alerts</span>
+      <div style="border-radius: 14px; background: var(--elev-2); box-shadow: inset 0 0 0 .5px var(--hair)">
+        <div class="row" style="padding: 10px 14px; gap: 12px; min-height: 48px"><span style="flex: 1">CPU temperature above</span><label class="field"><span class="sr">Threshold in degrees</span><input value="80" inputmode="numeric"><span class="t3">°C</span></label><button class="switch" role="switch" aria-checked="true" aria-label="CPU temperature alert"></button></div>
+        <div class="sep" style="margin-left: 14px"></div>
+        <div class="row" style="padding: 10px 14px; gap: 12px; min-height: 48px"><span style="flex: 1">Free disk below</span><label class="field"><span class="sr">Threshold in gigabytes</span><input value="20" inputmode="numeric"><span class="t3">GB</span></label><button class="switch" role="switch" aria-checked="true" aria-label="Free disk alert"></button></div>
+        <div class="sep" style="margin-left: 14px"></div>
+        <div class="row" style="padding: 10px 14px; gap: 12px; min-height: 48px"><span style="flex: 1">Memory pressure critical</span><button class="switch" role="switch" aria-checked="true" aria-label="Memory pressure alert"></button></div>
+        <div class="sep" style="margin-left: 14px"></div>
+        <div class="row" style="padding: 10px 14px; gap: 12px; min-height: 48px"><span style="flex: 1">Any AI quota below</span><label class="field"><span class="sr">Threshold in percent</span><input value="10" inputmode="numeric"><span class="t3">%</span></label><button class="switch" role="switch" aria-checked="true" aria-label="AI quota alert"></button></div>
+        <div class="sep" style="margin-left: 14px"></div>
+        <div class="row" style="padding: 10px 14px; gap: 12px; min-height: 48px"><span style="flex: 1">Container turned unhealthy</span><button class="switch" role="switch" aria-checked="false" aria-label="Container health alert"></button></div>
+      </div>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 8px">
+      <span class="cap">Refresh rate</span>
+      <div class="seg" role="group" aria-label="Refresh rate" style="align-self: flex-start"><button class="tab">Live · 1 s</button><button class="tab on" aria-pressed="true">Balanced · 2 s</button><button class="tab">Saver · 10 s</button></div>
+      <span class="lbl">Saver also pauses charts while the Dashboard is closed.</span>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 8px">
+      <span class="cap">Show in menu bar</span>
+      <div class="seg" role="group" aria-label="Menu bar content" style="align-self: flex-start"><button class="tab on" aria-pressed="true">Temp</button><button class="tab on" aria-pressed="true">Memory</button><button class="tab on" aria-pressed="true">Tightest quota</button><button class="tab">Icon only</button></div>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 8px">
+      <span class="cap">Tools</span>
+      <div style="border-radius: 14px; background: var(--elev-2); box-shadow: inset 0 0 0 .5px var(--hair)">
+        <div class="row" style="padding: 8px 14px; gap: 12px; min-height: 46px"><span class="mark cl">Cl</span><span style="flex: 1">Claude Code</span><span class="lbl">found · ~/.claude</span><button class="switch" role="switch" aria-checked="true" aria-label="Show Claude Code"></button></div>
+        <div class="sep" style="margin-left: 50px"></div>
+        <div class="row" style="padding: 8px 14px; gap: 12px; min-height: 46px"><span class="mark cx">Cx</span><span style="flex: 1">Codex</span><span class="lbl">found · ~/.codex</span><button class="switch" role="switch" aria-checked="true" aria-label="Show Codex"></button></div>
+        <div class="sep" style="margin-left: 50px"></div>
+        <div class="row" style="padding: 8px 14px; gap: 12px; min-height: 46px"><span class="mark ag">Ag</span><span style="flex: 1">Antigravity</span><span class="lbl">found</span><button class="switch" role="switch" aria-checked="true" aria-label="Show Antigravity"></button></div>
+        <div class="sep" style="margin-left: 50px"></div>
+        <div class="row" style="padding: 8px 14px; gap: 12px; min-height: 46px"><span class="mark outline">Gm</span><span style="flex: 1" class="t2">Gemini CLI</span><span class="lbl">not installed</span><button class="switch" role="switch" aria-checked="false" aria-label="Show Gemini CLI"></button></div>
+        <div class="sep" style="margin-left: 50px"></div>
+        <div class="row" style="padding: 8px 14px; gap: 12px; min-height: 46px"><span class="mark outline">Km</span><span style="flex: 1" class="t2">Kimi</span><span class="lbl">not installed</span><button class="switch" role="switch" aria-checked="false" aria-label="Show Kimi"></button></div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"$preview":{"width":760,"height":880}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { themeClass: this.props.theme ?? 'dark' };
+  }
+}
+</script>
+</body>
+</html>

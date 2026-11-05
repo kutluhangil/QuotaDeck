@@ -16,7 +16,7 @@ use std::process::{Command, Output, Stdio};
 
 const BIN: &str = env!("CARGO_BIN_EXE_quotadeckctl");
 
-/// The command itself failed. `docs/STORE.md` §9.
+/// The command itself failed. `stores/apple/STORE.md` §9.
 const EXIT_USAGE: i32 = 1;
 /// Quota codes the export reports, from the same table.
 const QUOTA_CODES: [i32; 4] = [0, 10, 11, 20];

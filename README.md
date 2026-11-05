@@ -11,9 +11,12 @@
 <img src="https://img.shields.io/badge/Rust-core-e3a83c?style=flat-square&labelColor=0a0e17&logo=rust&logoColor=white" alt="Rust core">
 <img src="https://img.shields.io/badge/Tauri-2-6ba8ff?style=flat-square&labelColor=0a0e17&logo=tauri&logoColor=white" alt="Tauri 2">
 <img src="https://img.shields.io/badge/peak_RSS-7_MB-8a99b0?style=flat-square&labelColor=0a0e17" alt="Peak RSS 7 MB">
+<img src="https://img.shields.io/badge/license-GPL--3.0-c084fc?style=flat-square&labelColor=0a0e17" alt="License: GPL-3.0">
 
 <p>
+  <a href="#-install"><b>Install</b></a> ·
   <a href="#-what-you-get"><b>Features</b></a> ·
+  <a href="#-your-mac-too"><b>Mac monitor</b></a> ·
   <a href="#-tools-it-reads"><b>Tools</b></a> ·
   <a href="#-how-it-works"><b>How it works</b></a> ·
   <a href="#-privacy-by-construction"><b>Privacy</b></a> ·
@@ -32,11 +35,24 @@ It reads the session logs your tools already write to disk, folds them into the 
 enforces, and tells you how full every window is, when it lets go, and whether your current pace
 gets you there. It never signs in, never reads a credential, and never makes a network request.
 
+On macOS it also watches **the Mac itself** — CPU, GPU, SSD and SoC temperatures, fan, power,
+memory, disk, network, processes, a health score — and **your Docker containers**, in a Liquid
+Glass popover and a four-tab dashboard.
+
+## ✦ Install
+
+Download the latest `QuotaDeck-<version>-macos-arm64.dmg` from
+[**Releases**](https://github.com/kutluhangil/QuotaDeck/releases), open it and drag Quota Deck to
+Applications. The DMG is signed with a Developer ID and notarized by Apple, so it opens without a
+warning. Apple silicon, macOS 13 or later; the Liquid Glass popover needs macOS 26.
+
+Windows and Linux builds cover the AI quota side only — build them from source (below).
+
 <table>
 <tr>
 <td width="46%" valign="top">
 
-<img src="docs/readme/panel.gif" alt="The Quota Deck panel switching between Overview, Claude Code, Codex and OpenCode tabs" width="100%">
+<img src="docs/readme/v2-popover.png" alt="The Quota Deck popover: Mac health, Claude and Codex quota, CPU, memory, disk, Docker, fan, power, network and a thermal strip on Liquid Glass" width="100%">
 
 </td>
 <td width="54%" valign="top">
@@ -54,7 +70,7 @@ gets you there. It never signs in, never reads a credential, and never makes a n
 - **The running session**, straight from Claude Code: how full its context window is and how long
   the prompt cache stays warm.
 
-<sub>Recorded from the app's built-in demo data.</sub>
+<sub>Screenshots use the app's sample data, not a real machine.</sub>
 
 </td>
 </tr>
@@ -116,12 +132,67 @@ Español.
 </tr>
 </table>
 
+## ✦ Your Mac, too
+
+<table>
+<tr>
+<td width="33%" valign="top">
+
+#### 🌡️ Heat field
+CPU performance and efficiency clusters, GPU, SoC fabric and SSD, classified by sensor family so a
+new chip works on day one. Five-minute peak, macOS's own throttling state, 1 h / 24 h / 7 d history.
+
+</td>
+<td width="33%" valign="top">
+
+#### ⚙️ Everything else on one screen
+Per-cluster and per-core CPU, memory with pressure and swap, startup and external volumes, disk
+and network throughput, GPU load, fan speed, system and GPU power, NVMe SMART health and wear.
+
+</td>
+<td width="33%" valign="top">
+
+#### 🐳 Docker, read-only
+Containers grouped by Compose project with health, CPU and memory, plus image, volume and build
+cache usage. Docker Desktop closed or not installed gets its own quiet screen.
+
+</td>
+</tr>
+<tr>
+<td valign="top">
+
+#### 💚 A health score
+One number from CPU, memory pressure, disk, temperature and I/O, with what is costing points. A
+failing SSD caps it.
+
+</td>
+<td valign="top">
+
+#### 🔔 Mac alerts
+A hot CPU, a nearly full startup disk, critical memory pressure, a container turning unhealthy —
+each at most once every 30 minutes, thresholds yours.
+
+</td>
+<td valign="top">
+
+#### ☕ Keep Awake and fan modes
+Stop idle sleep from the popover. Auto / Cool / Max fan modes through a small privileged helper
+that macOS asks you to approve once, and that always hands the fans back to Auto.
+
+</td>
+</tr>
+</table>
+
+Nothing is estimated. A reading a Mac does not expose — memory temperature, or CPU and Neural
+Engine power on chips that stopped reporting them — says so instead of showing a guess.
+
 ## ✦ Tools it reads
 
 | Tool | Where it reads | Limits | Cost | Status |
 |---|---|---|---|---|
 | **Claude Code** | `~/.claude/projects` + the optional status line | 🔵 Measured 5h and 7d via the status line; estimated from your plan before that | ✅ Embedded price table | Verified on real logs |
-| **Codex** | `~/.codex/sessions` | 🔵 Measured — Codex writes its own rate limits | Tokens | Verified on real logs |
+| **Codex** | `~/.codex/sessions` | 🔵 Measured — Codex writes its own rate limits | Tokens · priceable via override | Verified on real logs |
+| **Antigravity** | `~/.gemini/antigravity-cli/history.jsonl`, the tail of `~/.gemini/antigravity/log/cli-*.log` | 🔵 Measured "model exhausted, reopens at" from the CLI's own log; weekly percentages when you turn on live quota (runs `agy`) | Prompts | Verified on real logs |
 | **Copilot CLI** | `~/.copilot/session-state` | Exact ceiling from the published plan allowance | ✅ Metered by GitHub | Parser verified; the tool's new runtime stopped writing this file |
 | **Gemini CLI** | `~/.gemini/tmp/*/chats` | — not written to disk | Tokens · priceable via override | Awaiting a real-log check |
 | **OpenCode** | `~/.local/share/opencode/opencode.db` (SQLite, read-only) | — | ✅ Table, then OpenCode's own figure | Awaiting a real-log check |
@@ -179,13 +250,22 @@ API — breaks the consumer terms of every provider it touches. Quota Deck is bu
 | **Logs are read-only** | Opened for reading; never written. OpenCode's database is opened read-only. |
 | **The panel gets no filesystem** | All file access lives in Rust; the webview has no `fs` capability. |
 | **The status line shim keeps counters only** | It copies `rate_limits` and an allow-list of numeric fields. `cwd`, `session_id`, `transcript_path` and `model` never reach disk. |
+| **Sensors are read, never written** | Temperatures, fan and power come from the SMC, IOReport and the HID event system, read-only. |
+| **Docker is only asked** | The `docker` CLI runs with `info`, `ps`, `stats --no-stream` and `system df` only — nothing that starts, stops or removes. |
+| **Antigravity live quota is opt-in** | Off by default. When on, `agy -p /usage` runs every 5 minutes; *agy* talks to Google with your account, Quota Deck still makes no request. Account files are never opened. |
+| **The fan helper writes fan keys only** | `F<n>md`, `F<n>Tg`, `Ftst` and nothing else; only our signed app may connect; Auto again when the app quits, sleeps or stops renewing. Removable from Settings. |
 
 Analytics, crash reports, telemetry: none. There is nowhere for them to go.
 
 ## ✦ The dashboard
 
+Four tabs — **Overview**, **Mac**, **Docker** and **AI** — over 1 h, 24 h or 7 days of history. The
+AI tab keeps the per-tool breakdowns, sessions, heatmap and JSON/CSV export.
+
 <div align="center">
-<img src="docs/readme/dashboard.png" alt="The Quota Deck dashboard with per-tool totals, spend by model, project and agent, recent sessions and a heatmap" width="100%">
+<img src="docs/readme/v2-overview.png" alt="The dashboard's Overview tab: health score, AI quota, heat field, memory, disk, fan, power, network, Docker and top processes" width="100%">
+<br><br>
+<img src="docs/readme/v2-mac.png" alt="The dashboard's Mac tab: the SoC heat field with P-cores, E-cores, GPU, SoC fabric and SSD, 24 hour temperatures, CPU clusters and per-core load, GPU" width="100%">
 </div>
 
 ## ✦ Command line
@@ -264,22 +344,27 @@ cargo test -p quotadeck-core --release --test perf -- --ignored --test-threads=1
 npm --prefix ui test
 ```
 
-Platform packaging lives in [`scripts/`](scripts): the sandboxed Mac App Store build
-(`appstore.sh`, `widget.sh`), signed Windows installers for the Microsoft Store (`msstore.ps1`)
-and `.deb`, `.rpm` and AppImage for Linux (`linux.sh`).
+Packaging lives in [`scripts/`](scripts): the signed, notarized macOS release
+(`release-macos.sh`, which also builds the fan helper with `build-fanhelper.sh`) and `.deb`,
+`.rpm` and AppImage for Linux (`linux.sh`). `scripts/fanhelper-dev.sh` installs the fan helper on
+your own Mac for testing without a Developer ID. The Mac App Store and Microsoft Store builds are
+parked in [`stores/`](stores) and are not maintained.
 
 <details>
 <summary><b>Project layout</b></summary>
 
 ```text
 core/        the read loop — cursors, dedup, buckets, pace, pricing, sessions (no provider names)
+sysmon/      Mac readings — CPU, memory, disk, network, processes, SMC, IOReport, SMART, Docker
 providers/   one file per tool + real or synthetic fixtures under tests/fixtures/<tool>/
-app/         Tauri shell — tray, panel, dashboard window, alerts, widget snapshot, status line shim
+app/         Tauri shell — tray, popover, dashboard, alerts, system history, status line shim
+app/fanhelper/  the privileged fan helper (Swift) and its launchd plist
 cli/         quotadeckctl
-ui/          React panel and dashboard
+ui/          React popover and dashboard (ui/src/liquid/ is the Liquid Glass design)
 site/        the marketing site (Astro)
 shared/      design tokens shared by the app and the site
-docs/        discovery notes, release checklist, store notes, plans
+docs/        discovery notes, plans, design prompts, research
+stores/      parked App Store / Microsoft Store builds
 ```
 
 Adding a tool is **one file, one fixture test and one line of registration** — nothing else in the
@@ -289,16 +374,17 @@ codebase learns its name.
 
 ## ✦ Status
 
-Quota Deck is **pre-release**. The code is complete for the first version; what remains is
-release work — signing, store listings and real-machine QA — tracked in
-[`docs/RELEASE_CHECKLIST.md`](docs/RELEASE_CHECKLIST.md) and [`docs/USER_ACTIONS.md`](docs/USER_ACTIONS.md).
-What was built and decided most recently is in [`docs/FINISH_PLAN.md`](docs/FINISH_PLAN.md) and
-[`CHANGELOG.md`](CHANGELOG.md).
+Quota Deck **2.0** adds the Mac monitor, Docker, Antigravity and the Liquid Glass design. What is
+left before a tagged release — the Developer ID certificate, a hands-on QA pass and the fan test —
+is in [`docs/USER_ACTIONS.md`](docs/USER_ACTIONS.md) §7. The plan and every decision behind v2 are
+in [`docs/V2_PLAN.md`](docs/V2_PLAN.md); changes in [`CHANGELOG.md`](CHANGELOG.md).
 
 ## ✦ License
 
-Not yet licensed for reuse (`UNLICENSED`); all rights reserved. Bundled fonts — Inter and Martian
-Mono — are under the SIL Open Font License, see [`licenses/`](licenses).
+[GPL-3.0-only](LICENSE). Bundled fonts — Inter and Martian Mono — are under the SIL Open Font
+License, see [`licenses/`](licenses). The Claude, OpenAI and Antigravity marks shown next to each
+tool belong to their owners; the SVG files come from simple-icons (CC0) and antigravity.google
+(see [`ui/src/assets/logos/README.md`](ui/src/assets/logos/README.md)).
 
 <div align="center">
 <br>

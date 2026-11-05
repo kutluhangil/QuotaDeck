@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Quota Deck — Overview</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="./qd.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="qd win {{themeClass}}">
+  <nav class="toolbar" aria-label="Dashboard">
+    <div class="lights" aria-hidden="true"><i style="background: #FF5F57"></i><i style="background: #FEBC2E"></i><i style="background: #28C840"></i></div>
+    <div class="tabs glass">
+      <a class="tab on" href="Overview.dc.html" aria-current="page">Overview</a>
+      <a class="tab" href="Mac.dc.html">Mac</a>
+      <a class="tab" href="Docker.dc.html">Docker</a>
+      <a class="tab" href="AIClaude.dc.html">AI</a>
+    </div>
+    <div style="display: flex; gap: 8px; justify-content: flex-end; align-items: center; flex-wrap: wrap">
+      <div class="seg glass" role="group" aria-label="Time range"><button class="tab">1 h</button><button class="tab on" aria-pressed="true">24 h</button><button class="tab">7 d</button></div>
+      <label class="search glass"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="7" cy="7" r="4.5"></circle><path d="M10.5 10.5 14 14"></path></svg><span class="sr">Search processes and containers</span><input type="search" placeholder="Search"></label>
+    </div>
+  </nav>
+
+  <main class="content">
+    <div class="bento">
+      <section class="card s4" aria-label="Health score 92, excellent. All readings normal." style="flex-direction: row; gap: 20px; align-items: stretch; padding: 20px">
+        <div class="vessel v lg" style="height: 150px; flex: none"><div class="liquid" style="height: 92%; background-color: #5BBF84"></div></div>
+        <div style="display: flex; flex-direction: column; justify-content: space-between; min-width: 0">
+          <div class="lbl">Health</div>
+          <div>
+            <div class="row" style="align-items: baseline; gap: 10px"><span class="hero" style="font-size: 72px">92</span><span style="font-size: 15px; font-weight: 500; color: var(--ok)">Excellent</span></div>
+            <div class="t2" style="font-size: 14px; margin-top: 8px">All readings normal</div>
+          </div>
+          <div class="lbl">Mac · Apple M6 · 32 GB · up 1 d 23 h</div>
+        </div>
+      </section>
+
+      <section class="card s8" aria-label="AI quota" style="padding: 20px">
+        <div class="card-h"><span class="h2">AI quota</span><a href="AIClaude.dc.html" class="btn ghost" style="height: 24px; padding: 0 8px; font-size: 12px">Details</a></div>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr)); gap: 20px">
+          <div style="display: flex; flex-direction: column; gap: 8px">
+            <div class="row"><span class="mark cl">Cl</span><span style="font-weight: 600">Claude</span><span class="badge meas" style="margin-left: auto">Measured</span></div>
+            <div class="row" style="align-items: baseline; gap: 6px"><span class="hero" style="font-size: 40px">67%</span><span class="t3">left</span></div>
+            <div class="vessel h md"><div class="liquid" style="width: 67%; background-color: #DE8A68"></div><i class="pace" style="left: 84.5%"></i></div>
+            <div class="lbl">Weekly · resets in 5 d 22 h</div>
+            <div style="font-size: 12px; color: var(--warn)">18% over pace · runs out in 2 d 5 h</div>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 8px">
+            <div class="row"><span class="mark cx">Cx</span><span style="font-weight: 600">Codex</span><span class="badge meas" style="margin-left: auto">Measured</span></div>
+            <div class="row" style="align-items: baseline; gap: 6px"><span class="hero" style="font-size: 40px">82%</span><span class="t3">left</span></div>
+            <div class="vessel h md"><div class="liquid codex" style="width: 82%; background-color: #DDE3E0"></div><i class="pace" style="left: 43.3%"></i></div>
+            <div class="lbl">Session · resets in 2 h 10 m</div>
+            <div class="t2" style="font-size: 12px">39% in reserve · lasts until reset</div>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 8px">
+            <div class="row"><span class="mark ag">Ag</span><span style="font-weight: 600">Antigravity</span></div>
+            <div class="row" style="align-items: baseline; gap: 6px"><span class="hero" style="font-size: 40px">1 of 2</span><span class="t3">open</span></div>
+            <div style="display: flex; gap: 4px">
+              <div class="vessel h md" style="flex: 1"><div class="liquid" style="width: 100%; background-color: #9485FF"></div></div>
+              <div class="vessel h md" style="flex: 1"><div class="liquid empty" style="width: 100%"></div></div>
+            </div>
+            <div class="lbl">Flash: available · Pro: exhausted</div>
+            <div class="t2" style="font-size: 12px">Pro opens in 4 h 52 m</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="card s4" aria-label="SoC heat field: all zones cool, hottest P-core cluster at 52.7 degrees average" style="padding: 20px">
+        <div class="card-h"><span class="h2">Heat field</span><span class="chip ok"><span class="dot"></span>Nominal</span></div>
+        <div style="display: flex; gap: 10px; align-items: center">
+          <div class="die" style="flex: 1; display: grid; grid-template-columns: 1.25fr 1fr 1.5fr; grid-template-rows: 64px 64px; gap: 6px">
+            <div class="zone" style="grid-row: span 2; background: radial-gradient(90% 80% at 50% 55%, rgba(94,126,158,0.9), rgba(94,126,158,0.22) 66%, rgba(94,126,158,0.06))"><span class="zl">P</span><span class="zt">52.7°</span></div>
+            <div class="zone" style="background: radial-gradient(90% 80% at 50% 55%, rgba(90,121,153,0.85), rgba(90,121,153,0.2) 66%, rgba(90,121,153,0.06))"><span class="zl">E</span><span class="zt">50.4°</span></div>
+            <div class="zone" style="grid-row: span 2; grid-column: 3; background: radial-gradient(90% 80% at 50% 55%, rgba(87,118,150,0.82), rgba(87,118,150,0.2) 66%, rgba(87,118,150,0.06))"><span class="zl">GPU</span><span class="zt">49°</span></div>
+            <div class="zone" style="background: radial-gradient(90% 80% at 50% 55%, rgba(84,116,148,0.7), rgba(84,116,148,0.18) 66%, rgba(84,116,148,0.05))"><span class="zl">SoC</span><span class="zt">47.8°</span></div>
+          </div>
+          <div class="die" style="width: 54px; height: 72px; padding: 6px; border-radius: 14px"><div class="zone" style="height: 100%; min-height: 0; background: radial-gradient(90% 80% at 50% 55%, rgba(78,110,142,0.75), rgba(78,110,142,0.15) 70%)"><span class="zl" style="left: 6px; top: 5px; font-size: 9.5px">SSD</span><span class="zt" style="right: 6px; bottom: 4px; font-size: 11.5px">44°</span></div></div>
+        </div>
+      </section>
+
+      <div class="s8" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(140px, 100%), 1fr)); gap: 12px">
+        <section class="card" aria-label="Memory 76 percent, pressure normal" style="flex-direction: row; gap: 12px">
+          <div style="flex: 1; display: flex; flex-direction: column; justify-content: space-between; gap: 10px"><span class="lbl">Memory</span><div><div class="hero" style="font-size: 30px">76%</div><div style="font-size: 12px; color: var(--ok); margin-top: 4px">Normal</div></div><span class="lbl">24.3 of 32 GB</span></div>
+          <div class="vessel v" style="height: 110px"><div class="liquid" style="height: 76%; background-color: #A3ADB8"></div></div>
+        </section>
+        <section class="card" aria-label="Disk 412 gigabytes free, SSD 44 degrees" style="flex-direction: row; gap: 12px">
+          <div style="flex: 1; display: flex; flex-direction: column; justify-content: space-between; gap: 10px"><span class="lbl">Disk</span><div><div class="hero" style="font-size: 30px">412</div><div class="t2" style="font-size: 12px; margin-top: 4px">GB free</div></div><span class="lbl">SSD 44° · Verified</span></div>
+          <div class="vessel v" style="height: 110px"><div class="liquid" style="height: 59%; background-color: #4E6E8E"></div></div>
+        </section>
+        <section class="card" aria-label="Fan 999 RPM, 20 percent, managed by macOS" style="align-items: flex-start">
+          <span class="lbl">Fan</span>
+          <svg width="60" height="60" viewBox="0 0 40 40" aria-hidden="true" style="transform: rotate(-90deg)"><circle cx="20" cy="20" r="16" fill="none" stroke-width="5" style="stroke: var(--vessel)"></circle><circle cx="20" cy="20" r="16" fill="none" stroke-width="5" stroke-linecap="round" stroke-dasharray="20.1 100.5" stroke="#A3ADB8"></circle></svg>
+          <div><span class="num" style="font-size: 17px">999</span> <span class="lbl">rpm · Auto</span></div>
+        </section>
+        <section class="card" aria-label="Power 21.2 watts">
+          <span class="lbl">Power</span>
+          <div style="flex: 1; display: flex; align-items: flex-end"><span class="hero" style="font-size: 36px">21.2</span><span class="t3" style="margin: 0 0 4px 4px">W</span></div>
+          <svg class="chart" viewBox="0 0 100 20" preserveAspectRatio="none" height="20" aria-hidden="true"><path class="gl" d="M0 14 C10 13, 16 9, 24 11 S 38 15, 46 10 S 60 5, 68 9 S 86 13, 100 8" style="stroke: var(--fg-2)"></path></svg>
+        </section>
+        <section class="card" aria-label="Network down 2.4 megabytes per second, up 180 kilobytes per second">
+          <span class="lbl">Network</span>
+          <div style="flex: 1; display: flex; flex-direction: column; justify-content: flex-end; gap: 2px" class="mono"><div style="font-size: 15px">↓ 2.4 <span class="t3" style="font-size: 11px">MB/s</span></div><div style="font-size: 15px">↑ 180 <span class="t3" style="font-size: 11px">KB/s</span></div></div>
+          <svg class="chart" viewBox="0 0 100 20" preserveAspectRatio="none" height="20" aria-hidden="true"><path class="gl" d="M0 9 C8 4, 14 6, 22 5 S 36 2, 44 6 S 58 8, 66 3 S 86 6, 100 5" style="stroke: var(--fg-2)"></path><path class="base" d="M0 10 H100"></path><path class="gl" d="M0 12 C10 13, 18 12, 28 13 S 46 12, 56 14 S 80 12, 100 13" style="stroke: var(--fg-3)"></path></svg>
+        </section>
+      </div>
+
+      <section class="card s5" aria-label="Docker running, 8 of 11 containers, 3.1 of 4.8 gigabytes" style="padding: 20px">
+        <div class="card-h"><span class="h2">Docker</span><span class="chip ok"><span class="dot"></span>Running · Docker Desktop</span></div>
+        <div style="display: flex; gap: 24px; align-items: flex-end">
+          <div><div class="row" style="align-items: baseline; gap: 4px"><span class="hero" style="font-size: 40px">8</span><span class="t3">/ 11 running</span></div></div>
+          <div style="flex: 1; display: flex; flex-direction: column; gap: 6px"><div class="row" style="justify-content: space-between"><span class="lbl">Memory</span><span class="mono" style="font-size: 12px">3.1 / 4.8 GB</span></div><div class="vessel h md"><div class="liquid" style="width: 64.6%; background-color: #A3ADB8"></div></div></div>
+        </div>
+        <div style="display: flex; flex-direction: column">
+          <div class="row" style="padding: 9px 0; border-top: 0.5px solid var(--hair)"><span style="flex: 1; font-weight: 500">quota-api</span><span class="lbl">4 / 4</span><span class="chip ok" style="height: 20px">healthy</span></div>
+          <div class="row" style="padding: 9px 0; border-top: 0.5px solid var(--hair)"><span style="flex: 1; font-weight: 500">home-server</span><span class="lbl">3 / 5</span><span class="chip warn" style="height: 20px">1 unhealthy</span></div>
+          <div class="row" style="padding: 9px 0; border-top: 0.5px solid var(--hair)"><span style="flex: 1; font-weight: 500">pg-local</span><span class="lbl">1 / 2</span><span class="chip" style="height: 20px">no check</span></div>
+        </div>
+      </section>
+
+      <section class="card s7" aria-label="Top 5 processes by CPU" style="padding: 20px">
+        <div class="card-h"><span class="h2">Top processes</span><a href="Mac.dc.html" class="btn ghost" style="height: 24px; padding: 0 8px; font-size: 12px">All 157</a></div>
+        <div class="tblbox">
+          <table class="tbl" style="min-width: 480px">
+            <thead><tr><th>Name</th><th class="r">Memory</th><th>% CPU</th><th class="r">Energy</th></tr></thead>
+            <tbody>
+              <tr><td><span class="row"><i class="appicon" style="background: #2B6FD6"></i>Docker VM</span></td><td class="r mono">3.2 GB</td><td><span class="row"><span class="minibar"><i style="width: 64%; background-color: #A3ADB8"></i></span><span class="mono">6.4</span></span></td><td class="r mono">1.8 W</td></tr>
+              <tr><td><span class="row"><i class="appicon" style="background: #3C8FE0"></i>Code Helper (Renderer)</span></td><td class="r mono">1.9 GB</td><td><span class="row"><span class="minibar"><i style="width: 41%; background-color: #A3ADB8"></i></span><span class="mono">4.1</span></span></td><td class="r mono">0.9 W</td></tr>
+              <tr><td><span class="row"><i class="appicon" style="background: #B4573A"></i>claude</span></td><td class="r mono">612 MB</td><td><span class="row"><span class="minibar"><i style="width: 32%; background-color: #A3ADB8"></i></span><span class="mono">3.2</span></span></td><td class="r mono">0.6 W</td></tr>
+              <tr><td><span class="row"><i class="appicon" style="background: #55595E"></i>WindowServer</span></td><td class="r mono">410 MB</td><td><span class="row"><span class="minibar"><i style="width: 27%; background-color: #A3ADB8"></i></span><span class="mono">2.7</span></span></td><td class="r mono">0.7 W</td></tr>
+              <tr><td><span class="row"><i class="appicon" style="background: #2E9BD6"></i>Safari Web Content</span></td><td class="r mono">880 MB</td><td><span class="row"><span class="minibar"><i style="width: 14%; background-color: #A3ADB8"></i></span><span class="mono">1.4</span></span></td><td class="r mono">0.3 W</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"reduceTransparency":{"editor":"boolean","default":false},"$preview":{"width":1180,"height":1000}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const t = this.props.theme ?? 'dark';
+    const rt = this.props.reduceTransparency ?? false;
+    return { themeClass: t + (rt ? ' rt' : '') };
+  }
+}
+</script>
+</body>
+</html>

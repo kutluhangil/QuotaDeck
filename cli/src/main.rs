@@ -2,7 +2,7 @@
 //!
 //! The shipped product is a tray application. This binary answers the same question to a shell:
 //! which windows are open, how full they are, and what the logs behind them say. It is a
-//! separate artifact — it is not inside the Mac App Store `.app` or `.pkg` (`docs/STORE.md` §9).
+//! separate artifact — it is not inside the Mac App Store `.app` or `.pkg` (`stores/apple/STORE.md` §9).
 //!
 //! Two rules the whole surface keeps:
 //!
@@ -34,7 +34,7 @@ use quotadeck_core::types::{
 };
 
 /// The command itself could not be carried out: unreadable settings, an unknown provider key,
-/// a refused argument. Distinct from the quota codes `export` reports (`docs/STORE.md` §9).
+/// a refused argument. Distinct from the quota codes `export` reports (`stores/apple/STORE.md` §9).
 const EXIT_USAGE: u8 = 1;
 
 fn main() -> ExitCode {
@@ -240,7 +240,7 @@ fn selected_instances(
 /// Read every provider this machine has and write the result to stdout.
 ///
 /// The exit status is the deck's worst reading, so a shell can branch on the quota without
-/// parsing anything — see `docs/STORE.md` §9. Nothing is written to disk: the app's own data
+/// parsing anything — see `stores/apple/STORE.md` §9. Nothing is written to disk: the app's own data
 /// directory is the only path this process ever writes to, and an export is not part of it.
 fn export(args: &cli::ExportArgs) -> ExitCode {
     let settings = match Settings::load() {
@@ -659,10 +659,10 @@ fn print_glyph(name: &str, glyph: &icon::Glyph) {
 
 /// Where this process thinks it is, in a shape a shell script can assert on.
 ///
-/// This is the sandbox regression harness. Signed with `app/Entitlements.plist` the process is
+/// This is the sandbox regression harness. Signed with `stores/apple/Entitlements.sandbox.plist` the process is
 /// genuinely sandboxed, and the three lines below are what the sandbox changes: `$HOME` becomes
 /// the container, `home` must not, and every provider root turns `denied` until the user has
-/// handed over the folder. `scripts/sandbox-check.sh` compares the two runs.
+/// handed over the folder. `stores/apple/sandbox-check.sh` compares the two runs.
 fn guard() -> ExitCode {
     let show = |value: Option<std::path::PathBuf>| {
         value.map_or_else(|| "-".to_string(), |path| path.display().to_string())
@@ -1172,6 +1172,7 @@ mod provider_policy_tests {
             [
                 "copilot-cli",
                 "codex",
+                "antigravity",
                 "gemini-cli",
                 "pi-agent",
                 "amp",

@@ -23,6 +23,16 @@ const settings: Settings = {
   retentionDays: 32,
   usageDisplay: "used",
   globalShortcut: false,
+  designTheme: "liquid",
+  antigravityLive: false,
+    systemAlerts: {
+      cpuCelsiusAbove: 90,
+      freeDiskGbBelow: 20,
+      memoryCritical: true,
+      containerUnhealthy: true,
+    },
+    refreshSpeed: "balanced",
+    menuBar: { temperature: true, memory: true },
 };
 
 describe("provider policy", () => {
@@ -36,6 +46,7 @@ describe("provider policy", () => {
       "amp",
       "droid",
       "opencode",
+      "antigravity",
     ]);
   });
 

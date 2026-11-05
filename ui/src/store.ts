@@ -21,6 +21,8 @@ import type {
   PreparedExport,
   RetentionDays,
   Settings,
+  SystemAlertRules,
+  RefreshSpeed,
   StartupState,
   StatuslineState,
   TrayMode,
@@ -81,6 +83,10 @@ interface DeckStore {
   setLocale: (locale: Locale) => void;
   setUsageDisplay: (display: UsageDisplay) => void;
   setGlobalShortcut: (enabled: boolean) => void;
+  setAntigravityLive: (enabled: boolean) => void;
+  setSystemAlerts: (rules: SystemAlertRules) => void;
+  setRefreshSpeed: (speed: RefreshSpeed) => void;
+  setMenuBar: (content: Settings["menuBar"]) => void;
   setDemo: (demo: boolean) => void;
   setRetentionDays: (days: RetentionDays) => Promise<void>;
   setAdditionalRoots: (provider: ProviderInstanceId, roots: string[]) => Promise<void>;
@@ -175,6 +181,16 @@ export const useDeck = create<DeckStore>((set, get) => ({
     retentionDays: 32,
     usageDisplay: "used",
     globalShortcut: false,
+    designTheme: "liquid",
+    antigravityLive: false,
+    systemAlerts: {
+      cpuCelsiusAbove: 90,
+      freeDiskGbBelow: 20,
+      memoryCritical: true,
+      containerUnhealthy: true,
+    },
+    refreshSpeed: "balanced",
+    menuBar: { temperature: true, memory: true },
   },
   plans: [],
   providerCatalogue: [],
@@ -228,6 +244,38 @@ export const useDeck = create<DeckStore>((set, get) => ({
         set({ settings: next.value, settingsAction: null });
         applyTheme(next.value.theme);
       } else set({ settingsError: next.error, settingsAction: null });
+    });
+  },
+
+  setAntigravityLive: (antigravityLive) => {
+    set({ settings: { ...get().settings, antigravityLive } });
+    void call<Settings>("set_antigravity_live", { enabled: antigravityLive }).then((next) => {
+      if (next.ok) set({ settings: next.value });
+      else if (inShell) set({ settingsError: next.error });
+    });
+  },
+
+  setRefreshSpeed: (refreshSpeed) => {
+    set({ settings: { ...get().settings, refreshSpeed } });
+    void call<Settings>("set_refresh_speed", { speed: refreshSpeed }).then((next) => {
+      if (next.ok) set({ settings: next.value });
+      else if (inShell) set({ settingsError: next.error });
+    });
+  },
+
+  setMenuBar: (menuBar) => {
+    set({ settings: { ...get().settings, menuBar } });
+    void call<Settings>("set_menu_bar", { content: menuBar }).then((next) => {
+      if (next.ok) set({ settings: next.value });
+      else if (inShell) set({ settingsError: next.error });
+    });
+  },
+
+  setSystemAlerts: (systemAlerts) => {
+    set({ settings: { ...get().settings, systemAlerts } });
+    void call<Settings>("set_system_alerts", { rules: systemAlerts }).then((next) => {
+      if (next.ok) set({ settings: next.value });
+      else if (inShell) set({ settingsError: next.error });
     });
   },
 
@@ -834,7 +882,7 @@ type Outcome<T> = { ok: true; value: T } | { ok: false; error: string };
  * Invoke a command that can fail. The backend returns the real message — a path, a permission,
  * a malformed settings file — and it is surfaced rather than replaced with "something failed".
  */
-async function call<T>(command: string, args: Record<string, unknown>): Promise<Outcome<T>> {
+export async function call<T>(command: string, args: Record<string, unknown>): Promise<Outcome<T>> {
   if (!inShell) return { ok: false, error: "not running inside the app" };
   const { invoke } = await import("@tauri-apps/api/core");
   try {

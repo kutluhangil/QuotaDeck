@@ -260,6 +260,7 @@ export const es: Catalogue = {
     amp: "Amp",
     droid: "Droid",
     opencode: "OpenCode",
+    antigravity: "Antigravity",
   },
 
   settings: {

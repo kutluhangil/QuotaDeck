@@ -14,7 +14,7 @@ export const tr: Copy = {
   meta: {
     title: "Quota Deck — AI kodlama kotalarını gör",
     description:
-      "Kodlama araçlarının zaten diske yazdığı oturum günlüklerini okuyan, her kayan pencerenin ne kadarını harcadığını gösteren bir menü çubuğu uygulaması. Hesap yok, giriş yok, ağ isteği yok.",
+      "Kodlama araçlarının zaten diske yazdığı oturum günlüklerini okuyan, her kayan pencerenin ne kadarını harcadığını gösteren ve macOS'ta Mac'ini ve Docker'ı da izleyen bir menü çubuğu uygulaması. Açık kaynak. Hesap yok, giriş yok, ağ isteği yok.",
   },
 
   nav: {
@@ -31,13 +31,13 @@ export const tr: Copy = {
     lede: "Quota Deck, kodlama araçlarının zaten kendi diskine yazdığı oturum günlüklerini okur ve her kayan pencerenin ne kadarını harcadığını gösterir — araç cevap vermeyi kesmeden önce.",
     claim: "Hesap yok. Giriş yok. Ağ yok. Hiçbir zaman.",
     claimNote:
-      "Dağıtılan masaüstü bağımlılık ağaçlarında HTTP istemcisine izin verilmiyor; CI macOS, Windows ve Linux yapılarını ayrı ayrı denetliyor. Mac App Store imzasında ayrıca dışarı ağ yetkilendirmesi bulunmuyor.",
+      "Dağıtılan masaüstü bağımlılık ağaçlarında HTTP istemcisine izin verilmiyor; CI macOS, Windows ve Linux yapılarını ayrı ayrı denetliyor. İmzalı macOS sürümünde ağ yetkilendirmesi bulunmuyor.",
     download: "İndir",
     how: "Nasıl doğru olabiliyor",
     shot: {
-      src: "/panel-tr.png",
-      alt: "Quota Deck paneli: iki araç, her birinde beş saatlik, haftalık ve hız satırları.",
-      caption: "Panel, örnek veriyle. Bu görüntüde gerçek bir kullanım ya da yol yok.",
+      src: "/popover.png",
+      alt: "Quota Deck popover'ı: Mac sağlığı, Claude ve Codex kotası, CPU, bellek, disk, Docker, fan, güç, ağ ve sıcaklık şeridi.",
+      caption: "Popover, örnek veriyle. Bu görüntüde gerçek bir kullanım ya da yol yok.",
     },
   },
 
@@ -67,6 +67,14 @@ export const tr: Copy = {
       {
         title: "Bir aylık geçmiş, burada",
         body: "Saatlik toplamlar ve eşdeğer API maliyeti; bu cihazda bir ay tutuluyor, başka hiçbir yerde değil.",
+      },
+      {
+        title: "Mac'in de",
+        body: "macOS'ta: CPU, GPU, SSD ve SoC sıcaklıkları, fan, güç, bellek basıncı, disk, ağ, süreçler ve bir sağlık skoru — yalnız okuma; Mac'in sunmadığı hiçbir değer tahmin edilmiyor.",
+      },
+      {
+        title: "Docker, yalnız okuma",
+        body: "Compose projesine göre gruplanmış konteynerler; sağlık, CPU ve bellekle birlikte. Yalnız docker info, ps, stats ve system df kullanılıyor; hiçbir şey başlatılmıyor, durdurulmuyor, silinmiyor.",
       },
     ],
   },
@@ -105,7 +113,7 @@ export const tr: Copy = {
       },
       {
         title: "Dışarı bağlantı yetkilendirmesi yok",
-        body: "macOS yetkilendirme dosyasında com.apple.security.network.client yok. İddiayı hiçbir yetkilendirmenin desteklemediği Linux'ta ise paketleme betiği bağımlılık ağacını denetliyor.",
+        body: "İmzalı macOS sürümünde com.apple.security.network.client yetkilendirmesi yok. İddiayı hiçbir yetkilendirmenin desteklemediği Linux'ta ise paketleme betiği bağımlılık ağacını denetliyor.",
       },
       {
         title: "Kimlik bilgileri hiç okunmuyor",
@@ -113,7 +121,7 @@ export const tr: Copy = {
       },
       {
         title: "Okumalar salt okunur",
-        body: "Yalnızca oturum ve telemetri günlükleri; hiçbirine yazılmıyor. App Store sürümü ev klasörü erişimini salt okunur tutuyor; isteğe bağlı Claude Code durum satırı için elle uygulayacağın tam zincirli komutu gösterip kopyalıyor.",
+        body: "Oturum ve telemetri günlükleri ile Mac'in sensörleri; hiçbirine yazılmıyor. İsteğe bağlı Claude Code durum satırı yalnız senin onayınla, eski komutu zincirleyerek ve tek tıkla geri alınabilir biçimde değiştiriliyor.",
       },
     ],
     why: {
@@ -145,6 +153,7 @@ export const tr: Copy = {
     list: [
       { name: "Claude Code", detail: "Durum satırı bağlandığında ölçülmüş; öncesinde tahmin." },
       { name: "Codex", detail: "Ölçülmüş. Codex gerçek limit verisini kendi günlüğüne yazıyor." },
+      { name: "Antigravity", detail: "Ölçülmüş: bir modelin kotası ne zaman bitti ve ne zaman açılacak, CLI'ın kendi günlüğünden. Canlı kotayı açarsan haftalık yüzdeler de geliyor; bunun için agy çalıştırılıyor." },
       { name: "Copilot CLI", detail: "Tavan, yayımlanan plan hakkından kesin; harcama tarafı yalnızca komut satırı oturumları." },
     ],
   },
@@ -154,11 +163,11 @@ export const tr: Copy = {
     items: [
       {
         name: "macOS",
-        body: "Dock ikonu olmayan bir menü çubuğu öğesi. Mac App Store için sandbox içinde, yani bir kez sorulan tek bir klasör izni — o da sistemin kendi penceresinde.",
+        body: "Dock ikonu olmayan bir menü çubuğu öğesi ve Liquid Glass bir popover. Developer ID ile imzalı ve Apple onaylı. Mac izleme, Docker ve fan modları yalnız macOS'ta.",
       },
       {
         name: "Windows",
-        body: "Görev çubuğu tepsi öğesi. Microsoft Store'un Win32 akışında imzalı x64 ve arm64 kurucular; oturum açınca başlatma uygulamanın içinden yönetiliyor.",
+        body: "AI kotası için görev çubuğu tepsi öğesi; Tauri ile kaynaktan derleniyor. Oturum açınca başlatma uygulamanın içinden yönetiliyor.",
       },
       {
         name: "Linux",
@@ -183,16 +192,16 @@ export const tr: Copy = {
         a: "Hayır — o risk, senin adına bir sağlayıcının API'sine kimlik doğrulayan araçlardan geliyor. Bu uygulama hiç kimlik doğrulamıyor ve hiç bağlanmıyor. Kendi araçlarının kendi diskine yazdığı dosyaları okuyor.",
       },
       {
-        q: "macOS neden ev klasörümü istiyor?",
-        a: "Çünkü sandbox içindeki bir uygulama, sen bir şey vermeden kendi kabının dışında hiçbir şeyi okuyamaz. Bir kez sorulan tek bir izin, o da sistemin kendi penceresinde, ve istediğin an Ayarlar'dan geri alınabiliyor. Her iki durumda da cihazdan hiçbir şey çıkmıyor.",
+        q: "Cool ya da Max'i seçince macOS neden onay istiyor?",
+        a: "Fan hızını yalnız yetkili bir yardımcı ayarlayabiliyor. Bu yardımcı kurulumda değil, ilk istediğinde kuruluyor ve macOS bir kez soruyor. Yalnız fan anahtarlarına yazıyor; uygulama kapanınca, Mac uyuyunca ya da uygulama haber vermeyi kesince fanları Auto'ya geri bırakıyor.",
       },
       {
         q: "Bir sayı neden bazen tahmin?",
         a: "Çünkü her araç kalan kotasını yayımlamıyor. Yayımlayanda panel ölçümü gösteriyor. Yayımlamayanda tahmini gösteriyor ve aynı satırda bunu söylüyor. Birini diğerinin kılığında asla göstermiyor.",
       },
       {
-        q: "Abonelik var mı?",
-        a: "Yok. Tek seferlik satın alma. Zaten ödediğin şeyi sana söyleyen bir araç ayda bir fatura kesmemeli.",
+        q: "Ücreti ne?",
+        a: "Yok. GPL-3.0 lisanslı açık kaynak. Zaten ödediğin şeyi sana söyleyen bir araç senden bir daha ücret almamalı.",
       },
       {
         q: "Örnek veri gerçek mi?",
@@ -203,7 +212,7 @@ export const tr: Copy = {
 
   download: {
     title: "İndir",
-    lede: "Henüz hiçbir sürüm yayında değil. Uygulama üç platformda da CI içinde derleniyor; imzalı mağaza paketleri ve masaüstünde elle doğrulama için ilgili hesap, sertifika ve makine hâlâ gerekli.",
+    lede: "Sürümler GitHub'da yayımlanıyor. macOS indirmesi imzalı ve Apple onaylı bir DMG; Windows ve Linux kaynaktan derleniyor.",
     statusPending: "Henüz yayında değil",
     copyCommand: "Kopyala",
     copiedCommand: "Kopyalandı",
@@ -213,15 +222,15 @@ export const tr: Copy = {
     items: [
       {
         name: "macOS",
-        detail: "Mac App Store, imzalı bir .pkg olarak. Sandbox içinde, klasör izni bir kez soruluyor.",
-        blocked: "Bekleyen: Apple Distribution sertifikası ve App Store Connect gönderimi.",
-        command: "TEAM_ID=... scripts/appstore.sh",
+        detail: "GitHub Releases'te Developer ID ile imzalı, Apple onaylı bir DMG; fan yardımcısı içinde.",
+        blocked: "Bekleyen: ilk etiketli sürüm.",
+        command: "TEAM_ID=... scripts/release-macos.sh",
       },
       {
         name: "Windows",
-        detail: "Microsoft Store; x64 ve arm64 için CA imzalı, çevrimdışı NSIS kurucuları ve değişmez HTTPS adresleriyle.",
-        blocked: "Bekleyen: Windows imzalama sertifikası, Partner Center hesabı, barındırılan kurucu adresleri ve rezerve edilmiş ürün adı.",
-        command: "scripts/msstore.ps1",
+        detail: "Tauri ile üretilen bir NSIS kurucusu; yalnız AI kotası.",
+        blocked: "İmzalı kurucu yayımlanmıyor; kendin derle.",
+        command: "npm --prefix ui exec tauri -- build",
       },
       {
         name: "Linux",
@@ -242,11 +251,11 @@ export const tr: Copy = {
     sections: [
       {
         title: "Cihazından ne çıkıyor",
-        body: "Hiçbir şey. Dağıtılan masaüstü bağımlılık ağaçlarında HTTP istemcisi yok; CI macOS, Windows ve Linux yapılarını ayrı ayrı denetliyor. Mac App Store sürümünde ayrıca dışarı ağ yetkilendirmesi bulunmuyor.",
+        body: "Hiçbir şey. Dağıtılan masaüstü bağımlılık ağaçlarında HTTP istemcisi yok; CI macOS, Windows ve Linux yapılarını ayrı ayrı denetliyor. İmzalı macOS sürümünde ağ yetkilendirmesi yok. Tek istisna senin kararın: varsayılan olarak kapalı Antigravity canlı kotası agy'yi çalıştırır ve agy hesabınla Google'a bağlanır.",
       },
       {
         title: "Ne okunuyor",
-        body: "Desteklenen araçların ev klasörüne yazdığı oturum ve telemetri günlükleri salt okunur ve baştan değil bir bayt konumundan itibaren okunuyor. İsteğe bağlı Claude Code durum satırı bağlantısını incelemek için ~/.claude/settings.json da açılıyor ve statusLine.command kullanılıyor. Her iki kurulum akışında da nesne değişmeden veya senden değiştirmen istenmeden önce, tam geri alma için önceki statusLine değeri Quota Deck'in yerel veri klasöründe saklanıyor.",
+        body: "Desteklenen araçların ev klasörüne yazdığı oturum ve telemetri günlükleri salt okunur ve baştan değil bir bayt konumundan itibaren okunuyor. macOS'ta ayrıca Mac'in sensörleri (SMC, IOReport, HID) ile docker CLI'ın info, ps, stats ve system df çıktısı okunuyor. İsteğe bağlı Claude Code durum satırı bağlantısını incelemek için ~/.claude/settings.json da açılıyor ve statusLine.command kullanılıyor. Her iki kurulum akışında da nesne değişmeden veya senden değiştirmen istenmeden önce, tam geri alma için önceki statusLine değeri Quota Deck'in yerel veri klasöründe saklanıyor.",
       },
       {
         title: "Ne asla okunmuyor",
@@ -254,15 +263,15 @@ export const tr: Copy = {
       },
       {
         title: "Ne yazılıyor",
-        body: "Saatlik kullanım toplamları, ayarların ve — isteğe bağlı bağlantıyı kurmayı seçtikten sonra — önceki statusLine değerinin tamamı uygulamanın kendi veri klasörüne yazılıyor. App Store sürümü başka hiçbir yere yazmıyor; tam zincirli JSON'u ve geri alma nesnesini veriyor, Claude ayarını sen değiştiriyorsun.",
+        body: "Saatlik kullanım toplamları, bir haftalık dakikalık Mac ölçümleri, ayarların ve — isteğe bağlı bağlantıyı kurmayı seçtikten sonra — önceki statusLine değerinin tamamı uygulamanın kendi veri klasörüne yazılıyor. Fan yardımcısı, onayladıktan sonra, SMC'ye yalnız fan hızı anahtarlarını yazıyor.",
       },
       {
         title: "Analitik, çökme raporu, telemetri",
         body: "Üçü de yok. Gidebilecekleri bir uç nokta yok.",
       },
       {
-        title: "Mağaza beyanı",
-        body: "App Store Connect'in gizlilik anketindeki her soruda ve Partner Center'daki karşılığında: Veri Toplanmıyor.",
+        title: "Açık kaynak",
+        body: "Kodun tamamı GitHub'da, GPL-3.0 ile. Bu sayfadaki her iddia güvenmek yerine denetlenebilir.",
       },
     ],
   },

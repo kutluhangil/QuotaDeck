@@ -37,7 +37,7 @@ npm --prefix ui run build
 
 echo "==> bundling"
 # The base config targets macOS; this overrides only the bundle section.
-cargo tauri build --config app/tauri.linux.conf.json
+npm --prefix ui exec tauri -- build --config app/tauri.linux.conf.json
 
 BUNDLE_DIR="target/release/bundle"
 

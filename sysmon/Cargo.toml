@@ -1,0 +1,22 @@
+[package]
+name = "quotadeck-sysmon"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# Mac hardware readings for the direct (notarized) build. Every reader is read-only.
+# The App Store build does not depend on this crate at all (see CLAUDE.md, v2 exceptions).
+
+[target.'cfg(target_os = "macos")'.dependencies]
+# All already in the tree (tao/wry, serde/serde_json everywhere); naming them adds no crate and no bytes.
+libc.workspace = true
+core-foundation-sys.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+# Only for `NSProcessInfo.thermalState`, the public throttling signal.
+objc2-foundation = { workspace = true, features = ["NSProcessInfo"] }
+
+[[example]]
+name = "probe"

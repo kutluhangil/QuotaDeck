@@ -15,9 +15,9 @@
 /app/gen
 
 # Account data, not source. The provisioning profile carries the Team ID and the certificate
-# chain it was issued against; scripts/appstore.sh reads it from here rather than from the repo.
-/app/MacAppStore.provisionprofile
-/app/widget/QuotaDeckWidget.provisionprofile
+# chain it was issued against; stores/apple/appstore.sh reads it from here rather than from the repo.
+/stores/apple/MacAppStore.provisionprofile
+/stores/apple/widget/QuotaDeckWidget.provisionprofile
 
 # Intermediate icon directory; the .icns and .png files it produces are committed.
 /app/icons/icon.iconset

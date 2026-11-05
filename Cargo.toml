@@ -1,17 +1,18 @@
 [workspace]
 resolver = "2"
-members = ["core", "providers", "app", "cli"]
+members = ["core", "providers", "sysmon", "app", "cli"]
 
 [workspace.package]
-version = "1.0.0"
+version = "2.0.0"
 edition = "2021"
 rust-version = "1.82"
-license = "UNLICENSED"
+license = "GPL-3.0-only"
 publish = false
 
 [workspace.dependencies]
 quotadeck-core = { path = "core" }
 quotadeck-providers = { path = "providers" }
+quotadeck-sysmon = { path = "sysmon" }
 
 chrono = { version = "0.4", default-features = false, features = ["std", "clock", "serde"] }
 serde = { version = "1", features = ["derive"] }
@@ -29,6 +30,7 @@ criterion = "0.7"
 # for `NSOpenPanel` and security-scoped bookmarks — the only sanctioned way into the real
 # home directory from a sandboxed app.
 libc = "0.2"
+core-foundation-sys = "0.8"
 objc2 = "0.6"
 objc2-foundation = { version = "0.3", features = [
   "NSArray",

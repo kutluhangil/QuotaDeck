@@ -257,6 +257,68 @@ pub enum Theme {
     Light,
 }
 
+/// The visual design the panel and dashboard wear. Separate from [`Theme`], which only picks
+/// light or dark: a design theme is a whole set of materials, shapes and type.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum DesignTheme {
+    /// Apple's Liquid Glass look.
+    #[default]
+    Liquid,
+}
+
+/// How eagerly the Mac readings refresh while something shows them.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum RefreshSpeed {
+    /// Every second, panel or dashboard.
+    Live,
+    /// Dashboard every second, panel every two.
+    #[default]
+    Balanced,
+    /// Panel every ten seconds; nothing faster than two even with the dashboard open.
+    Saver,
+}
+
+impl RefreshSpeed {
+    /// `(dashboard, panel, hidden)` intervals in seconds.
+    pub fn intervals(self) -> (u64, u64, u64) {
+        match self {
+            RefreshSpeed::Live => (1, 1, 10),
+            RefreshSpeed::Balanced => (1, 2, 10),
+            RefreshSpeed::Saver => (2, 10, 30),
+        }
+    }
+}
+
+/// Which Mac readings the menu bar prints before the quota.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct MenuBarContent {
+    pub temperature: bool,
+    pub memory: bool,
+}
+
+impl Default for MenuBarContent {
+    fn default() -> Self {
+        Self {
+            temperature: true,
+            memory: true,
+        }
+    }
+}
+
+/// Tools that ship compiled in but start hidden: Quota Deck v2 leads with Claude Code, Codex
+/// and Antigravity. Applies only to a fresh install — a saved choice is never overridden.
+pub const HIDDEN_BY_DEFAULT: [ProviderId; 6] = [
+    ProviderId::CopilotCli,
+    ProviderId::GeminiCli,
+    ProviderId::PiAgent,
+    ProviderId::Amp,
+    ProviderId::Droid,
+    ProviderId::OpenCode,
+];
+
 /// Whether a percentage counts what is spent or what is left. Every surface follows the same
 /// choice, so the panel, the tray and the widget never disagree about which way a number runs.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -375,6 +437,13 @@ pub struct Settings {
     /// Whether the panel hotkey is registered. Off until asked for: a global shortcut takes a
     /// key combination away from every other app.
     pub global_shortcut: bool,
+    pub design_theme: DesignTheme,
+    /// Run `agy -p /usage` for live Antigravity percentages. Off by default: `agy` then talks
+    /// to Google with the user's account, which Quota Deck itself never does.
+    pub antigravity_live: bool,
+    pub system_alerts: crate::system_alerts::SystemAlertRules,
+    pub refresh_speed: RefreshSpeed,
+    pub menu_bar: MenuBarContent,
 }
 
 /// What the user chose about one named instance.
@@ -417,7 +486,10 @@ impl Default for Settings {
             alerts: BTreeMap::new(),
             muted_until: None,
             demo: false,
-            disabled_providers: BTreeSet::new(),
+            disabled_providers: HIDDEN_BY_DEFAULT
+                .iter()
+                .map(|id| id.key().to_string())
+                .collect(),
             additional_roots: BTreeMap::new(),
             instances: BTreeMap::new(),
             provider_order: quotadeck_providers::ids()
@@ -427,6 +499,11 @@ impl Default for Settings {
             retention_days: RetentionDays::Days32,
             usage_display: UsageDisplay::Used,
             global_shortcut: false,
+            design_theme: DesignTheme::Liquid,
+            antigravity_live: false,
+            system_alerts: crate::system_alerts::SystemAlertRules::default(),
+            refresh_speed: RefreshSpeed::Balanced,
+            menu_bar: MenuBarContent::default(),
         }
     }
 }
@@ -448,6 +525,11 @@ struct SettingsDocument {
     retention_days: RetentionDays,
     usage_display: UsageDisplay,
     global_shortcut: bool,
+    design_theme: DesignTheme,
+    antigravity_live: bool,
+    system_alerts: crate::system_alerts::SystemAlertRules,
+    refresh_speed: RefreshSpeed,
+    menu_bar: MenuBarContent,
 }
 
 impl Default for SettingsDocument {
@@ -461,13 +543,20 @@ impl Default for SettingsDocument {
             alerts: settings.alerts,
             muted_until: settings.muted_until,
             demo: settings.demo,
-            disabled_providers: settings.disabled_providers,
+            // A file written before v2 has no list: everything it ran stays on. Only a fresh
+            // install starts with `HIDDEN_BY_DEFAULT`.
+            disabled_providers: BTreeSet::new(),
             provider_order: settings.provider_order,
             additional_roots: settings.additional_roots,
             instances: settings.instances,
             retention_days: settings.retention_days,
             usage_display: settings.usage_display,
             global_shortcut: settings.global_shortcut,
+            design_theme: settings.design_theme,
+            antigravity_live: settings.antigravity_live,
+            system_alerts: settings.system_alerts,
+            refresh_speed: settings.refresh_speed,
+            menu_bar: settings.menu_bar,
         }
     }
 }
@@ -495,6 +584,11 @@ impl<'de> Deserialize<'de> for Settings {
             retention_days: document.retention_days,
             usage_display: document.usage_display,
             global_shortcut: document.global_shortcut,
+            design_theme: document.design_theme,
+            antigravity_live: document.antigravity_live,
+            system_alerts: document.system_alerts,
+            refresh_speed: document.refresh_speed,
+            menu_bar: document.menu_bar,
         };
         let ordered = settings
             .instance_ids(&quotadeck_providers::ids())
@@ -955,6 +1049,29 @@ impl Deck {
 
     pub fn set_global_shortcut(&self, enabled: bool) -> Result<Settings> {
         self.update_settings(|settings| settings.global_shortcut = enabled)
+    }
+
+    pub fn set_design_theme(&self, theme: DesignTheme) -> Result<Settings> {
+        self.update_settings(|settings| settings.design_theme = theme)
+    }
+
+    pub fn update_system_alerts(
+        &self,
+        rules: crate::system_alerts::SystemAlertRules,
+    ) -> Result<Settings> {
+        self.update_settings(|settings| settings.system_alerts = rules)
+    }
+
+    pub fn set_refresh_speed(&self, speed: RefreshSpeed) -> Result<Settings> {
+        self.update_settings(|settings| settings.refresh_speed = speed)
+    }
+
+    pub fn set_menu_bar(&self, content: MenuBarContent) -> Result<Settings> {
+        self.update_settings(|settings| settings.menu_bar = content)
+    }
+
+    pub fn set_antigravity_live(&self, enabled: bool) -> Result<Settings> {
+        self.update_settings(|settings| settings.antigravity_live = enabled)
     }
 
     pub fn set_usage_display(&self, display: UsageDisplay) -> Result<Settings> {
@@ -1633,7 +1750,16 @@ mod tests {
             .config_for(&ProviderInstanceId::default_for(ProviderId::ClaudeCode))
             .plan_id
             .is_none());
-        assert!(settings.disabled_providers.is_empty());
+        assert_eq!(
+            settings.disabled_providers,
+            HIDDEN_BY_DEFAULT
+                .iter()
+                .map(|id| id.key().to_string())
+                .collect::<BTreeSet<_>>()
+        );
+        assert!(
+            settings.is_instance_enabled(&ProviderInstanceId::default_for(ProviderId::Antigravity))
+        );
         assert_eq!(
             settings.provider_order,
             quotadeck_providers::ids()
@@ -1791,6 +1917,7 @@ mod tests {
             [
                 ProviderId::Codex,
                 ProviderId::ClaudeCode,
+                ProviderId::Antigravity,
                 ProviderId::CopilotCli,
                 ProviderId::GeminiCli,
                 ProviderId::PiAgent,
@@ -2464,7 +2591,7 @@ mod tests {
         let json = serde_json::to_string(&settings).expect("serialise settings");
         assert_eq!(
             json,
-            r#"{"trayMode":"compact","theme":"dark","locale":"system","plans":{"claude-code":"max-20x"},"alerts":{"codex":[85,95]},"mutedUntil":null,"demo":false,"disabledProviders":[],"providerOrder":["claude-code","codex","copilot-cli","gemini-cli","pi-agent","amp","droid","opencode"],"additionalRoots":{},"instances":{},"retentionDays":32,"usageDisplay":"used","globalShortcut":false}"#
+            r#"{"trayMode":"compact","theme":"dark","locale":"system","plans":{"claude-code":"max-20x"},"alerts":{"codex":[85,95]},"mutedUntil":null,"demo":false,"disabledProviders":["amp","copilot-cli","droid","gemini-cli","opencode","pi-agent"],"providerOrder":["claude-code","codex","antigravity","copilot-cli","gemini-cli","pi-agent","amp","droid","opencode"],"additionalRoots":{},"instances":{},"retentionDays":32,"usageDisplay":"used","globalShortcut":false,"designTheme":"liquid","antigravityLive":false,"systemAlerts":{"cpuCelsiusAbove":90,"freeDiskGbBelow":20,"memoryCritical":true,"containerUnhealthy":true},"refreshSpeed":"balanced","menuBar":{"temperature":true,"memory":true}}"#
         );
     }
 

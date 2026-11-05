@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Quota Deck — AI · Antigravity</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="./qd.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="qd win {{themeClass}}">
+  <nav class="toolbar" aria-label="Dashboard">
+    <div class="lights" aria-hidden="true"><i style="background: #FF5F57"></i><i style="background: #FEBC2E"></i><i style="background: #28C840"></i></div>
+    <div class="tabs glass">
+      <a class="tab" href="Overview.dc.html">Overview</a>
+      <a class="tab" href="Mac.dc.html">Mac</a>
+      <a class="tab" href="Docker.dc.html">Docker</a>
+      <a class="tab on" href="AIClaude.dc.html" aria-current="page">AI</a>
+    </div>
+    <div style="display: flex; gap: 8px; justify-content: flex-end; align-items: center; flex-wrap: wrap">
+      <div class="seg glass" role="group" aria-label="Time range"><button class="tab">1 h</button><button class="tab">24 h</button><button class="tab on" aria-pressed="true">7 d</button></div>
+      <label class="search glass"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="7" cy="7" r="4.5"></circle><path d="M10.5 10.5 14 14"></path></svg><span class="sr">Search processes and containers</span><input type="search" placeholder="Search"></label>
+    </div>
+  </nav>
+
+  <main class="content">
+    <div class="row" style="justify-content: space-between; flex-wrap: wrap; gap: 12px; padding: 4px 4px 8px">
+      <div class="seg" role="group" aria-label="AI tool">
+        <a class="tab" href="AIClaude.dc.html"><span class="mark sm cl">Cl</span>Claude</a>
+        <button class="tab"><span class="mark sm cx">Cx</span>Codex</button>
+        <a class="tab on" href="AIAntigravity.dc.html" aria-current="page"><span class="mark sm ag">Ag</span>Antigravity</a>
+      </div>
+      <span class="chip warn"><span class="dot"></span>1 model exhausted</span>
+    </div>
+
+    <section class="card" aria-label="Model status" style="padding: 22px; gap: 4px">
+      <div class="card-h" style="margin-bottom: 8px"><span class="h2">Models</span><span class="badge meas">Measured · exhaustion events</span></div>
+      <div style="display: grid; grid-template-columns: minmax(140px, 1fr) 130px minmax(200px, 2.4fr); gap: 20px; align-items: center; padding: 14px 0; border-top: 0.5px solid var(--hair)">
+        <div class="row" style="gap: 10px"><span class="mark ag">Ag</span><div><div style="font-weight: 600; font-size: 14px">Flash</div><div class="lbl">last used 12 m ago</div></div></div>
+        <span class="chip ok" style="justify-self: start"><span class="dot"></span>Available</span>
+        <div style="display: flex; flex-direction: column; gap: 6px"><div class="vessel h md"><div class="liquid" style="width: 100%; background-color: #9485FF"></div></div><span class="lbl">No exhaustion recorded in this window</span></div>
+      </div>
+      <div style="display: grid; grid-template-columns: minmax(140px, 1fr) 130px minmax(200px, 2.4fr); gap: 20px; align-items: center; padding: 14px 0; border-top: 0.5px solid var(--hair)">
+        <div class="row" style="gap: 10px"><span class="mark ag">Ag</span><div><div style="font-weight: 600; font-size: 14px">Pro</div><div class="lbl">exhausted at 09:24</div></div></div>
+        <span class="chip warn" style="justify-self: start"><span class="dot"></span>Exhausted</span>
+        <div style="display: flex; flex-direction: column; gap: 6px"><div class="vessel h md"><div class="liquid empty" style="width: 100%"></div><div class="liquid" style="width: 97.3%; background-color: rgba(148,133,255,0.38)"></div></div><div class="row" style="justify-content: space-between"><span style="font-size: 13px">opens in <span class="mono">4 h 52 m</span></span><span class="lbl">at 14:16 · countdown drains to open</span></div></div>
+      </div>
+    </section>
+
+    <div class="bento">
+      <section class="card s8" aria-label="Conversations per day, last 30 days. Average 4.7, highest 10 on October 28." style="padding: 22px">
+        <div class="card-h"><span class="h2">Activity · conversations per day</span><span class="badge meas">Measured</span></div>
+        <div style="position: relative; height: 170px; margin-top: 8px">
+          <div style="position: absolute; inset: 0; display: flex; align-items: flex-end; gap: 4px">
+            <sc-for list="{{bars}}" as="b" hint-placeholder-count="30">
+              <div style="flex: 1; height: 100%; display: flex; align-items: flex-end; justify-content: center">
+                <div style="width: 70%; min-width: 4px; border-radius: 99px; height: {{b.h}}; background: #9485FF; opacity: {{b.o}}"></div>
+              </div>
+            </sc-for>
+          </div>
+          <div style="position: absolute; left: 0; right: 0; bottom: 0; height: 1px; background: var(--chart-base)"></div>
+        </div>
+        <div class="row lbl" style="justify-content: space-between"><span>6 Oct</span><span>Today</span></div>
+      </section>
+      <section class="card s4" aria-label="Recent exhaustion events" style="padding: 22px">
+        <div class="card-h"><span class="h2">Exhaustion log</span></div>
+        <div style="display: flex; flex-direction: column">
+          <div class="row" style="padding: 9px 0; border-top: 0.5px solid var(--hair)"><span style="flex: 1">Pro</span><span class="mono t2" style="font-size: 12px">today 09:24</span><span class="lbl" style="width: 64px; text-align: right">open 14:16</span></div>
+          <div class="row" style="padding: 9px 0; border-top: 0.5px solid var(--hair)"><span style="flex: 1">Pro</span><span class="mono t2" style="font-size: 12px">2 Nov 11:04</span><span class="lbl" style="width: 64px; text-align: right">5 h 00 m</span></div>
+          <div class="row" style="padding: 9px 0; border-top: 0.5px solid var(--hair)"><span style="flex: 1">Flash</span><span class="mono t2" style="font-size: 12px">28 Oct 22:41</span><span class="lbl" style="width: 64px; text-align: right">1 h 12 m</span></div>
+          <div class="row" style="padding: 9px 0; border-top: 0.5px solid var(--hair)"><span style="flex: 1">Pro</span><span class="mono t2" style="font-size: 12px">28 Oct 16:30</span><span class="lbl" style="width: 64px; text-align: right">5 h 00 m</span></div>
+        </div>
+      </section>
+    </div>
+
+    <div class="row t3" style="gap: 8px; padding: 4px; font-size: 12px">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><circle cx="8" cy="8" r="6.2"></circle><path d="M8 7.2v4M8 4.8v.01" stroke-linecap="round"></path></svg>
+      Remaining quota isn’t written to local files, so Quota Deck shows what it can measure.
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"reduceTransparency":{"editor":"boolean","default":false},"$preview":{"width":1180,"height":1020}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const t = this.props.theme ?? 'dark';
+    const rt = this.props.reduceTransparency ?? false;
+    const v = [4,6,3,0,2,7,5,8,6,4,1,0,3,5,9,7,6,2,0,4,6,8,10,7,5,3,1,6,8,5];
+    const bars = v.map((x, i) => ({ h: Math.max(3, x * 9).toFixed(0) + '%', o: i === 29 ? 0.55 : 1 }));
+    return { themeClass: t + (rt ? ' rt' : ''), bars };
+  }
+}
+</script>
+</body>
+</html>

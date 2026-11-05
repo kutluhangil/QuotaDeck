@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Menu bar item states</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="./qd.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="qd dark" style="width: 720px; height: 680px; padding: 40px; display: flex; flex-direction: column; gap: 28px">
+  <div style="display: flex; flex-direction: column; gap: 6px">
+    <div class="h1">Menu bar item</div>
+    <div class="t2" style="font-size: 13px">CPU temperature · memory used · tightest AI quota left, with that tool’s mark. Tabular figures, so the item never changes width while numbers update.</div>
+  </div>
+
+  <div style="display: grid; grid-template-columns: 150px minmax(0, 1fr) minmax(0, 1fr); gap: 14px 16px; align-items: center">
+    <div></div><div class="cap">Dark menu bar</div><div class="cap">Light menu bar</div>
+
+    <div style="display: flex; flex-direction: column; gap: 2px"><div class="h2">1 · Normal</div><div class="lbl">All readings in range</div></div>
+    <div style="height: 34px; border-radius: 10px; display: flex; align-items: center; justify-content: flex-end; gap: 14px; padding: 0 12px; color: #fff; background: linear-gradient(90deg, rgba(20,24,40,0.55), rgba(20,24,40,0.55)), linear-gradient(110deg, #1b3a73, #4b3a8f 60%, #7a4a6a)">
+      <span style="display: flex; align-items: center; gap: 6px; height: 22px; padding: 0 8px; border-radius: 6px"><span class="mono" style="font-size: 12px">48° · 76% ·</span><span class="mark sm cl">Cl</span><span class="mono" style="font-size: 12px">67%</span></span>
+      <span style="font-size: 13px">14:32</span>
+    </div>
+    <div style="height: 34px; border-radius: 10px; display: flex; align-items: center; justify-content: flex-end; gap: 14px; padding: 0 12px; color: #1d1d1f; background: linear-gradient(90deg, rgba(255,255,255,0.5), rgba(255,255,255,0.5)), linear-gradient(110deg, #a9cdfb, #d6c8ff 60%, #ffd2b8)">
+      <span style="display: flex; align-items: center; gap: 6px; height: 22px; padding: 0 8px; border-radius: 6px"><span class="mono" style="font-size: 12px">48° · 76% ·</span><span class="mark sm cl">Cl</span><span class="mono" style="font-size: 12px">67%</span></span>
+      <span style="font-size: 13px">14:32</span>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 2px"><div class="h2">2 · Quota low</div><div class="lbl">Tightest quota under 15%</div></div>
+    <div style="height: 34px; border-radius: 10px; display: flex; align-items: center; justify-content: flex-end; gap: 14px; padding: 0 12px; color: #fff; background: linear-gradient(90deg, rgba(20,24,40,0.55), rgba(20,24,40,0.55)), linear-gradient(110deg, #1b3a73, #4b3a8f 60%, #7a4a6a)">
+      <span style="display: flex; align-items: center; gap: 6px; height: 22px; padding: 0 8px; border-radius: 6px"><span class="dot" style="color: #FFB340"></span><span class="mono" style="font-size: 12px">48° · 76% ·</span><span class="mark sm cx">Cx</span><span class="mono" style="font-size: 12px">12%</span></span>
+      <span style="font-size: 13px">14:32</span>
+    </div>
+    <div style="height: 34px; border-radius: 10px; display: flex; align-items: center; justify-content: flex-end; gap: 14px; padding: 0 12px; color: #1d1d1f; background: linear-gradient(90deg, rgba(255,255,255,0.5), rgba(255,255,255,0.5)), linear-gradient(110deg, #a9cdfb, #d6c8ff 60%, #ffd2b8)">
+      <span style="display: flex; align-items: center; gap: 6px; height: 22px; padding: 0 8px; border-radius: 6px"><span class="dot" style="color: #A85400"></span><span class="mono" style="font-size: 12px">48° · 76% ·</span><span class="mark sm cx">Cx</span><span class="mono" style="font-size: 12px">12%</span></span>
+      <span style="font-size: 13px">14:32</span>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 2px"><div class="h2">3 · Critical</div><div class="lbl">Quota under 5% or thermal Serious</div></div>
+    <div style="height: 34px; border-radius: 10px; display: flex; align-items: center; justify-content: flex-end; gap: 14px; padding: 0 12px; color: #fff; background: linear-gradient(90deg, rgba(20,24,40,0.55), rgba(20,24,40,0.55)), linear-gradient(110deg, #1b3a73, #4b3a8f 60%, #7a4a6a)">
+      <span style="display: flex; align-items: center; gap: 6px; height: 22px; padding: 0 8px; border-radius: 6px"><span class="dot" style="color: #FF5A4F"></span><span class="mono" style="font-size: 12px">93° · 76% ·</span><span class="mark sm cl">Cl</span><span class="mono" style="font-size: 12px">4%</span></span>
+      <span style="font-size: 13px">14:32</span>
+    </div>
+    <div style="height: 34px; border-radius: 10px; display: flex; align-items: center; justify-content: flex-end; gap: 14px; padding: 0 12px; color: #1d1d1f; background: linear-gradient(90deg, rgba(255,255,255,0.5), rgba(255,255,255,0.5)), linear-gradient(110deg, #a9cdfb, #d6c8ff 60%, #ffd2b8)">
+      <span style="display: flex; align-items: center; gap: 6px; height: 22px; padding: 0 8px; border-radius: 6px"><span class="dot" style="color: #C8001A"></span><span class="mono" style="font-size: 12px">93° · 76% ·</span><span class="mark sm cl">Cl</span><span class="mono" style="font-size: 12px">4%</span></span>
+      <span style="font-size: 13px">14:32</span>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 2px"><div class="h2">4 · Compact</div><div class="lbl">Icon only; the level is the tightest quota</div></div>
+    <div style="height: 34px; border-radius: 10px; display: flex; align-items: center; justify-content: flex-end; gap: 14px; padding: 0 12px; color: #fff; background: linear-gradient(90deg, rgba(20,24,40,0.55), rgba(20,24,40,0.55)), linear-gradient(110deg, #1b3a73, #4b3a8f 60%, #7a4a6a)">
+      <span style="display: flex; align-items: center; gap: 6px; height: 22px; padding: 0 8px; border-radius: 6px">
+        <svg width="20" height="14" viewBox="0 0 20 14" role="img" aria-label="Quota Deck, 67 percent left"><defs><clipPath id="capd"><rect x="2" y="2.8" width="16" height="8.4" rx="4.2"></rect></clipPath></defs><rect x="1.2" y="2" width="17.6" height="10" rx="5" fill="none" stroke="currentColor" stroke-width="1.4"></rect><rect x="0" y="0" width="12.7" height="14" fill="currentColor" clip-path="url(#capd)"></rect></svg>
+      </span>
+      <span style="font-size: 13px">14:32</span>
+    </div>
+    <div style="height: 34px; border-radius: 10px; display: flex; align-items: center; justify-content: flex-end; gap: 14px; padding: 0 12px; color: #1d1d1f; background: linear-gradient(90deg, rgba(255,255,255,0.5), rgba(255,255,255,0.5)), linear-gradient(110deg, #a9cdfb, #d6c8ff 60%, #ffd2b8)">
+      <span style="display: flex; align-items: center; gap: 6px; height: 22px; padding: 0 8px; border-radius: 6px">
+        <svg width="20" height="14" viewBox="0 0 20 14" role="img" aria-label="Quota Deck, 67 percent left"><defs><clipPath id="capl"><rect x="2" y="2.8" width="16" height="8.4" rx="4.2"></rect></clipPath></defs><rect x="1.2" y="2" width="17.6" height="10" rx="5" fill="none" stroke="currentColor" stroke-width="1.4"></rect><rect x="0" y="0" width="12.7" height="14" fill="currentColor" clip-path="url(#capl)"></rect></svg>
+      </span>
+      <span style="font-size: 13px">14:32</span>
+    </div>
+  </div>
+
+  <div class="sep"></div>
+
+  <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px">
+    <div style="display: flex; flex-direction: column; gap: 6px"><div class="h2">Pressed</div>
+      <div style="height: 34px; border-radius: 10px; display: flex; align-items: center; justify-content: center; color: #fff; background: linear-gradient(110deg, #1b3a73, #4b3a8f)"><span style="display: flex; align-items: center; gap: 6px; height: 22px; padding: 0 8px; border-radius: 6px; background: rgba(255,255,255,0.22)"><span class="mono" style="font-size: 12px">48° · 76% ·</span><span class="mark sm cl">Cl</span><span class="mono" style="font-size: 12px">67%</span></span></div>
+      <div class="lbl">Popover open: 6 pt rounded highlight</div>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 6px"><div class="h2">Glyph rule</div>
+      <div style="display: flex; gap: 8px; align-items: center; height: 34px"><span class="mark cl">Cl</span><span class="mark cx">Cx</span><span class="mark ag">Ag</span></div>
+      <div class="lbl">Shows the mark of whichever tool is tightest</div>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 6px"><div class="h2">Antigravity</div>
+      <div style="height: 34px; border-radius: 10px; display: flex; align-items: center; justify-content: center; color: #fff; background: linear-gradient(110deg, #1b3a73, #4b3a8f)"><span style="display: flex; align-items: center; gap: 6px; height: 22px; padding: 0 8px"><span class="mono" style="font-size: 12px">48° · 76% ·</span><span class="mark sm ag">Ag</span><span class="mono" style="font-size: 12px">4:52</span></span></div>
+      <div class="lbl">No % exists, so it shows time until a model reopens</div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":720,"height":680}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

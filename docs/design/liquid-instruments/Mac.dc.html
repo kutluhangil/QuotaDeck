@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Quota Deck — Mac</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="./qd.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="qd win {{themeClass}}">
+  <nav class="toolbar" aria-label="Dashboard">
+    <div class="lights" aria-hidden="true"><i style="background: #FF5F57"></i><i style="background: #FEBC2E"></i><i style="background: #28C840"></i></div>
+    <div class="tabs glass">
+      <a class="tab" href="Overview.dc.html">Overview</a>
+      <a class="tab on" href="Mac.dc.html" aria-current="page">Mac</a>
+      <a class="tab" href="Docker.dc.html">Docker</a>
+      <a class="tab" href="AIClaude.dc.html">AI</a>
+    </div>
+    <div style="display: flex; gap: 8px; justify-content: flex-end; align-items: center; flex-wrap: wrap">
+      <div class="seg glass" role="group" aria-label="Time range"><button class="tab">1 h</button><button class="tab on" aria-pressed="true">24 h</button><button class="tab">7 d</button></div>
+      <label class="search glass"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="7" cy="7" r="4.5"></circle><path d="M10.5 10.5 14 14"></path></svg><span class="sr">Search processes and containers</span><input type="search" placeholder="Search"></label>
+    </div>
+  </nav>
+
+  <main class="content">
+    <div class="bento">
+      <!-- THERMAL HERO -->
+      <section class="card s12" aria-label="Thermal. State nominal. P-cores 52.7 degrees average, 60.5 max. E-cores 50.4. GPU 49. SoC fabric 47.8. SSD 44. Five-minute peak 60.5 degrees." style="padding: 22px; gap: 18px">
+        <div class="card-h"><div class="row" style="gap: 12px"><span class="h2" style="font-size: 15px">Thermal</span><span class="chip ok"><span class="dot"></span>Nominal</span></div><span class="lbl">Hover a zone for average, max and sensor count</span></div>
+        <div style="display: flex; flex-wrap: wrap; gap: 28px; align-items: stretch">
+          <div style="flex: 3 1 520px; min-width: 0; display: flex; flex-direction: column; gap: 14px">
+            <div style="display: flex; gap: 16px; align-items: center">
+              <div class="die" style="flex: 1; display: grid; grid-template-columns: 1.3fr 0.95fr 1.5fr; grid-template-rows: 118px 118px 46px; gap: 8px; padding: 14px">
+                <div class="zone pin" style="grid-row: span 2; padding: 30px 10px 10px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; background: radial-gradient(90% 80% at 50% 50%, rgba(94,126,158,0.5), rgba(94,126,158,0.08))">
+                  <span class="zl">P-CORES</span>
+                  <i style="border-radius: 7px; background: radial-gradient(circle, rgba(115,142,168,0.98), rgba(115,142,168,0.3) 78%)"></i>
+                  <i style="border-radius: 7px; background: radial-gradient(circle, rgba(100,131,163,0.95), rgba(100,131,163,0.28) 78%)"></i>
+                  <i style="border-radius: 7px; background: radial-gradient(circle, rgba(92,124,156,0.9), rgba(92,124,156,0.25) 78%)"></i>
+                  <i style="border-radius: 7px; background: radial-gradient(circle, rgba(89,121,153,0.88), rgba(89,121,153,0.24) 78%)"></i>
+                  <i style="border-radius: 7px; background: radial-gradient(circle, rgba(88,120,152,0.86), rgba(88,120,152,0.22) 78%)"></i>
+                  <i style="border-radius: 7px; background: radial-gradient(circle, rgba(87,118,150,0.84), rgba(87,118,150,0.22) 78%)"></i>
+                  <div class="tip glass" style="left: calc(100% + 10px); top: 24px; bottom: auto; transform: none">
+                    <div style="font-weight: 600; margin-bottom: 4px">P-cores</div>
+                    <div class="tr"><span class="t3">Average</span><span class="mono">52.7°</span></div>
+                    <div class="tr"><span class="t3">Max</span><span class="mono">60.5°</span></div>
+                    <div class="tr"><span class="t3">Sensors</span><span class="mono">12</span></div>
+                  </div>
+                </div>
+                <div class="zone" style="grid-row: span 2; padding: 30px 10px 26px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; background: radial-gradient(90% 80% at 50% 50%, rgba(90,121,153,0.45), rgba(90,121,153,0.07))">
+                  <span class="zl">E-CORES</span><span class="zt">50.4°</span>
+                  <i style="border-radius: 7px; background: radial-gradient(circle, rgba(91,123,155,0.9), rgba(91,123,155,0.25) 78%)"></i>
+                  <i style="border-radius: 7px; background: radial-gradient(circle, rgba(90,122,154,0.88), rgba(90,122,154,0.24) 78%)"></i>
+                  <i style="border-radius: 7px; background: radial-gradient(circle, rgba(89,121,153,0.86), rgba(89,121,153,0.23) 78%)"></i>
+                  <i style="border-radius: 7px; background: radial-gradient(circle, rgba(89,120,152,0.85), rgba(89,120,152,0.22) 78%)"></i>
+                  <div class="tip glass"><div style="font-weight: 600; margin-bottom: 4px">E-cores</div><div class="tr"><span class="t3">Average</span><span class="mono">50.4°</span></div><div class="tr"><span class="t3">Max</span><span class="mono">51.2°</span></div><div class="tr"><span class="t3">Sensors</span><span class="mono">4</span></div></div>
+                </div>
+                <div class="zone" style="grid-row: span 2; background: radial-gradient(80% 75% at 50% 50%, rgba(87,118,150,0.85), rgba(87,118,150,0.2) 70%, rgba(87,118,150,0.05))">
+                  <span class="zl">GPU</span><span class="zt" style="font-size: 18px">49°</span>
+                  <div class="tip glass"><div style="font-weight: 600; margin-bottom: 4px">GPU</div><div class="tr"><span class="t3">Average</span><span class="mono">49.0°</span></div><div class="tr"><span class="t3">Max</span><span class="mono">50.3°</span></div><div class="tr"><span class="t3">Sensors</span><span class="mono">8</span></div></div>
+                </div>
+                <div class="zone" style="grid-column: 1 / -1; background: radial-gradient(70% 140% at 50% 50%, rgba(84,116,148,0.7), rgba(84,116,148,0.12) 75%)">
+                  <span class="zl" style="top: 50%; transform: translateY(-50%)">SOC FABRIC</span><span class="zt" style="bottom: 50%; transform: translateY(50%)">47.8°</span>
+                  <div class="tip glass"><div style="font-weight: 600; margin-bottom: 4px">SoC fabric</div><div class="tr"><span class="t3">Average</span><span class="mono">47.8°</span></div><div class="tr"><span class="t3">Max</span><span class="mono">48.6°</span></div><div class="tr"><span class="t3">Sensors</span><span class="mono">3</span></div></div>
+                </div>
+              </div>
+              <div style="display: flex; align-items: center; gap: 0">
+                <div aria-hidden="true" style="width: 18px; height: 1px; background: var(--hair-2)"></div>
+                <div class="die" style="width: 84px; height: 132px; padding: 8px; border-radius: 16px">
+                  <div class="zone" style="height: 100%; background: radial-gradient(90% 80% at 50% 55%, rgba(78,110,142,0.8), rgba(78,110,142,0.14) 72%)"><span class="zl">SSD</span><span class="zt">44°</span>
+                    <div class="tip glass"><div style="font-weight: 600; margin-bottom: 4px">SSD (NAND)</div><div class="tr"><span class="t3">Average</span><span class="mono">44.0°</span></div><div class="tr"><span class="t3">Max</span><span class="mono">45.1°</span></div><div class="tr"><span class="t3">Sensors</span><span class="mono">2</span></div></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 6px; max-width: 520px">
+              <div aria-hidden="true" style="height: 6px; border-radius: 99px; background: linear-gradient(90deg, #4E6E8E 0%, #6E8DAD 33%, #D9A24A 50%, #E5743A 83%, #E0473C 100%)"></div>
+              <div class="row lbl" style="justify-content: space-between"><span>40°</span><span>60°</span><span>70°</span><span>90°</span><span>100°</span></div>
+            </div>
+          </div>
+          <div style="flex: 2 1 300px; min-width: 0; display: flex; flex-direction: column; gap: 16px">
+            <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px">
+              <div style="display: flex; flex-direction: column; gap: 4px"><span class="lbl">Thermal state</span><span style="font-size: 20px; font-weight: 500">Nominal</span><span class="lbl">from macOS</span></div>
+              <div style="display: flex; flex-direction: column; gap: 4px"><span class="lbl">5-min peak</span><span class="num" style="font-size: 20px">60.5°</span><span class="lbl">P-core 0 · 14:29</span></div>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 8px">
+              <div class="row lbl" style="gap: 14px"><span class="row" style="gap: 6px"><svg width="16" height="4" aria-hidden="true"><path d="M0 2H16" style="stroke: var(--fg)" stroke-width="1.5"></path></svg>CPU</span><span class="row" style="gap: 6px"><svg width="16" height="4" aria-hidden="true"><path d="M0 2H16" style="stroke: var(--fg-2)" stroke-width="1.5" stroke-dasharray="4 2"></path></svg>GPU</span><span class="row" style="gap: 6px"><svg width="16" height="4" aria-hidden="true"><path d="M0 2H16" style="stroke: var(--fg-3)" stroke-width="1.5" stroke-dasharray="1.5 2"></path></svg>SSD</span></div>
+              <div style="position: relative">
+                <svg class="chart" viewBox="0 0 300 120" preserveAspectRatio="none" height="150" role="img" aria-label="24 hour temperatures: CPU 47 to 60.5 degrees, GPU 44 to 54, SSD 41 to 46">
+                  <defs><linearGradient id="cpuA" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#8FA7C0" stop-opacity="0.35"></stop><stop offset="1" stop-color="#8FA7C0" stop-opacity="0"></stop></linearGradient></defs>
+                  <path d="M0 84 L25 88 L50 92 L75 92 L100 88 L125 72 L150 56 L175 60 L200 48 L225 38 L250 64 L275 69 L300 69 L300 120 L0 120 Z" fill="url(#cpuA)"></path>
+                  <path class="gl" d="M0 84 L25 88 L50 92 L75 92 L100 88 L125 72 L150 56 L175 60 L200 48 L225 38 L250 64 L275 69 L300 69" style="stroke: var(--fg)"></path>
+                  <path class="gl" d="M0 100 L25 100 L50 104 L75 104 L100 100 L125 92 L150 80 L175 84 L200 72 L225 64 L250 80 L275 84 L300 84" style="stroke: var(--fg-2)" stroke-dasharray="4 2"></path>
+                  <path class="gl" d="M0 116 L25 116 L50 116 L75 116 L100 112 L125 108 L150 104 L175 104 L200 100 L225 96 L250 100 L275 104 L300 104" style="stroke: var(--fg-3)" stroke-dasharray="1.5 2.5"></path>
+                  <path class="base" d="M0 120 H300"></path>
+                </svg>
+              </div>
+              <div class="row lbl" style="justify-content: space-between"><span>24 h ago</span><span>now</span></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- CPU -->
+      <section class="card s8" aria-label="CPU 18 percent. E-cluster 34 percent, P-cluster 8 percent. Load average 2.41, 2.86, 3.02." style="padding: 22px">
+        <div class="card-h"><span class="h2">CPU</span><span class="lbl">6 P · 4 E</span></div>
+        <div style="display: flex; flex-wrap: wrap; gap: 24px">
+          <div style="display: flex; gap: 14px; align-items: flex-end">
+            <div style="display: flex; flex-direction: column; align-items: center; gap: 6px"><div class="vessel v lg" style="height: 130px"><div class="liquid" style="height: 34%; background-color: #5A799A"></div></div><span class="lbl">E 34%</span></div>
+            <div style="display: flex; flex-direction: column; align-items: center; gap: 6px"><div class="vessel v lg" style="height: 130px"><div class="liquid" style="height: 8%; background-color: #5E7E9E"></div></div><span class="lbl">P 8%</span></div>
+          </div>
+          <div style="flex: 1; min-width: 240px; display: flex; flex-direction: column; gap: 14px">
+            <div class="row" style="align-items: baseline; gap: 12px; flex-wrap: wrap"><span class="hero" style="font-size: 56px">18%</span><span class="t2" style="font-size: 13px">P 52.7° avg · 60.5° max · E 50.4°</span></div>
+            <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; max-width: 300px">
+              <div><div class="lbl">Load 1 m</div><div class="num" style="font-size: 17px">2.41</div></div>
+              <div><div class="lbl">5 m</div><div class="num" style="font-size: 17px">2.86</div></div>
+              <div><div class="lbl">15 m</div><div class="num" style="font-size: 17px">3.02</div></div>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 6px">
+              <span class="lbl">Per core</span>
+              <div style="display: flex; gap: 4px; height: 36px; align-items: flex-end" aria-hidden="true">
+                <sc-for list="{{cores}}" as="c" hint-placeholder-count="10">
+                  <div style="flex: 1; height: 100%; border-radius: 4px; background: var(--vessel); display: flex; align-items: flex-end; overflow: hidden"><i style="display: block; width: 100%; height: {{c.h}}; background: {{c.fill}}; border-radius: 4px"></i></div>
+                </sc-for>
+              </div>
+              <div class="row lbl" style="justify-content: space-between"><span>E0–E3</span><span>P0–P5</span></div>
+            </div>
+          </div>
+        </div>
+        <div style="position: relative; margin-top: 6px">
+          <div class="row lbl" style="justify-content: space-between; margin-bottom: 6px"><span>24 h</span><span>60 s sparkline expands into this range</span></div>
+          <svg class="chart" viewBox="0 0 600 80" preserveAspectRatio="none" height="80" aria-hidden="true">
+            <defs><linearGradient id="cpuL" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#8FA7C0" stop-opacity="0.32"></stop><stop offset="1" stop-color="#8FA7C0" stop-opacity="0"></stop></linearGradient></defs>
+            <path d="M0 66 C30 64 50 60 80 62 S 130 54 160 56 S 220 40 250 46 S 300 28 330 36 S 380 52 410 48 S 470 20 500 30 S 560 58 600 62 L600 80 L0 80 Z" fill="url(#cpuL)"></path>
+            <path class="gl" d="M0 66 C30 64 50 60 80 62 S 130 54 160 56 S 220 40 250 46 S 300 28 330 36 S 380 52 410 48 S 470 20 500 30 S 560 58 600 62" style="stroke: var(--fg)"></path>
+            <path class="base" d="M0 80 H600"></path>
+            <path d="M478 0 V80" style="stroke: var(--fg)" stroke-width="1" opacity="0.35" vector-effect="non-scaling-stroke"></path>
+          </svg>
+          <div aria-hidden="true" style="position: absolute; left: 79.7%; top: 44px; width: 9px; height: 9px; margin: -4px 0 0 -4px; border-radius: 50%; background: var(--fg); box-shadow: 0 0 0 3px var(--material)"></div>
+          <div class="glass vlabel" style="left: 79.7%; top: 34px"><span class="lbl">13:40</span> <span class="num">41%</span></div>
+        </div>
+      </section>
+
+      <!-- GPU -->
+      <section class="card s4" aria-label="GPU 12 percent, 49 degrees, 3.1 watts" style="padding: 22px">
+        <div class="card-h"><span class="h2">GPU</span><span class="lbl">40 cores</span></div>
+        <div class="row" style="align-items: baseline; gap: 10px"><span class="hero" style="font-size: 56px">12%</span></div>
+        <div class="vessel h md"><div class="liquid" style="width: 12%; background-color: #577696"></div></div>
+        <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px">
+          <div><div class="lbl">Temperature</div><div class="num" style="font-size: 17px">49°</div></div>
+          <div><div class="lbl">Power</div><div class="num" style="font-size: 17px">3.1 W</div></div>
+        </div>
+        <svg class="chart" viewBox="0 0 100 24" preserveAspectRatio="none" height="24" aria-hidden="true"><path class="gl" d="M0 20 C10 19 18 16 26 18 S 40 12 48 15 S 62 20 70 14 S 88 8 100 17" style="stroke: var(--fg-2)"></path></svg>
+      </section>
+
+      <!-- MEMORY -->
+      <section class="card s6" aria-label="Memory 24.3 of 32 gigabytes, pressure normal, compressed 3.2 gigabytes, swap 5.1 of 6 gigabytes" style="padding: 22px">
+        <div class="card-h"><span class="h2">Memory</span><span class="chip ok"><span class="dot"></span>Normal</span></div>
+        <div class="row" style="align-items: baseline; gap: 8px"><span class="hero" style="font-size: 56px">24.3</span><span class="t3" style="font-size: 15px">/ 32 GB</span></div>
+        <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px">
+          <div style="display: flex; flex-direction: column; gap: 4px"><span class="lbl">Compressed</span><span class="num" style="font-size: 17px">3.2 GB</span></div>
+          <div style="display: flex; flex-direction: column; gap: 6px"><div class="row" style="justify-content: space-between"><span class="lbl">Swap</span><span class="mono" style="font-size: 12px">5.1 / 6 GB</span></div><div class="vessel h sm"><div class="liquid" style="width: 85%; background-color: #A3ADB8"></div></div></div>
+        </div>
+        <svg class="chart" viewBox="0 0 400 90" preserveAspectRatio="none" height="90" role="img" aria-label="Memory used over 24 hours, between 68 and 79 percent">
+          <defs><linearGradient id="memA" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#A3ADB8" stop-opacity="0.35"></stop><stop offset="1" stop-color="#A3ADB8" stop-opacity="0"></stop></linearGradient></defs>
+          <path d="M0 34 C40 32 70 36 100 30 S 160 24 200 26 S 260 18 300 22 S 370 20 400 22 L400 90 L0 90 Z" fill="url(#memA)"></path>
+          <path class="gl" d="M0 34 C40 32 70 36 100 30 S 160 24 200 26 S 260 18 300 22 S 370 20 400 22" style="stroke: var(--fg-2)"></path>
+          <path class="base" d="M0 90 H400"></path>
+        </svg>
+      </section>
+
+      <!-- MEMORY TEMPERATURE: both states -->
+      <section class="card s3" aria-label="Memory proximity temperature 46 degrees" style="padding: 22px">
+        <div class="card-h"><span class="h2">Memory temp</span><span class="cap" style="font-size: 9.5px">Sensor present</span></div>
+        <div style="flex: 1; display: flex; flex-direction: column; justify-content: flex-end; gap: 10px">
+          <span class="hero" style="font-size: 48px">46°</span>
+          <div class="vessel h sm"><div class="liquid" style="width: 10%; background-color: #50708F"></div></div>
+          <span class="lbl">Memory proximity sensor</span>
+        </div>
+      </section>
+      <section class="card s3" aria-label="This Mac doesn't expose a memory sensor" style="padding: 22px">
+        <div class="card-h"><span class="h2">Memory temp</span><span class="cap" style="font-size: 9.5px">No sensor</span></div>
+        <div style="flex: 1; display: flex; flex-direction: column; justify-content: flex-end; gap: 8px">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" style="color: var(--fg-3)" aria-hidden="true"><rect x="4" y="7" width="16" height="10" rx="2"></rect><path d="M8 17v2M12 17v2M16 17v2M8 5v2M12 5v2M16 5v2"></path></svg>
+          <span style="font-size: 13px; font-weight: 500">This Mac doesn’t expose a memory sensor</span>
+          <span class="lbl">Quota Deck won’t estimate one.</span>
+        </div>
+      </section>
+
+      <!-- STORAGE -->
+      <section class="card s6" aria-label="Internal SSD 412 gigabytes free of 1 terabyte, NAND 44 degrees, SMART verified. Read 38 megabytes per second, write 12." style="padding: 22px">
+        <div class="card-h"><span class="h2">Storage</span><span class="chip ok"><span class="dot"></span>SMART Verified</span></div>
+        <div class="row" style="align-items: baseline; gap: 8px; flex-wrap: wrap"><span class="hero" style="font-size: 48px">412</span><span class="t3" style="font-size: 15px">GB free of 1 TB · NAND 44°</span></div>
+        <div class="vessel h md"><div class="liquid" style="width: 58.8%; background-color: #4E6E8E"></div></div>
+        <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px">
+          <div style="display: flex; flex-direction: column; gap: 4px"><span class="lbl">Read</span><span class="mono" style="font-size: 14px">38 MB/s</span><svg class="chart" viewBox="0 0 100 20" preserveAspectRatio="none" height="20" aria-hidden="true"><path class="gl" d="M0 16 C10 14 16 6 24 10 S 38 16 46 12 S 60 4 70 8 S 88 14 100 10" style="stroke: var(--fg)"></path></svg></div>
+          <div style="display: flex; flex-direction: column; gap: 4px"><span class="lbl">Write</span><span class="mono" style="font-size: 14px">12 MB/s</span><svg class="chart" viewBox="0 0 100 20" preserveAspectRatio="none" height="20" aria-hidden="true"><path class="gl" d="M0 18 C12 17 20 15 30 16 S 48 12 58 15 S 80 17 100 14" style="stroke: var(--fg-3)" stroke-dasharray="3 2"></path></svg></div>
+        </div>
+        <div style="display: flex; flex-direction: column">
+          <div class="row" style="padding: 9px 0; border-top: 0.5px solid var(--hair); gap: 12px"><span style="flex: 1; font-weight: 500">Backup <span class="lbl">· external SSD 2 TB</span></span><div class="vessel h sm" style="width: 100px"><div class="liquid" style="width: 45%; background-color: #A3ADB8"></div></div><span class="mono t2" style="font-size: 12px; width: 90px; text-align: right">1.1 TB free</span></div>
+          <div class="row" style="padding: 9px 0; border-top: 0.5px solid var(--hair); gap: 12px"><span style="flex: 1; font-weight: 500">Media <span class="lbl">· external HDD 4 TB</span></span><div class="vessel h sm" style="width: 100px"><div class="liquid" style="width: 35%; background-color: #A3ADB8"></div></div><span class="mono t2" style="font-size: 12px; width: 90px; text-align: right">2.6 TB free</span></div>
+        </div>
+      </section>
+
+      <!-- POWER -->
+      <section class="card s6" aria-label="System power 21.2 watts: CPU 6.1, GPU 3.1, Neural Engine 0.0, DRAM 1.4, rest of system 10.6" style="padding: 22px">
+        <div class="card-h"><span class="h2">Power</span><span class="lbl">system total</span></div>
+        <div class="row" style="align-items: baseline; gap: 6px"><span class="hero" style="font-size: 56px">21.2</span><span class="t3" style="font-size: 15px">W</span></div>
+        <div style="display: flex; gap: 2px; height: 14px; border-radius: 99px; overflow: hidden" aria-hidden="true">
+          <i style="flex: 6.1; background: #D3D8DD"></i><i style="flex: 3.1; background: #A3ADB8"></i><i style="flex: 0.15; background: #7C8590"></i><i style="flex: 1.4; background: #5B636C"></i><i style="flex: 10.6; background: var(--vessel); box-shadow: inset 0 0 0 .5px var(--vessel-rim)"></i>
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(90px, 1fr)); gap: 10px">
+          <div><div class="row lbl" style="gap: 6px"><i class="dot" style="color: #D3D8DD"></i>CPU</div><div class="num" style="font-size: 16px">6.1 W</div></div>
+          <div><div class="row lbl" style="gap: 6px"><i class="dot" style="color: #A3ADB8"></i>GPU</div><div class="num" style="font-size: 16px">3.1 W</div></div>
+          <div><div class="row lbl" style="gap: 6px"><i class="dot" style="color: #7C8590"></i>ANE</div><div class="num" style="font-size: 16px">0.0 W</div></div>
+          <div><div class="row lbl" style="gap: 6px"><i class="dot" style="color: #5B636C"></i>DRAM</div><div class="num" style="font-size: 16px">1.4 W</div></div>
+          <div><div class="row lbl" style="gap: 6px"><i class="dot" style="color: var(--fg-3)"></i>Rest</div><div class="num" style="font-size: 16px">10.6 W</div></div>
+        </div>
+      </section>
+
+      <!-- FAN -->
+      <section class="card s4" aria-label="Fan 999 RPM, 20 percent of 4900 max, managed by macOS. Fan control coming later." style="padding: 22px">
+        <div class="card-h"><span class="h2">Fan</span><span class="chip">Managed by macOS</span></div>
+        <div class="row" style="align-items: baseline; gap: 8px"><span class="hero" style="font-size: 48px">999</span><span class="t3" style="font-size: 15px">rpm · 20%</span></div>
+        <div style="display: flex; flex-direction: column; gap: 6px">
+          <div class="vessel h md"><div class="liquid" style="width: 20.4%; background-color: #A3ADB8"></div><div class="ticks"></div></div>
+          <div class="row lbl" style="justify-content: space-between"><span>0</span><span>min 1 000</span><span>max 4 900</span></div>
+        </div>
+        <div class="row t3" style="gap: 6px; font-size: 12px; margin-top: auto"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><rect x="2.5" y="5.5" width="7" height="5" rx="1"></rect><path d="M4 5.5V4a2 2 0 0 1 4 0v1.5"></path></svg>Fan control: coming later. Read-only for now.</div>
+      </section>
+
+      <!-- NETWORK -->
+      <section class="card s8" aria-label="Network: down 2.4 megabytes per second, up 180 kilobytes per second" style="padding: 22px">
+        <div class="card-h"><span class="h2">Network</span><span class="lbl">en0 · Ethernet</span></div>
+        <div class="row" style="gap: 32px; flex-wrap: wrap">
+          <div><div class="lbl">Down</div><div class="row" style="align-items: baseline; gap: 4px"><span class="hero" style="font-size: 40px">2.4</span><span class="t3">MB/s</span></div></div>
+          <div><div class="lbl">Up</div><div class="row" style="align-items: baseline; gap: 4px"><span class="hero" style="font-size: 40px">180</span><span class="t3">KB/s</span></div></div>
+        </div>
+        <svg class="chart" viewBox="0 0 600 100" preserveAspectRatio="none" height="100" role="img" aria-label="Mirrored chart, download above the line and upload below, over 24 hours">
+          <defs>
+            <linearGradient id="dn" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#A3ADB8" stop-opacity="0"></stop><stop offset="1" stop-color="#A3ADB8" stop-opacity="0.35"></stop></linearGradient>
+            <linearGradient id="up" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#A3ADB8" stop-opacity="0.25"></stop><stop offset="1" stop-color="#A3ADB8" stop-opacity="0"></stop></linearGradient>
+          </defs>
+          <path d="M0 60 L0 48 C40 44 70 30 100 40 S 160 20 200 34 S 260 46 300 26 S 380 10 420 30 S 500 44 540 22 S 580 36 600 34 L600 60 Z" fill="url(#dn)"></path>
+          <path class="gl" d="M0 48 C40 44 70 30 100 40 S 160 20 200 34 S 260 46 300 26 S 380 10 420 30 S 500 44 540 22 S 580 36 600 34" style="stroke: var(--fg)"></path>
+          <path d="M0 60 L0 66 C50 68 90 64 140 70 S 230 66 280 72 S 380 64 430 70 S 540 66 600 68 L600 60 Z" fill="url(#up)"></path>
+          <path class="gl" d="M0 66 C50 68 90 64 140 70 S 230 66 280 72 S 380 64 430 70 S 540 66 600 68" style="stroke: var(--fg-3)"></path>
+          <path class="base" d="M0 60 H600"></path>
+        </svg>
+      </section>
+
+      <!-- PROCESSES -->
+      <section class="card s12" aria-label="Processes, 157, sorted by CPU" style="padding: 14px 14px 10px">
+        <div class="card-h" style="padding: 4px 8px"><span class="h2">Processes <span class="t3" style="font-weight: 400">(157)</span></span><span class="lbl">sorted by % CPU</span></div>
+        <div class="tblbox">
+          <table class="tbl">
+            <thead><tr><th style="width: 34%"><button>Name</button></th><th class="r"><button>Memory</button></th><th><button>% CPU <svg width="8" height="8" viewBox="0 0 8 8" aria-hidden="true"><path d="M1 3l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.3"></path></svg></button></th><th class="r"><button>Energy</button></th><th class="r"><button>PID</button></th><th class="r"><span class="sr">Actions</span></th></tr></thead>
+            <tbody>
+              <tr><td><span class="row"><i class="appicon" style="background: #2B6FD6"></i>Docker VM</span></td><td class="r mono">3.2 GB</td><td><span class="row"><span class="minibar"><i style="width: 64%; background-color: #A3ADB8"></i></span><span class="mono">6.4</span></span></td><td class="r mono">1.8 W</td><td class="r mono t3">812</td><td class="r"><button class="btn icon ghost" aria-label="More for Docker VM" style="height: 24px; width: 28px">…</button></td></tr>
+              <tr class="raised"><td><span class="row"><i class="appicon" style="background: #3C8FE0"></i>Code Helper (Renderer)</span></td><td class="r mono">1.9 GB</td><td><span class="row"><span class="minibar"><i style="width: 41%; background-color: #A3ADB8"></i></span><span class="mono">4.1</span></span></td><td class="r mono">0.9 W</td><td class="r mono t3">2291</td><td class="r"><button class="btn icon ghost" aria-label="More for Code Helper" style="height: 24px; width: 28px">…</button></td></tr>
+              <tr><td><span class="row"><i class="appicon" style="background: #B4573A"></i>claude</span></td><td class="r mono">612 MB</td><td><span class="row"><span class="minibar"><i style="width: 32%; background-color: #A3ADB8"></i></span><span class="mono">3.2</span></span></td><td class="r mono">0.6 W</td><td class="r mono t3">40417</td><td class="r"><button class="btn icon ghost" aria-label="More for claude" style="height: 24px; width: 28px">…</button></td></tr>
+              <tr><td><span class="row"><i class="appicon" style="background: #55595E"></i>WindowServer</span></td><td class="r mono">410 MB</td><td><span class="row"><span class="minibar"><i style="width: 27%; background-color: #A3ADB8"></i></span><span class="mono">2.7</span></span></td><td class="r mono">0.7 W</td><td class="r mono t3">398</td><td class="r"><button class="btn icon ghost" aria-label="More for WindowServer" style="height: 24px; width: 28px">…</button></td></tr>
+              <tr><td><span class="row"><i class="appicon" style="background: #2E9BD6"></i>Safari Web Content</span></td><td class="r mono">880 MB</td><td><span class="row"><span class="minibar"><i style="width: 14%; background-color: #A3ADB8"></i></span><span class="mono">1.4</span></span></td><td class="r mono">0.3 W</td><td class="r mono t3">5120</td><td class="r"><button class="btn icon ghost" aria-label="More for Safari Web Content" style="height: 24px; width: 28px">…</button></td></tr>
+              <tr><td><span class="row"><i class="appicon" style="background: #2E3537"></i>codex</span></td><td class="r mono">298 MB</td><td><span class="row"><span class="minibar"><i style="width: 11%; background-color: #A3ADB8"></i></span><span class="mono">1.1</span></span></td><td class="r mono">0.2 W</td><td class="r mono t3">41802</td><td class="r"><button class="btn icon ghost" aria-label="More for codex" style="height: 24px; width: 28px">…</button></td></tr>
+              <tr><td><span class="row"><i class="appicon" style="background: #6A5ACD"></i>Quota Deck</span></td><td class="r mono">74 MB</td><td><span class="row"><span class="minibar"><i style="width: 4%; background-color: #A3ADB8"></i></span><span class="mono">0.4</span></span></td><td class="r mono">0.1 W</td><td class="r mono t3">1187</td><td class="r"><button class="btn icon ghost" aria-label="More for Quota Deck" style="height: 24px; width: 28px">…</button></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"reduceTransparency":{"editor":"boolean","default":false},"$preview":{"width":1180,"height":2160}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const t = this.props.theme ?? 'dark';
+    const rt = this.props.reduceTransparency ?? false;
+    const loads = [41, 36, 30, 29, 14, 9, 7, 6, 5, 7];
+    const cores = loads.map((v, i) => ({ h: v + '%', fill: i < 4 ? '#5A799A' : '#5E7E9E' }));
+    return { themeClass: t + (rt ? ' rt' : ''), cores };
+  }
+}
+</script>
+</body>
+</html>

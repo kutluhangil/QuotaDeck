@@ -143,6 +143,38 @@ fn summary_label(
     }
 }
 
+/// Mac readings the menu bar prints before the quota (`48° · 76%`). Set by the system
+/// monitor in the direct build; always `None` in the App Store build.
+static SYSTEM_TEXT: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+
+fn system_text() -> Option<String> {
+    match SYSTEM_TEXT.lock() {
+        Ok(text) => text.clone(),
+        Err(poisoned) => poisoned.into_inner().clone(),
+    }
+}
+
+/// `48° · 76%`, plus the quota when there is one: the title reads left to right as Mac, then AI.
+fn joined_title(system: Option<String>, quota: Option<String>) -> Option<String> {
+    match (system, quota) {
+        (Some(system), Some(quota)) => Some(format!("{system} · {quota}")),
+        (system, quota) => system.or(quota),
+    }
+}
+
+/// Stores the Mac readings and redraws the item. Only redraws when the text changed.
+pub fn set_system_text<R: Runtime>(app: &AppHandle<R>, deck: &Deck, text: Option<String>) {
+    let changed = match SYSTEM_TEXT.lock() {
+        Ok(mut current) => std::mem::replace(&mut *current, text.clone()) != text,
+        Err(_) => false,
+    };
+    if changed {
+        if let Err(error) = refresh(app, &deck.state(), deck.settings()) {
+            eprintln!("quotadeck: could not redraw the menu bar item: {error}");
+        }
+    }
+}
+
 pub fn install<R: Runtime>(app: &AppHandle<R>, deck: Deck) -> tauri::Result<()> {
     let settings = deck.settings();
     let model = menu_model(&deck.state(), &settings, settings.locale.language())
@@ -348,7 +380,7 @@ fn set_compact<R: Runtime>(
         tray.set_icon(Some(glyph_image(&glyph)))
             .map_err(|error| format!("could not set the compact tray icon: {error}"))?;
     }
-    tray.set_title(title.as_deref())
+    tray.set_title(joined_title(system_text(), title).as_deref())
         .map_err(|error| format!("could not set the compact tray title: {error}"))
 }
 
@@ -373,8 +405,8 @@ fn strip_for(state: &DeckState) -> icon::Glyph {
 }
 
 fn set_icon<R: Runtime>(tray: &tauri::tray::TrayIcon<R>, glyph: &icon::Glyph) -> TrayResult {
-    tray.set_title(None::<&str>)
-        .map_err(|error| format!("could not clear the tray title: {error}"))?;
+    tray.set_title(system_text().as_deref())
+        .map_err(|error| format!("could not set the tray title: {error}"))?;
     tray.set_icon_as_template(glyph.template)
         .map_err(|error| format!("could not set the tray template flag: {error}"))?;
     tray.set_icon(Some(glyph_image(glyph)))

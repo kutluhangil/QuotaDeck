@@ -1,5 +1,22 @@
 # Changelog
 
+## 2.0.0 — 2026-11-05
+
+- Distribution: Quota Deck now ships from GitHub only, open source under GPL-3.0-only, as a Developer ID-signed, notarized DMG (`scripts/release-macos.sh`). The Mac App Store and Microsoft Store builds, the sandbox harness and the WidgetKit extension are parked in `stores/` and left out of CI.
+- Mac monitor (`sysmon/`): CPU per cluster and per core, memory as Activity Monitor counts it, volumes, disk and network throughput, processes with energy, temperatures by SMC sensor family (HID fallback), fan, system and GPU power (IOReport), GPU load, NVMe SMART, and a 0–100 health score. A full tick costs about 2.5 ms of CPU.
+- What the M6 does not expose is shown as missing, never estimated: memory temperature, and CPU / Neural Engine / DRAM power (the IOReport "Energy Model" group carries only GPU and PCIe there).
+- Docker: read through the CLI with `info`, `ps`, `stats --no-stream` and `system df` only. Containers grouped by Compose project with health and usage; a quiet screen when Docker Desktop is closed or missing.
+- Antigravity: a new provider. Prompts from `history.jsonl`; "model exhausted, reopens at" from a bounded tail of the CLI's logs; optional live weekly percentages from `agy -p /usage` (off by default — agy, not Quota Deck, makes that request; it spends no tokens).
+- The six other tools (Amp, Copilot CLI, Droid, Gemini CLI, OpenCode, pi) start hidden on a fresh install. An existing settings file keeps every choice it made.
+- Design: the Liquid Instruments theme. A Liquid Glass popover (transparent window, `macOSPrivateApi`) and a four-tab dashboard — Overview, Mac, Docker, AI — with tool marks, 1 h / 24 h / 7 d history and every v1 breakdown and export kept under the AI tab.
+- Menu bar: `48° · 76%` before the quota, each part optional, with a 🟠 / 🔴 dot when a quota is nearly gone or macOS is throttling hard.
+- Settings: refresh rate (Live / Balanced / Saver), Mac alerts (CPU temperature, free disk, memory pressure, unhealthy container; once per 30 minutes), Keep Awake.
+- History: one-minute system summaries in their own redb file, kept for seven days.
+- Fan control: a Swift helper for Auto / Cool / Max that writes only `F<n>md`, `F<n>Tg` and `Ftst`, accepts only our signed app, and returns fans to Auto on quit, sleep and a missed lease. Its selftest caught Swift laying out the SMC parameter struct at 76 bytes instead of C's 80; the padding is now explicit and checked.
+- Fixed: `Cf::own` built and dropped a wrapper around a null pointer (`bool::then_some` is eager), which called `CFRelease(NULL)` and killed the process whenever a registry property was missing.
+- Fixed: a cost with only unknown-price tokens is shown as "—" with a note, never as "$0" (Codex writes no model on its usage records).
+- Translations: the new surfaces are complete in English, Turkish, German and Spanish.
+
 ## 2026-10-19
 
 - Perf: the warm-tick budget went red — 30–38 ms against a 20 ms budget, where the same commit measured 4.3 ms in September — with the code unchanged. The cost was not in reading: the tick read 0 bytes. It was in `open()` itself. An endpoint-security extension now on this machine inspects every open, and a bare `open`+`fstat`+`close` measured 58–94 µs per file against 1–2 µs for a `stat`; 500 cursors made it 29–47 ms before a single line of ours ran. The machines people run this on are exactly the ones that carry such agents.

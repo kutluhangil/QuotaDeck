@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Component sheet</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="./qd.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="qd {{themeClass}}" style="width: 1400px; height: 1560px; padding: 40px; display: flex; flex-direction: column; gap: 22px">
+  <div class="row" style="justify-content: space-between"><span class="h1">Components</span><span class="lbl">Glass = functional layer · material = content layer · one vessel per module</span></div>
+
+  <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; align-items: start">
+
+    <section class="card" style="padding: 22px; gap: 16px">
+      <span class="cap">Liquid capsule · horizontal</span>
+      <div style="display: flex; flex-direction: column; gap: 6px"><span class="lbl">lg · 30 pt · hero windows</span><div class="vessel h lg"><div class="liquid" style="width: 67%; background-color: #DE8A68"></div><i class="pace" style="left: 84.5%"></i></div></div>
+      <div style="display: flex; flex-direction: column; gap: 6px"><span class="lbl">md · 18 pt · cards</span><div class="vessel h md"><div class="liquid codex" style="width: 82%; background-color: #DDE3E0"></div><i class="pace" style="left: 43.3%"></i></div></div>
+      <div style="display: flex; flex-direction: column; gap: 6px"><span class="lbl">sm · 6 pt · rows and popover</span><div class="vessel h sm"><div class="liquid" style="width: 100%; background-color: #9485FF"></div></div></div>
+      <div style="display: flex; flex-direction: column; gap: 6px"><span class="lbl">empty · exhausted or no data</span><div class="vessel h md"><div class="liquid empty" style="width: 100%"></div></div></div>
+      <div style="display: flex; flex-direction: column; gap: 6px"><span class="lbl">scale ticks · fan range</span><div class="vessel h md"><div class="liquid" style="width: 20.4%; background-color: #A3ADB8"></div><div class="ticks"></div></div></div>
+    </section>
+
+    <section class="card" style="padding: 22px; gap: 16px">
+      <span class="cap">Vertical · ring</span>
+      <div style="display: flex; gap: 22px; align-items: flex-end; height: 150px">
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 6px; height: 100%"><div class="vessel v lg" style="flex: 1"><div class="liquid" style="height: 92%; background-color: #5BBF84"></div></div><span class="lbl">health</span></div>
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 6px; height: 100%"><div class="vessel v" style="flex: 1"><div class="liquid" style="height: 34%; background-color: #5A799A"></div></div><span class="lbl">51°</span></div>
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 6px; height: 100%"><div class="vessel v" style="flex: 1"><div class="liquid" style="height: 58%; background-color: #E19742"></div></div><span class="lbl">78°</span></div>
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 6px; height: 100%"><div class="vessel v" style="flex: 1"><div class="liquid" style="height: 86%; background-color: #E3663B"></div></div><span class="lbl">93°</span></div>
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 6px">
+          <svg width="76" height="76" viewBox="0 0 40 40" aria-hidden="true" style="transform: rotate(-90deg)"><circle cx="20" cy="20" r="16" fill="none" stroke-width="6" style="stroke: var(--vessel)"></circle><circle cx="20" cy="20" r="16" fill="none" stroke-width="6" stroke-linecap="round" stroke-dasharray="20.1 100.5" stroke="#A3ADB8"></circle><circle cx="20" cy="20" r="17.6" fill="none" stroke-width="0.8" stroke-linecap="round" stroke-dasharray="18 100.5" stroke="rgba(255,255,255,0.6)"></circle></svg>
+          <span class="lbl">ring · fan</span>
+        </div>
+      </div>
+      <span class="lbl">Liquid colour = temperature (or the tool accent). The meniscus and caustic are white overlays, so any fill works.</span>
+    </section>
+
+    <section class="card" style="padding: 22px; gap: 14px">
+      <span class="cap">Pace marker</span>
+      <div style="display: flex; flex-direction: column; gap: 6px"><div class="row" style="justify-content: space-between"><span>Ahead of pace</span><span class="mono t2">100% · pace 93%</span></div><div class="vessel h md"><div class="liquid" style="width: 100%; background-color: #DE8A68"></div><i class="pace" style="left: 93.3%"></i></div><span class="lbl">7% in reserve · lasts until reset</span></div>
+      <div style="display: flex; flex-direction: column; gap: 6px"><div class="row" style="justify-content: space-between"><span>On pace</span><span class="mono t2">52% · pace 50%</span></div><div class="vessel h md"><div class="liquid" style="width: 52%; background-color: #DE8A68"></div><i class="pace" style="left: 50%"></i></div><span class="lbl">On pace · lasts until reset</span></div>
+      <div style="display: flex; flex-direction: column; gap: 6px"><div class="row" style="justify-content: space-between"><span>Behind pace</span><span class="mono t2">67% · pace 84.5%</span></div><div class="vessel h md"><div class="liquid" style="width: 67%; background-color: #DE8A68"></div><i class="pace" style="left: 84.5%"></i></div><span class="lbl" style="color: var(--warn)">18% over pace · runs out in 2 d 5 h</span></div>
+    </section>
+
+    <section class="card" style="padding: 22px; gap: 14px">
+      <span class="cap">Health vessel</span>
+      <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px">
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 6px"><div class="vessel v lg" style="height: 86px"><div class="liquid" style="height: 92%; background-color: #5BBF84"></div></div><span class="num" style="font-size: 20px">92</span><span class="lbl">Excellent</span></div>
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 6px"><div class="vessel v lg" style="height: 86px"><div class="liquid" style="height: 74%; background-color: #8DBF5B"></div></div><span class="num" style="font-size: 20px">74</span><span class="lbl">Good</span></div>
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 6px"><div class="vessel v lg" style="height: 86px"><div class="liquid" style="height: 52%; background-color: #D9A24A"></div></div><span class="num" style="font-size: 20px">52</span><span class="lbl">Fair</span></div>
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 6px"><div class="vessel v lg" style="height: 86px"><div class="liquid" style="height: 28%; background-color: #E3663B"></div></div><span class="num" style="font-size: 20px">28</span><span class="lbl">Poor</span></div>
+      </div>
+      <div class="glass" style="align-self: flex-start; display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px 0 8px; border-radius: 999px"><div class="vessel v" style="width: 10px; height: 20px"><div class="liquid" style="height: 92%; background-color: #5BBF84"></div></div><span class="num" style="font-size: 16px">92</span><span class="lbl" style="color: var(--fg-2)">Excellent</span></div>
+    </section>
+
+    <section class="card" style="padding: 22px; gap: 14px">
+      <span class="cap">Chips &amp; badges</span>
+      <div class="lbl">Temperature</div>
+      <div class="row" style="flex-wrap: wrap"><span class="chip"><i class="dot" style="color: #4E6E8E"></i>44°</span><span class="chip"><i class="dot" style="color: #6E8DAD"></i>60°</span><span class="chip"><i class="dot" style="color: #E19742"></i>78°</span><span class="chip"><i class="dot" style="color: #E3663B"></i>93°</span></div>
+      <div class="lbl">Memory pressure</div>
+      <div class="row" style="flex-wrap: wrap"><span class="chip ok"><span class="dot"></span>Normal</span><span class="chip warn"><span class="dot"></span>Warning</span><span class="chip bad"><span class="dot"></span>Critical</span></div>
+      <div class="lbl">Thermal state</div>
+      <div class="row" style="flex-wrap: wrap"><span class="chip ok"><span class="dot"></span>Nominal</span><span class="chip"><span class="dot"></span>Fair</span><span class="chip warn"><span class="dot"></span>Serious</span><span class="chip bad"><span class="dot"></span>Critical</span></div>
+      <div class="lbl">Confidence</div>
+      <div class="row"><span class="badge meas">Measured</span><span class="badge est" title="Estimated from local logs at API rates">Estimated</span><span class="lbl">tooltip: “Estimated from local logs at API rates”</span></div>
+    </section>
+
+    <section class="card" style="padding: 22px; gap: 14px">
+      <span class="cap">Controls</span>
+      <div class="tabs glass" style="align-self: flex-start"><span class="tab on">Overview</span><span class="tab">Mac</span><span class="tab">Docker</span><span class="tab">AI</span></div>
+      <div class="seg" role="group" aria-label="Range example" style="align-self: flex-start"><button class="tab">1 h</button><button class="tab on" aria-pressed="true">24 h</button><button class="tab">7 d</button></div>
+      <div class="row" style="flex-wrap: wrap"><button class="btn primary">Open Dashboard</button><button class="btn">Open Docker</button><button class="btn icon" aria-label="More">…</button><button class="switch" role="switch" aria-checked="true" aria-label="Example switch on"></button><button class="switch" role="switch" aria-checked="false" aria-label="Example switch off"></button></div>
+      <label class="search glass" style="align-self: flex-start"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="7" cy="7" r="4.5"></circle><path d="M10.5 10.5 14 14"></path></svg><span class="sr">Search example</span><input type="search" placeholder="Search"></label>
+      <div class="row"><span class="mark cl">Cl</span><span class="mark cx">Cx</span><span class="mark ag">Ag</span><span class="mark outline">Cx</span><span class="lbl">tool marks · outline = not installed</span></div>
+    </section>
+
+    <section class="card" style="grid-column: span 2; padding: 22px; gap: 16px">
+      <span class="cap">Charts</span>
+      <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px">
+        <div style="display: flex; flex-direction: column; gap: 6px"><span class="lbl">Line · 1.5 pt</span>
+          <svg class="chart" viewBox="0 0 200 80" preserveAspectRatio="none" height="80" aria-hidden="true"><path class="gl" d="M0 56 L20 58 L40 52 L60 54 L80 40 L100 44 L120 30 L140 34 L160 22 L180 36 L200 32" style="stroke: var(--fg)"></path><path class="gl" d="M0 66 L20 66 L40 64 L60 64 L80 58 L100 60 L120 52 L140 54 L160 48 L180 54 L200 52" style="stroke: var(--fg-2)" stroke-dasharray="4 2"></path><path class="base" d="M0 80 H200"></path></svg>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 6px"><span class="lbl">Area · fades to clear, scrub lollipop</span>
+          <div style="position: relative">
+            <svg class="chart" viewBox="0 0 200 80" preserveAspectRatio="none" height="80" aria-hidden="true"><defs><linearGradient id="cA" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#A3ADB8" stop-opacity="0.35"></stop><stop offset="1" stop-color="#A3ADB8" stop-opacity="0"></stop></linearGradient></defs><path d="M0 50 C20 46 40 52 60 40 S 100 22 120 30 S 160 44 200 26 L200 80 L0 80 Z" fill="url(#cA)"></path><path class="gl" d="M0 50 C20 46 40 52 60 40 S 100 22 120 30 S 160 44 200 26" style="stroke: var(--fg)"></path><path d="M120 0 V80" style="stroke: var(--fg)" opacity="0.35" vector-effect="non-scaling-stroke"></path><path class="base" d="M0 80 H200"></path></svg>
+            <div aria-hidden="true" style="position: absolute; left: 60%; top: 30px; width: 9px; height: 9px; margin: -4px 0 0 -4px; border-radius: 50%; background: var(--fg); box-shadow: 0 0 0 3px var(--material)"></div>
+            <div class="glass vlabel" style="left: 60%; top: 20px"><span class="lbl">13:40</span> <span class="num">41%</span></div>
+          </div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 6px"><span class="lbl">Bars · rounded caps</span>
+          <div style="display: flex; align-items: flex-end; gap: 5px; height: 80px; border-bottom: 1px solid var(--chart-base)" aria-hidden="true">
+            <i style="flex: 1; height: 40%; border-radius: 99px; background: #DE8A68"></i><i style="flex: 1; height: 62%; border-radius: 99px; background: #DE8A68"></i><i style="flex: 1; height: 30%; border-radius: 99px; background: #DE8A68"></i><i style="flex: 1; height: 85%; border-radius: 99px; background: #E9A386"></i><i style="flex: 1; height: 55%; border-radius: 99px; background: #DE8A68"></i><i style="flex: 1; height: 20%; border-radius: 99px; background: #DE8A68"></i><i style="flex: 1; height: 70%; border-radius: 99px; background: #DE8A68"></i><i style="flex: 1; height: 45%; border-radius: 99px; background: #9485FF"></i><i style="flex: 1; height: 66%; border-radius: 99px; background: #9485FF"></i>
+          </div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 6px"><span class="lbl">Mirrored wave · down above, up below</span>
+          <svg class="chart" viewBox="0 0 200 80" preserveAspectRatio="none" height="80" aria-hidden="true"><path class="gl" d="M0 34 C20 28 40 18 60 26 S 100 12 120 22 S 170 30 200 18" style="stroke: var(--fg)"></path><path class="base" d="M0 46 H200"></path><path class="gl" d="M0 52 C30 54 50 50 80 55 S 140 52 200 54" style="stroke: var(--fg-3)"></path></svg>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 6px"><span class="lbl">Sparkline · no axes</span>
+          <svg class="chart" viewBox="0 0 200 30" preserveAspectRatio="none" height="30" aria-hidden="true" style="margin-top: 25px"><path class="gl" d="M0 22 C14 20 24 12 36 16 S 58 24 70 18 S 96 6 110 12 S 140 22 152 16 S 186 8 200 12" style="stroke: var(--fg-2)"></path></svg>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 6px"><span class="lbl">Thermal ribbon · colour by temperature</span>
+          <svg class="chart" viewBox="0 0 200 24" preserveAspectRatio="none" height="24" aria-hidden="true" style="margin-top: 28px"><defs><linearGradient id="cR" x1="0" x2="1" y1="0" y2="0"><stop offset="0" stop-color="#5A799A"></stop><stop offset="0.45" stop-color="#D9A24A"></stop><stop offset="0.6" stop-color="#E3663B"></stop><stop offset="1" stop-color="#6E8DAD"></stop></linearGradient></defs><path d="M0 9 C40 8 70 6 100 4 C120 3 140 6 200 9 L200 15 C140 18 120 21 100 20 C70 18 40 16 0 15 Z" fill="url(#cR)"></path></svg>
+        </div>
+      </div>
+    </section>
+
+    <section class="card" style="padding: 22px; gap: 14px">
+      <span class="cap">SoC heat field · compact</span>
+      <div class="die" style="display: grid; grid-template-columns: 1.25fr 1fr 1.5fr; grid-template-rows: 56px 56px; gap: 6px">
+        <div class="zone" style="grid-row: span 2; background: radial-gradient(90% 80% at 50% 55%, rgba(94,126,158,0.9), rgba(94,126,158,0.22) 66%, rgba(94,126,158,0.06))"><span class="zl">P</span><span class="zt">52.7°</span></div>
+        <div class="zone" style="background: radial-gradient(90% 80% at 50% 55%, rgba(225,151,66,0.85), rgba(225,151,66,0.2) 66%, rgba(225,151,66,0.05))"><span class="zl">E</span><span class="zt">78°</span></div>
+        <div class="zone" style="grid-row: span 2; grid-column: 3; background: radial-gradient(90% 80% at 50% 55%, rgba(227,102,59,0.9), rgba(227,102,59,0.22) 66%, rgba(227,102,59,0.05))"><span class="zl">GPU</span><span class="zt">93°</span></div>
+        <div class="zone" style="background: radial-gradient(90% 80% at 50% 55%, rgba(84,116,148,0.7), rgba(84,116,148,0.18) 66%, rgba(84,116,148,0.05))"><span class="zl">SoC</span><span class="zt">47.8°</span></div>
+      </div>
+      <span class="lbl">Die stays dark in both modes: it reads as a thermal camera. Zones hover to show avg · max · sensors.</span>
+    </section>
+
+    <section class="card" style="grid-column: span 3; padding: 22px; gap: 10px">
+      <span class="cap">Rows</span>
+      <div class="tblbox">
+        <table class="tbl">
+          <thead><tr><th>Process row</th><th class="r">Memory</th><th>% CPU</th><th class="r">Energy</th><th class="r">PID</th><th class="r"><span class="sr">Actions</span></th></tr></thead>
+          <tbody>
+            <tr><td><span class="row"><i class="appicon" style="background: #3C8FE0"></i>Code Helper (Renderer)</span></td><td class="r mono">1.9 GB</td><td><span class="row"><span class="minibar"><i style="width: 41%; background-color: #A3ADB8"></i></span><span class="mono">4.1</span></span></td><td class="r mono">0.9 W</td><td class="r mono t3">2291</td><td class="r"><button class="btn icon ghost" aria-label="More" style="height: 24px">…</button></td></tr>
+            <tr class="raised"><td><span class="row"><i class="appicon" style="background: #B4573A"></i>claude <span class="lbl">· hover, raised</span></span></td><td class="r mono">612 MB</td><td><span class="row"><span class="minibar"><i style="width: 32%; background-color: #A3ADB8"></i></span><span class="mono">3.2</span></span></td><td class="r mono">0.6 W</td><td class="r mono t3">40417</td><td class="r"><button class="btn icon ghost" aria-label="More" style="height: 24px">…</button></td></tr>
+          </tbody>
+        </table>
+        <table class="tbl" style="margin-top: 14px">
+          <thead><tr><th>Container row</th><th>Image</th><th>Health</th><th class="r">CPU %</th><th class="r">Memory</th><th class="r">Uptime</th><th class="r">Restarts</th></tr></thead>
+          <tbody>
+            <tr><td><span class="row"><i class="dot" style="color: var(--ok)"></i>api</span></td><td class="mono t2">quota-api:1.4.2</td><td><span class="chip ok" style="height: 20px">healthy</span></td><td class="r mono">2.1</td><td class="r mono">640 MB</td><td class="r mono">2 d 4 h</td><td class="r mono">0</td></tr>
+            <tr><td><span class="row"><i class="dot" style="color: var(--warn)"></i>uptime-kuma</span></td><td class="mono t2">louislam/uptime-kuma:2</td><td><span class="chip warn" style="height: 20px">unhealthy</span></td><td class="r mono">1.2</td><td class="r mono">186 MB</td><td class="r mono">14 m</td><td class="r mono" style="color: var(--warn)">3</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"$preview":{"width":1400,"height":1560}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { themeClass: this.props.theme ?? 'dark' };
+  }
+}
+</script>
+</body>
+</html>

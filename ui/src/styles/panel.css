@@ -3,6 +3,11 @@
  * here is a single class, and no rule overrides another.
  */
 
+/* Scoped: the v1 panel styles now only dress the settings and history views hosted inside
+   the Liquid surfaces, and must not leak into them. */
+.legacy {
+
+
 .panel {
   inline-size: 100%;
   block-size: 100%;
@@ -1229,4 +1234,6 @@
 
 .detail .card__burst {
   margin: 0;
+}
+
 }

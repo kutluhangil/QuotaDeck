@@ -16,6 +16,13 @@ path = "src/lib.rs"
 name = "quotadeck"
 path = "src/main.rs"
 
+# Mac hardware, Docker and fan readings, and the transparent Liquid Glass popover (Tauri's
+# private-API feature). On by default; the parked App Store build (`stores/apple/appstore.sh`)
+# builds with `--no-default-features`, so none of it reaches the store.
+[features]
+default = ["system-monitor"]
+system-monitor = ["dep:quotadeck-sysmon", "tauri/macos-private-api"]
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
@@ -25,6 +32,7 @@ quotadeck-providers.workspace = true
 chrono.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+redb.workspace = true
 
 tauri = { version = "2", features = ["tray-icon", "image-png"] }
 tauri-plugin-positioner = { version = "2", features = ["tray-icon"] }
@@ -36,6 +44,7 @@ tauri-plugin-global-shortcut = "2"
 # bookmarks to keep it across launches. Both crates are already in the tree through tao and
 # wry, so this adds no crate and no measurable binary size.
 [target.'cfg(target_os = "macos")'.dependencies]
+quotadeck-sysmon = { workspace = true, optional = true }
 objc2.workspace = true
 objc2-app-kit.workspace = true
-objc2-foundation.workspace = true
+objc2-foundation = { workspace = true, features = ["NSString"] }

@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Empty, error and fallback states</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="./qd.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="qd {{themeClass}}" style="width: 1400px; height: 1000px; padding: 40px; display: flex; flex-direction: column; gap: 22px">
+  <div class="row" style="justify-content: space-between"><span class="h1">Empty, error &amp; fallback states</span><span class="lbl">Every state says what happened and offers at most one action</span></div>
+  <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-auto-rows: 270px; gap: 20px">
+
+    <section class="card" style="padding: 22px; justify-content: space-between">
+      <div class="card-h"><span class="cap">Docker · not running</span></div>
+      <div style="display: flex; flex-direction: column; gap: 8px">
+        <span class="chip" style="align-self: flex-start"><span class="dot" style="color: var(--fg-3)"></span>Stopped</span>
+        <span style="font-size: 17px; font-weight: 500">Docker Desktop is not running</span>
+        <span class="t2">Containers will appear here when it starts.</span>
+      </div>
+      <a href="Docker.dc.html" class="btn" style="align-self: flex-start">Open Docker</a>
+    </section>
+
+    <section class="card" style="padding: 22px; justify-content: space-between">
+      <div class="card-h"><span class="cap">Docker · not installed</span></div>
+      <div style="display: flex; flex-direction: column; gap: 8px">
+        <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" style="color: var(--fg-3)" aria-hidden="true"><rect x="3" y="8" width="18" height="11" rx="2.5"></rect><path d="M7 8V5.5h4V8M13 8V5.5h4V8"></path></svg>
+        <span style="font-size: 17px; font-weight: 500">Docker is not installed</span>
+        <span class="t2">Quota Deck picks it up automatically once it is.</span>
+      </div>
+      <span></span>
+    </section>
+
+    <section class="card" style="padding: 22px; justify-content: space-between">
+      <div class="card-h"><span class="cap">Tool · not installed</span></div>
+      <div style="display: flex; flex-direction: column; gap: 10px">
+        <div class="row" style="gap: 10px"><span class="mark outline">Cx</span><span style="font-size: 17px; font-weight: 500" class="t2">Codex isn’t installed</span></div>
+        <div class="vessel h md" style="opacity: 0.6"><div class="liquid empty" style="width: 100%"></div></div>
+        <span class="t3">Hidden from the menu bar until it’s found.</span>
+      </div>
+      <span></span>
+    </section>
+
+    <section class="card" style="padding: 22px; justify-content: space-between">
+      <div class="card-h"><span class="cap">Tool · no data yet</span></div>
+      <div style="display: flex; flex-direction: column; gap: 10px">
+        <div class="row" style="gap: 10px"><span class="mark cl">Cl</span><span style="font-size: 17px; font-weight: 500">No data yet</span></div>
+        <div class="vessel h md"><div class="liquid empty" style="width: 100%"></div></div>
+        <span class="t2">Run one Claude Code session and readings appear within a minute.</span>
+      </div>
+      <span></span>
+    </section>
+
+    <section class="card" style="padding: 22px; justify-content: space-between">
+      <div class="card-h"><span class="cap">Tool · needs folder access</span></div>
+      <div style="display: flex; flex-direction: column; gap: 8px">
+        <div class="row" style="gap: 10px"><span class="mark ag">Ag</span><span style="font-size: 17px; font-weight: 500">Needs folder access</span></div>
+        <span class="t2">macOS asks once. Quota Deck only reads this folder; it never writes to it.</span>
+      </div>
+      <button class="btn primary" style="align-self: flex-start">Grant access</button>
+    </section>
+
+    <section class="card" style="padding: 22px; justify-content: space-between">
+      <div class="card-h"><span class="cap">Memory sensor unavailable</span></div>
+      <div style="display: flex; flex-direction: column; gap: 8px">
+        <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" style="color: var(--fg-3)" aria-hidden="true"><rect x="4" y="7" width="16" height="10" rx="2"></rect><path d="M8 17v2M12 17v2M16 17v2M8 5v2M12 5v2M16 5v2"></path></svg>
+        <span style="font-size: 17px; font-weight: 500">This Mac doesn’t expose a memory sensor</span>
+        <span class="t3">Quota Deck won’t estimate one.</span>
+      </div>
+      <span></span>
+    </section>
+
+    <section class="card" style="grid-column: span 2; padding: 0; overflow: hidden; position: relative">
+      <div aria-hidden="true" style="position: absolute; inset: 0; background: radial-gradient(60% 80% at 20% 30%, #2f6cc0, rgba(47,108,192,0) 65%), radial-gradient(60% 80% at 85% 70%, #d9784e, rgba(217,120,78,0) 60%), linear-gradient(160deg, #0a1630, #241640)"></div>
+      <div style="position: relative; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); height: 100%">
+        <div class="qd dark" style="background: transparent; padding: 22px; display: flex; flex-direction: column; gap: 12px">
+          <span class="cap" style="color: rgba(255,255,255,0.8)">Liquid Glass</span>
+          <div class="glass" style="border-radius: 22px; padding: 14px; display: flex; gap: 12px; align-items: center"><div style="flex: 1"><div class="lbl">CPU</div><div class="row" style="align-items: baseline; gap: 6px"><span class="hero" style="font-size: 30px">18%</span><span class="t2">52.7°</span></div></div><div class="vessel v" style="height: 54px"><div class="liquid" style="height: 18%; background-color: #5E7E9E"></div></div></div>
+          <div class="glass" style="border-radius: 22px; padding: 14px; display: flex; flex-direction: column; gap: 6px"><div class="row"><span class="mark sm cl">Cl</span><span style="font-weight: 600; font-size: 12px">Claude</span><span class="num" style="margin-left: auto">67%</span></div><div class="vessel h sm"><div class="liquid" style="width: 67%; background-color: #DE8A68"></div><i class="pace" style="left: 84.5%"></i></div></div>
+        </div>
+        <div class="qd dark rt rm" style="background: transparent; padding: 22px; display: flex; flex-direction: column; gap: 12px">
+          <span class="cap" style="color: rgba(255,255,255,0.8)">Reduce Transparency + Reduce Motion</span>
+          <div class="glass" style="border-radius: 22px; padding: 14px; display: flex; gap: 12px; align-items: center"><div style="flex: 1"><div class="lbl">CPU</div><div class="row" style="align-items: baseline; gap: 6px"><span class="hero" style="font-size: 30px">18%</span><span class="t2">52.7°</span></div></div><div class="vessel v" style="height: 54px"><div class="liquid" style="height: 18%; background-color: #5E7E9E"></div></div></div>
+          <div class="glass" style="border-radius: 22px; padding: 14px; display: flex; flex-direction: column; gap: 6px"><div class="row"><span class="mark sm cl">Cl</span><span style="font-weight: 600; font-size: 12px">Claude</span><span class="num" style="margin-left: auto">67%</span></div><div class="vessel h sm"><div class="liquid" style="width: 67%; background-color: #DE8A68"></div><i class="pace" style="left: 84.5%"></i></div></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="card" aria-label="Thermal serious example: P-cores 93 degrees" style="padding: 22px">
+      <div class="card-h"><span class="cap">Thermal · Serious</span><span class="chip bad"><span class="dot"></span>Serious</span></div>
+      <div class="die" style="flex: 1; display: grid; grid-template-columns: 1.25fr 1fr 1.5fr; grid-template-rows: 1fr 1fr 30px; gap: 6px">
+        <div class="zone" style="grid-row: span 2; background: radial-gradient(90% 80% at 50% 50%, rgba(227,102,59,0.95), rgba(227,102,59,0.25) 68%, rgba(227,102,59,0.06))"><span class="zl">P</span><span class="zt">93°</span></div>
+        <div class="zone" style="grid-row: span 2; background: radial-gradient(90% 80% at 50% 50%, rgba(225,151,66,0.85), rgba(225,151,66,0.2) 68%, rgba(225,151,66,0.05))"><span class="zl">E</span><span class="zt">78°</span></div>
+        <div class="zone" style="grid-row: span 2; background: radial-gradient(90% 80% at 50% 50%, rgba(228,135,62,0.9), rgba(228,135,62,0.22) 68%, rgba(228,135,62,0.05))"><span class="zl">GPU</span><span class="zt">84°</span></div>
+        <div class="zone" style="grid-column: 1 / -1; min-height: 0; background: radial-gradient(70% 140% at 50% 50%, rgba(219,159,72,0.75), rgba(219,159,72,0.12) 75%)"><span class="zl" style="top: 50%; transform: translateY(-50%)">SOC</span><span class="zt" style="bottom: 50%; transform: translateY(50%)">72°</span></div>
+      </div>
+      <span class="lbl">Colour follows temperature; the number always carries it too.</span>
+    </section>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"$preview":{"width":1400,"height":1000}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { themeClass: this.props.theme ?? 'dark' };
+  }
+}
+</script>
+</body>
+</html>

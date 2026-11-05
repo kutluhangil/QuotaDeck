@@ -7,7 +7,10 @@
  * app a colour means exactly one thing.
  */
 
-:root {
+.legacy {
+
+
+& {
   /* Neutral by construction. Green would read as "healthy", blue as "measured". */
   --heat-0: #1a2331;
   --heat-1: #26313f;
@@ -18,7 +21,7 @@
   --cell: 15px;
 }
 
-:root[data-theme="light"] {
+:root[data-theme="light"] & {
   --heat-0: #e9edf3;
   --heat-1: #d3dae4;
   --heat-2: #b3bfd0;
@@ -27,7 +30,7 @@
 }
 
 @media (prefers-color-scheme: light) {
-  :root:not([data-theme="dark"]) {
+  :root:not([data-theme="dark"]) & {
     --heat-0: #e9edf3;
     --heat-1: #d3dae4;
     --heat-2: #b3bfd0;
@@ -36,11 +39,6 @@
   }
 }
 
-/* The popover floats over the desktop and paints its own surface; a window fills the frame
-   the compositor already gave it. */
-:root[data-surface="dashboard"] body {
-  background: var(--surface-abyss);
-}
 
 .board {
   block-size: 100%;
@@ -161,11 +159,11 @@
   padding: var(--step-5);
 }
 
-/* Two columns at 960px, one on a window the user narrowed. `auto-fill` rather than a fixed
+/* Two columns in the 1180px dashboard, one on a window the user narrowed. `auto-fill` rather than a fixed
    count so a fourth provider wraps instead of squeezing. */
 .board__grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
   gap: var(--step-4);
 }
 
@@ -430,4 +428,6 @@
   align-self: center;
   color: var(--ink-secondary);
   font-variant-numeric: tabular-nums;
+}
+
 }

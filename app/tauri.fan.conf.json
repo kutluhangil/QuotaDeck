@@ -1,0 +1,11 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "bundle": {
+    "macOS": {
+      "files": {
+        "MacOS/quotadeck-fanhelper": "../target/fanhelper/quotadeck-fanhelper",
+        "Library/LaunchDaemons/com.kutluhangil.quotadeck.fanhelper.plist": "fanhelper/com.kutluhangil.quotadeck.fanhelper.plist"
+      }
+    }
+  }
+}

@@ -2,11 +2,13 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
 import { App } from "./App";
-import { Dashboard } from "./Dashboard";
+import { Board } from "./liquid/Board";
+import { hostPlatform } from "./platform";
 import { inShell } from "./store";
 import "./styles/base.css";
 import "./styles/panel.css";
 import "./styles/dashboard.css";
+import "./styles/themes/liquid.css";
 
 const root = document.getElementById("root");
 if (root === null) {
@@ -30,7 +32,13 @@ async function surface(): Promise<"panel" | "dashboard"> {
 
 surface().then((which) => {
   document.documentElement.dataset["surface"] = which;
+  // One design theme today; the setting picks which stylesheet scope applies.
+  document.documentElement.dataset["design"] = "liquid";
+  // The macOS popover window is transparent over a Liquid Glass material; the glass modules
+  // sit on the real desktop. Elsewhere (and in a browser) the window paints its own backdrop.
+  document.documentElement.dataset["vibrancy"] =
+    inShell && which === "panel" && hostPlatform() === "macos" ? "on" : "off";
   createRoot(root).render(
-    <StrictMode>{which === "dashboard" ? <Dashboard /> : <App />}</StrictMode>,
+    <StrictMode>{which === "dashboard" ? <Board /> : <App />}</StrictMode>,
   );
 });

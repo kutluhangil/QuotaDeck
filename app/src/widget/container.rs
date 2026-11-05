@@ -3,7 +3,7 @@
 //! The App Group container is the one directory both the app and the extension can see. Its
 //! identifier carries the Team ID, because macOS requires that prefix — the `group.` form is
 //! iOS — which makes the full identifier account data. It is therefore substituted at build
-//! time from the environment `scripts/appstore.sh` already requires, rather than committed.
+//! time from the environment `stores/apple/appstore.sh` already requires, rather than committed.
 
 use std::path::{Path, PathBuf};
 
@@ -14,7 +14,7 @@ use crate::widget::WidgetSnapshot;
 /// The file the extension reads. One file, replaced whole.
 pub const FILE_NAME: &str = "snapshot.json";
 
-/// Substituted at build time by `scripts/appstore.sh`; absent in every other build.
+/// Substituted at build time by `stores/apple/appstore.sh`; absent in every other build.
 ///
 /// `None` is the normal answer for the development and Microsoft Store builds and is not an
 /// error: only the signed store build carries the group, and only it ships the extension.

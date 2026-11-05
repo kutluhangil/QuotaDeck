@@ -1,7 +1,30 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
+  "app": {
+    "windows": [
+      {
+        "label": "panel",
+        "title": "Quota Deck",
+        "width": 360,
+        "height": 520,
+        "resizable": false,
+        "decorations": false,
+        "transparent": false,
+        "shadow": true,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "visible": false,
+        "focus": false,
+        "acceptFirstMouse": true
+      }
+    ]
+  },
   "bundle": {
-    "targets": ["deb", "rpm", "appimage"],
+    "targets": [
+      "deb",
+      "rpm",
+      "appimage"
+    ],
     "linux": {
       "deb": {
         "depends": [
@@ -12,7 +35,11 @@
         "section": "devel"
       },
       "rpm": {
-        "depends": ["webkit2gtk4.1", "gtk3", "libayatana-appindicator-gtk3"]
+        "depends": [
+          "webkit2gtk4.1",
+          "gtk3",
+          "libayatana-appindicator-gtk3"
+        ]
       },
       "appimage": {
         "bundleMediaFramework": false

@@ -5,14 +5,20 @@
 //! filesystem capability at all — it receives snapshots and nothing else.
 
 pub mod alerts;
+pub mod antigravity;
+pub mod awake;
 pub mod cli;
 pub mod deck;
 pub mod export;
+pub mod fan_control;
 pub mod i18n;
 pub mod icon;
 pub mod sandbox;
 pub mod statusline;
 pub mod statusline_helper;
+pub mod system;
+pub mod system_alerts;
+pub mod system_history;
 pub mod tray;
 #[cfg(target_os = "macos")]
 mod widget;
@@ -139,8 +145,12 @@ pub fn run() -> Result<()> {
                 .build(),
         );
 
+    let monitor = system::SystemMonitor::default();
+    let antigravity_monitor = antigravity::AntigravityMonitor::default();
     let app = builder
         .manage(deck.clone())
+        .manage(monitor.clone())
+        .manage(antigravity_monitor.clone())
         .invoke_handler(tauri::generate_handler![
             current_state,
             refresh_now,
@@ -177,6 +187,19 @@ pub fn run() -> Result<()> {
             prepare_manual_statusline,
             install_statusline,
             revert_statusline,
+            system::system_state,
+            system::docker_state,
+            system::system_history,
+            set_system_alerts,
+            set_refresh_speed,
+            set_menu_bar,
+            antigravity::antigravity_state,
+            awake::set_keep_awake,
+            awake::keep_awake,
+            fan_control::set_fan_mode,
+            fan_control::remove_fan_helper,
+            set_design_theme,
+            set_antigravity_live,
         ])
         .setup(move |app| {
             // No dock icon and no menu bar takeover: this is an accessory, not an app the
@@ -198,6 +221,18 @@ pub fn run() -> Result<()> {
                 }
             }
             let control = spawn_read_loop(app.handle().clone(), deck.clone())?;
+            if let Err(error) = system::start(app.handle(), deck.clone(), monitor) {
+                // The quota side works without it; the system tab shows nothing.
+                eprintln!("quotadeck: system monitor did not start: {error}");
+            }
+            if let Err(error) =
+                antigravity::start(app.handle(), deck.clone(), antigravity_monitor.clone())
+            {
+                eprintln!("quotadeck: Antigravity live quota did not start: {error}");
+            }
+            if let Err(error) = fan_control::start_renewal() {
+                eprintln!("quotadeck: fan lease renewal did not start: {error}");
+            }
             match setup_read_loop.lock() {
                 Ok(mut slot) => *slot = Some(control),
                 Err(poisoned) => *poisoned.into_inner() = Some(control),
@@ -236,6 +271,8 @@ pub fn run() -> Result<()> {
 
     app.run(move |_app, event| {
         if matches!(event, tauri::RunEvent::Exit) {
+            // A forced fan must not outlive the app, even for the helper's 90 s lease.
+            fan_control::restore();
             let control = match read_loop.lock() {
                 Ok(mut slot) => slot.take(),
                 Err(poisoned) => poisoned.into_inner().take(),
@@ -600,8 +637,8 @@ fn set_demo(deck: tauri::State<'_, Deck>, demo: bool) -> std::result::Result<Set
 }
 
 /// The blueprint's dashboard size (§2).
-const DASHBOARD_WIDTH: f64 = 960.0;
-const DASHBOARD_HEIGHT: f64 = 640.0;
+const DASHBOARD_WIDTH: f64 = 1180.0;
+const DASHBOARD_HEIGHT: f64 = 760.0;
 
 #[tauri::command]
 fn statusline_state() -> std::result::Result<StatuslineState, String> {
@@ -628,8 +665,8 @@ fn revert_statusline() -> std::result::Result<StatuslineState, String> {
 /// Smallest useful panel: header, footer and one card.
 const MIN_PANEL_HEIGHT: f64 = 200.0;
 /// The blueprint's panel height, and the point past which a popover should scroll instead.
-const MAX_PANEL_HEIGHT: f64 = 520.0;
-const PANEL_WIDTH: f64 = 380.0;
+const MAX_PANEL_HEIGHT: f64 = 640.0;
+const PANEL_WIDTH: f64 = 360.0;
 
 /// Size the window to what the panel actually has to say.
 ///
@@ -681,6 +718,47 @@ fn set_tray_mode(
 #[tauri::command]
 fn set_theme(deck: tauri::State<'_, Deck>, theme: Theme) -> std::result::Result<Settings, String> {
     deck.set_theme(theme).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn set_design_theme(
+    deck: tauri::State<'_, Deck>,
+    theme: crate::deck::DesignTheme,
+) -> std::result::Result<Settings, String> {
+    deck.set_design_theme(theme).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn set_refresh_speed(
+    deck: tauri::State<'_, Deck>,
+    speed: crate::deck::RefreshSpeed,
+) -> std::result::Result<Settings, String> {
+    deck.set_refresh_speed(speed).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn set_menu_bar(
+    deck: tauri::State<'_, Deck>,
+    content: crate::deck::MenuBarContent,
+) -> std::result::Result<Settings, String> {
+    deck.set_menu_bar(content).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn set_system_alerts(
+    deck: tauri::State<'_, Deck>,
+    rules: crate::system_alerts::SystemAlertRules,
+) -> std::result::Result<Settings, String> {
+    deck.update_system_alerts(rules).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn set_antigravity_live(
+    deck: tauri::State<'_, Deck>,
+    enabled: bool,
+) -> std::result::Result<Settings, String> {
+    deck.set_antigravity_live(enabled)
+        .map_err(|e| e.to_string())
 }
 
 /// The panel hotkey. Fixed rather than configurable: Q for quota, with the two modifiers few
@@ -2287,6 +2365,7 @@ mod provider_policy_tests {
                 ProviderId::CopilotCli,
                 ProviderId::ClaudeCode,
                 ProviderId::Codex,
+                ProviderId::Antigravity,
                 ProviderId::GeminiCli,
                 ProviderId::PiAgent,
                 ProviderId::Amp,

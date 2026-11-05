@@ -19,6 +19,7 @@ export const PROVIDER_IDS = [
   "amp",
   "droid",
   "opencode",
+  "antigravity",
 ] as const;
 
 export type ProviderId = (typeof PROVIDER_IDS)[number];
@@ -425,7 +426,28 @@ export interface Settings {
   usageDisplay: UsageDisplay;
   /** Whether the panel hotkey is registered. Off until asked for. */
   globalShortcut: boolean;
+  /** The visual design. Independent of `theme`, which only picks light or dark. */
+  designTheme: DesignTheme;
+  /** Run `agy -p /usage` for live Antigravity percentages (direct build only). */
+  antigravityLive: boolean;
+  /** Notifications about the Mac itself. `null` turns a threshold rule off. */
+  systemAlerts: SystemAlertRules;
+  /** How eagerly the Mac readings refresh while the popover or dashboard shows them. */
+  refreshSpeed: RefreshSpeed;
+  /** Which Mac readings the menu bar prints before the quota. */
+  menuBar: { temperature: boolean; memory: boolean };
 }
+
+export type RefreshSpeed = "live" | "balanced" | "saver";
+
+export interface SystemAlertRules {
+  cpuCelsiusAbove: number | null;
+  freeDiskGbBelow: number | null;
+  memoryCritical: boolean;
+  containerUnhealthy: boolean;
+}
+
+export type DesignTheme = "liquid";
 
 export interface ProviderDescriptor {
   /** The instance key. The panel's identity for this row. */

@@ -4,6 +4,7 @@
 //! ever match on a specific provider.
 
 pub mod amp;
+pub mod antigravity;
 pub mod claude_code;
 pub mod codex;
 pub mod copilot_cli;
@@ -20,6 +21,7 @@ pub fn all() -> Vec<Box<dyn Provider>> {
     vec![
         Box::new(claude_code::ClaudeCode),
         Box::new(codex::Codex),
+        Box::new(antigravity::Antigravity),
         Box::new(copilot_cli::CopilotCli),
         Box::new(gemini_cli::GeminiCli),
         Box::new(pi_agent::PiAgent),
@@ -67,6 +69,7 @@ mod tests {
             vec![
                 ProviderId::ClaudeCode,
                 ProviderId::Codex,
+                ProviderId::Antigravity,
                 ProviderId::CopilotCli,
                 ProviderId::GeminiCli,
                 ProviderId::PiAgent,

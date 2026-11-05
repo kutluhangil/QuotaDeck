@@ -977,9 +977,9 @@ mod tests {
     #[test]
     fn the_exit_codes_are_documented_where_an_integrator_will_look() {
         let notes = std::fs::read_to_string(
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../docs/STORE.md"),
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../stores/apple/STORE.md"),
         )
-        .expect("read docs/STORE.md");
+        .expect("read stores/apple/STORE.md");
 
         for (code, meaning) in [
             (EXIT_OK, "ok"),
@@ -990,7 +990,9 @@ mod tests {
             let line = notes
                 .lines()
                 .find(|line| line.trim_start().starts_with(&format!("| `{code}`")))
-                .unwrap_or_else(|| panic!("exit code {code} is documented in docs/STORE.md"));
+                .unwrap_or_else(|| {
+                    panic!("exit code {code} is documented in stores/apple/STORE.md")
+                });
             assert!(
                 line.to_lowercase().contains(meaning),
                 "the row for {code} should say what it means, got: {line}"
