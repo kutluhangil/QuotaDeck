@@ -12,11 +12,12 @@ Dağıtım: **yalnız GitHub**, açık kaynak, **GPL-3.0**. Plan ve kararlar: `d
 | Mac izleme: CPU, GPU, bellek, disk, ağ, süreçler, sıcaklıklar, fan, güç, SMART, sağlık skoru | Bitti |
 | Docker (yalnız okuma) | Bitti; açık, kapalı ve kurulu değil durumları denendi |
 | Liquid Glass popover (gerçek saydam pencere) ve dört sekmeli Dashboard | Bitti |
-| Ayarlar: yenileme hızı, menü çubuğu içeriği, Mac uyarıları, Antigravity canlı kota, Keep Awake | Bitti |
+| Ayarlar: yenileme hızı, menü çubuğu içeriği, Mac uyarıları, Antigravity canlı kota, Keep Awake, Tasarım teması (Liquid / Claude), Fan yardımcısı kaldırma | Bitti |
 | Menü çubuğu: `48° · 76%` ve 🟠/🔴 uyarı noktası | Bitti |
 | 7 günlük geçmiş, 1 sa / 24 sa / 7 g grafikleri, Antigravity 30 günlük istem grafiği | Bitti |
 | Dört dil (EN, TR, DE, ES) | Bitti |
-| Fan kontrolü (Auto / Cool / Max) | Yazıldı; arayüzde gizli, bu Mac'te tek komutla denenmeyi bekliyor |
+| Fan kontrolü (Auto / Cool / Max) ve Ayarlar'dan kaldırma | Bitti; arayüzde aktif (`FAN_CONTROL_READY = true`) |
+| Görseller (`docs/design/GORSEL.md`) ve ikinci tema (`Claude Editorial`) | Bitti; `ui/src/assets/illustrations/` bağlandı ve `claude.css` eklendi |
 | GitHub yayın betiği (imza + Apple onayı + DMG) | Yazıldı; imzasız paket düzeni doğrulandı; imzalı hâli sertifikanı bekliyor |
 | README, CHANGELOG (2.0.0), site metni, lisans | Güncellendi |
 | App Store ve Microsoft Store dosyaları | `stores/` altına toplandı, CI'dan çıktı; gerekirse yine derlenebilir |

@@ -80,6 +80,7 @@ interface DeckStore {
   setFilter: (filter: ProviderInstanceId | "all") => void;
   setTrayMode: (mode: TrayMode) => void;
   setTheme: (theme: Settings["theme"]) => void;
+  setDesignTheme: (theme: Settings["designTheme"]) => void;
   setLocale: (locale: Locale) => void;
   setUsageDisplay: (display: UsageDisplay) => void;
   setGlobalShortcut: (enabled: boolean) => void;
@@ -244,6 +245,19 @@ export const useDeck = create<DeckStore>((set, get) => ({
         set({ settings: next.value, settingsAction: null });
         applyTheme(next.value.theme);
       } else set({ settingsError: next.error, settingsAction: null });
+    });
+  },
+
+  setDesignTheme: (designTheme) => {
+    set({ settings: { ...get().settings, designTheme } });
+    applyDesignTheme(designTheme);
+    void call<Settings>("set_design_theme", { theme: designTheme }).then((next) => {
+      if (next.ok) {
+        set({ settings: next.value });
+        applyDesignTheme(next.value.designTheme);
+      } else if (inShell) {
+        set({ settingsError: next.error });
+      }
     });
   },
 
@@ -732,6 +746,7 @@ export const useDeck = create<DeckStore>((set, get) => ({
         access: { required: false, granted: true, path: null, error: null },
       });
       applyTheme(get().settings.theme);
+      applyDesignTheme(get().settings.designTheme);
       applyLocale(get().settings.locale);
       return;
     }
@@ -786,6 +801,7 @@ export const useDeck = create<DeckStore>((set, get) => ({
       access,
     });
     applyTheme(settings.theme);
+    applyDesignTheme(settings.designTheme);
     applyLocale(settings.locale);
   },
 }));
@@ -923,6 +939,22 @@ export function applyTheme(theme: Settings["theme"]): void {
   const root = document.documentElement;
   if (theme === "system") root.removeAttribute("data-theme");
   else root.setAttribute("data-theme", theme);
+}
+
+/**
+ * Stamp the visual design ("liquid" or "claude") on the root element.
+ *
+ * On macOS inside the shell, the Liquid popover sits over real window vibrancy (`vibrancy="on"`),
+ * whereas the Claude editorial theme paints its own warm paper surface (`vibrancy="off"`).
+ */
+export function applyDesignTheme(design: Settings["designTheme"]): void {
+  const root = document.documentElement;
+  root.dataset["design"] = design;
+  const surface = root.dataset["surface"] ?? "panel";
+  root.dataset["vibrancy"] =
+    design === "liquid" && inShell && surface === "panel" && hostPlatform() === "macos"
+      ? "on"
+      : "off";
 }
 
 /**

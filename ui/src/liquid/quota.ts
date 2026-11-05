@@ -3,7 +3,7 @@
  * left, when it resets, where even use would be, and whether the reading is measured.
  */
 
-import type { DeckState, PaceForecast, ProviderSnapshot, QuotaWindow } from "../types";
+import type { DeckState, PaceForecast, ProviderInstanceId, ProviderSnapshot, QuotaWindow } from "../types";
 import { paceFor, worstWindow } from "../types";
 import type { Antigravity, ModelReset } from "./system";
 
@@ -52,6 +52,29 @@ function glance(snapshot: ProviderSnapshot, window: QuotaWindow, now: number): W
 /** The default instance of a tool, never a named copy. */
 function defaultInstance(deck: DeckState, key: ToolKey): ProviderSnapshot | null {
   return deck.providers.find((p) => p.id === key && p.instance === key) ?? null;
+}
+
+export function instanceGlance(
+  deck: DeckState,
+  instance: ProviderInstanceId,
+  now: number,
+): Omit<ToolGlance, "key"> & { instance: ProviderInstanceId } {
+  const snapshot = deck.providers.find((p) => p.instance === instance) ?? null;
+  if (snapshot === null) {
+    return { instance, installed: false, headline: null, windows: [], snapshot: null };
+  }
+  const worst = worstWindow(snapshot.windows);
+  const windows = [...snapshot.windows]
+    .sort((a, b) => a.windowMinutes - b.windowMinutes)
+    .map((window) => glance(snapshot, window, now))
+    .filter((window): window is WindowGlance => window !== null);
+  return {
+    instance,
+    installed: snapshot.installed && snapshot.unavailable !== "not-installed",
+    headline: worst === null ? null : glance(snapshot, worst, now),
+    windows,
+    snapshot,
+  };
 }
 
 export function toolGlance(deck: DeckState, key: ToolKey, now: number): ToolGlance {

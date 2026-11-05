@@ -212,15 +212,27 @@ def draw(size: int) -> list[list[tuple[int, int, int, int]]]:
 def generate(output: pathlib.Path) -> None:
     output.mkdir(parents=True, exist_ok=True)
     for size in (32, 128, 256, 512):
-        write_png(output / f"{size}x{size}.png", draw(size))
-    write_png(output / "icon.png", draw(512))
+        data = (HERE / f"{size}x{size}.png").read_bytes()
+        (output / f"{size}x{size}.png").write_bytes(data)
+    (output / "icon.png").write_bytes((HERE / "512x512.png").read_bytes())
     write_ico(output / "icon.ico", output)
 
     iconset = output / "icon.iconset"
     iconset.mkdir(exist_ok=True)
-    for size in (16, 32, 128, 256, 512):
-        write_png(iconset / f"icon_{size}x{size}.png", draw(size))
-        write_png(iconset / f"icon_{size}x{size}@2x.png", draw(size * 2))
+    icon_map = {
+        "icon_16x16.png": "16x16.png",
+        "icon_16x16@2x.png": "32x32.png",
+        "icon_32x32.png": "32x32.png",
+        "icon_32x32@2x.png": "64x64.png",
+        "icon_128x128.png": "128x128.png",
+        "icon_128x128@2x.png": "256x256.png",
+        "icon_256x256.png": "256x256.png",
+        "icon_256x256@2x.png": "512x512.png",
+        "icon_512x512.png": "512x512.png",
+        "icon_512x512@2x.png": "1024x1024.png",
+    }
+    for icon_name, src_name in icon_map.items():
+        (iconset / icon_name).write_bytes((HERE / src_name).read_bytes())
 
     write_icns(output / "icon.icns", iconset)
 

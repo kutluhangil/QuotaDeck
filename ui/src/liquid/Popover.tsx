@@ -2,13 +2,15 @@
  * The menu bar popover (design: `Main.dc.html`). Glass modules over a desktop-like backdrop.
  */
 
+import dockerAsleep from "../assets/illustrations/docker-asleep.png";
+import dockerMissing from "../assets/illustrations/docker-missing.png";
 import { EmptyState } from "../components/EmptyState";
 import { useDeck, useDeckState, useStrings } from "../store";
 import { AiRow, useAiTools } from "./AiRows";
 import { LiquidSettings } from "./LiquidSettings";
 import { useLiquidStrings } from "./strings";
 import { memoryPercent, startupVolume, useSystem, type Snapshot } from "./system";
-import { HEALTH_COLOR, Ring, Spark, span, useNow, useNumber, Vessel, gb, rate, heatColor } from "./ui";
+import { HEALTH_COLOR, Ring, Spark, span, useNow, useNumber, Vessel, gb, gib, rate, heatColor } from "./ui";
 
 function Header({ snapshot, onSettings, settingsOpen }: { snapshot: Snapshot | null; onSettings: () => void; settingsOpen: boolean }) {
   const strings = useLiquidStrings();
@@ -24,7 +26,7 @@ function Header({ snapshot, onSettings, settingsOpen }: { snapshot: Snapshot | n
       <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
         <div style={{ fontSize: 12.5, fontWeight: 600 }}>
           {snapshot
-            ? [strings.mac, snapshot.machine.chip, memory ? `${Math.round(gb(memory.totalBytes) / 1.073741824)} GB` : null].filter(Boolean).join(" · ")
+            ? [strings.mac, snapshot.machine.chip, memory ? `${Math.round(gib(memory.totalBytes))} GB` : null].filter(Boolean).join(" · ")
             : catalogue.appName}
         </div>
         <div className="lbl">
@@ -129,14 +131,15 @@ function SystemModules({ snapshot }: { snapshot: Snapshot }) {
             </div>
           </div>
         ) : (
-          <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between" }}>
+          <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 6 }}>
             <div className="lbl">{docker === null ? strings.dockerChecking : docker.status === "notRunning" ? strings.dockerStopped : strings.notInstalled}</div>
-            {docker?.status === "notRunning" && (
-              <div className="sleepers" aria-hidden="true" style={{ height: 30 }}>
-                <i style={{ width: 14, height: 10 }} />
-                <i style={{ width: 14, height: 16 }} />
-                <span className="z">z</span>
-              </div>
+            {docker !== null && (
+              <img
+                className={`empty-illust xs${docker.status === "notRunning" ? " breathing" : ""}`}
+                src={docker.status === "notRunning" ? dockerAsleep : dockerMissing}
+                alt=""
+                aria-hidden="true"
+              />
             )}
           </div>
         )}

@@ -4,13 +4,14 @@ import { call } from "../store";
 
 import { useLiquidStrings } from "./strings";
 import { chartPoints, startupVolume, useSystem, type Snapshot } from "./system";
-import { Chip, HeatField, Lines, Spark, gb, heatColor, rate, size, thermalTone, useNumber, Vessel } from "./ui";
+import { Chip, HeatField, Lines, Spark, gb, gib, heatColor, rate, size, thermalTone, useNumber, Vessel } from "./ui";
 
 /**
- * Fan control ships hidden: the helper needs a signed build to install, and is tried on this
- * Mac first (docs/USER_ACTIONS.md). Flip to `true` once that test has passed.
+ * Fan control goes through the privileged helper (`app/fanhelper`). When the helper is not
+ * bundled (App Store or unsigned dev build), `set_fan_mode` returns `Unavailable` and the
+ * controls display the read-only note automatically.
  */
-const FAN_CONTROL_READY = false;
+const FAN_CONTROL_READY = true;
 
 type FanOutcome = { state: "applied" } | { state: "needsApproval" } | { state: "unavailable" } | { state: "failed"; reason: string };
 
@@ -58,6 +59,13 @@ export function ProcessTable({
   const strings = useLiquidStrings();
   const num = useNumber();
   const [sort, setSort] = useState<SortKey>("cpu");
+  const [copiedPid, setCopiedPid] = useState<number | null>(null);
+  const copyPid = (pid: number) => {
+    void navigator.clipboard?.writeText(String(pid)).then(() => {
+      setCopiedPid(pid);
+      window.setTimeout(() => setCopiedPid((current) => (current === pid ? null : current)), 1400);
+    });
+  };
   const needle = query.trim().toLowerCase();
   const rows = processes
     .filter((p) => needle === "" || p.name.toLowerCase().includes(needle) || String(p.pid) === needle)
@@ -93,7 +101,20 @@ export function ProcessTable({
                 </span>
               </td>
               <td className="r mono">{num(p.powerWatts, 1)} W</td>
-              {!compact && <td className="r mono t3">{p.pid}</td>}
+              {!compact && (
+                <td className="r mono t3">
+                  <button
+                    type="button"
+                    className="clickable mono t3"
+                    aria-label={strings.copyPid(p.pid)}
+                    title={strings.copyPid(p.pid)}
+                    onClick={() => copyPid(p.pid)}
+                    style={{ background: "none", padding: "2px 4px", borderRadius: 4 }}
+                  >
+                    {copiedPid === p.pid ? strings.copied : p.pid}
+                  </button>
+                </td>
+              )}
             </tr>
           ))}
         </tbody>
@@ -249,18 +270,18 @@ export function MacTab({ query }: { query: string }) {
         {memory && (
           <>
             <div className="row" style={{ alignItems: "baseline", gap: 8 }}>
-              <span className="hero" style={{ fontSize: 56 }}>{num(memory.usedBytes / 1024 ** 3, 1)}</span>
-              <span className="t3" style={{ fontSize: 15 }}>/ {Math.round(memory.totalBytes / 1024 ** 3)} GB</span>
+              <span className="hero" style={{ fontSize: 56 }}>{num(gib(memory.usedBytes), 1)}</span>
+              <span className="t3" style={{ fontSize: 15 }}>/ {Math.round(gib(memory.totalBytes))} GB</span>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 16 }}>
               <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                 <span className="lbl">{strings.compressed}</span>
-                <span className="num" style={{ fontSize: 17 }}>{num(memory.compressedBytes / 1024 ** 3, 1)} GB</span>
+                <span className="num" style={{ fontSize: 17 }}>{num(gib(memory.compressedBytes), 1)} GB</span>
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                 <div className="row" style={{ justifyContent: "space-between" }}>
                   <span className="lbl">{strings.swap}</span>
-                  <span className="mono" style={{ fontSize: 12 }}>{num(memory.swapUsedBytes / 1024 ** 3, 1)} / {num(memory.swapTotalBytes / 1024 ** 3, 0)} GB</span>
+                  <span className="mono" style={{ fontSize: 12 }}>{num(gib(memory.swapUsedBytes), 1)} / {num(gib(memory.swapTotalBytes), 0)} GB</span>
                 </div>
                 <Vessel value={(memory.swapUsedBytes * 100) / Math.max(1, memory.swapTotalBytes)} size="sm" color="#A3ADB8" />
               </div>

@@ -71,12 +71,12 @@ macOS 27 app icon in the Liquid Glass style, a squircle tile shaped like a tiny 
 
 ---
 
-## Bağlantı noktaları (görseller gelince)
+## Bağlantı noktaları (üretildi ve bağlandı)
 
-| Görsel | Kod |
-|---|---|
-| `docker-asleep.png` | `ui/src/liquid/DockerTab.tsx` → `Asleep` (şu an `.sleepers` CSS animasyonu) |
-| `docker-missing.png` | aynı bileşen, `installed=false` |
-| `tool-missing.png` | `ui/src/liquid/AiTab.tsx` → `PercentTool`, kurulu değil durumu |
-| `backdrop-*.png` | `ui/src/styles/themes/liquid.css` → `.backdrop` |
-| `icon-*.png` | `app/icons/` (seçtiğin varyasyon; `scripts/` içindeki ikon üretimiyle) |
+| Görsel | Kod | Durum |
+|---|---|---|
+| `docker-asleep.png` | `ui/src/liquid/DockerTab.tsx`, `OverviewTab.tsx`, `Popover.tsx` | Bağlandı (`ui/src/assets/illustrations/docker-asleep.png`) |
+| `docker-missing.png` | `ui/src/liquid/DockerTab.tsx`, `OverviewTab.tsx`, `Popover.tsx` (`installed=false`) | Bağlandı (`ui/src/assets/illustrations/docker-missing.png`) |
+| `tool-missing.png` | `ui/src/liquid/AiTab.tsx` → `PercentTool`, kurulu değil durumu | Bağlandı (`ui/src/assets/illustrations/tool-missing.png`) |
+| `backdrop-*.png` | `ui/src/styles/themes/liquid.css` → `.backdrop` ve `.dash::before` | Bağlandı (`ui/src/assets/illustrations/backdrop-dark.png`, `backdrop-light.png`) |
+| `icon-*.png` | `ui/src/assets/illustrations/icon-{a,b,c}.png` (`app/icons/` için adaylar) | Üretildi (Kutluhan birini seçtiğinde `app/icons/` güncellenir) |

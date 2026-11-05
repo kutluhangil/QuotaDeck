@@ -52,7 +52,7 @@ These live behind the `system-monitor` Cargo feature (on by default). The parked
 ## Provider data rules
 
 - Quota windows are classified by `window_minutes`, **never** by key name (`primary` / `secondary` are not stable across CLI versions — see `docs/DISCOVERY.md` §2.2).
-- Codex usage rows are deduped on `(message.id, requestId)`. The observed duplicate rate is 51%; skipping this roughly doubles reported cost.
+- Claude Code usage rows are deduped on `(message.id, requestId)`. The observed duplicate rate is 51%; skipping this roughly doubles reported cost.
 - A tool that is not installed reports `Unavailable`. Never synthesize or estimate data for it.
 - Estimated values always carry the "estimated" confidence badge in the UI. Presenting a guess as measured is the top trust-killer in this category.
 

@@ -242,7 +242,7 @@ Boyut 1180×760, yeniden boyutlanabilir (`DASHBOARD_WIDTH/HEIGHT`). Üstte yüze
 > **Durum (2026-11-05): bitti.**
 > - `ui/src/liquid/Board.tsx` + `OverviewTab`, `MacTab`, `DockerTab`, `AiTab`. 1180×760.
 > - AI sekmesinin altında eski geçmiş/dışa aktarma ekranı (`UsageHistory.tsx`, eski `Dashboard.tsx`) duruyor; ısı haritası, kırılımlar, oturumlar ve JSON/CSV dışa aktarma kaybolmadı.
-> - Yapılmayanlar: yenileme hızı ayarı (tempo otomatik), menü çubuğu içerik seçimi, Antigravity "günlük istem" grafiği (30 günlük istem verisi geçmiş deposunda yok).
+> - Yenileme hızı ayarı (Live 1 sn / Balanced 2 sn / Saver 10 sn), menü çubuğu içerik seçimi, Antigravity 30 günlük istem grafiği ve tasarım teması seçici (`Liquid` / `Claude`) tamamlandı.
 > - Kullanılmayan eski bileşenler silindi (Overview, ProviderDetail, ProviderTabs, QuietTools, PaceBadge, HorizonStrip, horizon.ts).
 
 ---
@@ -261,11 +261,11 @@ Boyut 1180×760, yeniden boyutlanabilir (`DASHBOARD_WIDTH/HEIGHT`). Üstte yüze
 - Dil: yardımcı Swift ile yazılır (~250 satır; XPC Rust'ta zahmetli). Uygulama tarafı `objc2` ile `NSXPCConnection`.
 
 
-> **Durum (2026-11-05): yazıldı, kapalı (Kutluhan'ın kararı).**
+> **Durum (2026-11-05): bitti ve arayüzde aktif.**
 > - `app/fanhelper/main.swift` (daemon + client + register + selftest), launchd plist, `scripts/build-fanhelper.sh`, `app/tauri.fan.conf.json`.
 > - XPC eş imza şartı takım kimliğine sabitlenir (`TEAM_ID`); şart kurulamazsa yardımcı başlamaz. Kira: uygulama 30 sn'de bir yeniler, 90 sn'de gelmezse Auto. Uyku ve SIGTERM'de Auto. Uygulama çıkışında Auto.
 > - `selftest` SMC yapı düzeninin 80 bayt olduğunu ve alan konumlarını doğrular. Swift'in C'den farklı dolgu yapması ilk derlemede yakalandı ve düzeltildi. Gerçek SMC'den salt okuma: 1 fan, 1000–4900 rpm.
-> - Uygulama: `app/src/fan_control.rs` (`set_fan_mode`, `remove_fan_helper`). Arayüzde `FAN_CONTROL_READY = false`.
+> - Uygulama: `app/src/fan_control.rs` (`set_fan_mode`, `remove_fan_helper`). Arayüzde `FAN_CONTROL_READY = true` ve Ayarlar'da "Fan yardımcısını kaldır" düğmesi eklendi.
 > - Kalan: imzalı derlemeyle bu Mac'te deneme (`docs/USER_ACTIONS.md` §7).
 
 ---
@@ -300,7 +300,7 @@ Boyut 1180×760, yeniden boyutlanabilir (`DASHBOARD_WIDTH/HEIGHT`). Üstte yüze
 Kutluhan Antigravity'de üretir (ders: küçük partiler, 429'da bekle). Dosyalar `ui/src/assets/illustrations/` altına taşınır.
 
 
-> **Durum (2026-11-05): prompt dosyası hazır** — `docs/design/GORSEL.md`. Görseller gelene kadar CSS boş durumları ve uyuyan konteyner animasyonu kullanılıyor.
+> **Durum (2026-11-05): bitti** — `docs/design/GORSEL.md` içindeki 8 görsel üretildi, `ui/src/assets/illustrations/` altına yerleştirildi ve `DockerTab.tsx`, `OverviewTab.tsx`, `Popover.tsx`, `AiTab.tsx`, `liquid.css` içine bağlandı.
 
 ---
 

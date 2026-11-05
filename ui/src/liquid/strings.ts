@@ -137,6 +137,20 @@ const en = {
   menuBarTemp: "Temperature",
   menuBarHint: "The quota part of the menu bar item is set under More settings → Menu bar. A dot appears when a quota is nearly gone or the Mac is throttling.",
   monitorOff: "This build shows AI quota only.",
+  designTheme: "Design",
+  design: { liquid: "Liquid Glass", claude: "Claude Editorial" } as Record<"liquid" | "claude", string>,
+  fanHelperTitle: "Fan control helper",
+  fanHelperBody: "Returns fans to Auto and removes the privileged helper registered in Login Items.",
+  fanHelperRemove: "Remove",
+  fanHelperRemoved: "Removed",
+  copyPid: (pid: number) => `Copy PID ${pid}`,
+  copied: "Copied",
+  done: "Done",
+  tools: "Tools",
+  windowCost: "7-day cost",
+  windowTokens: "7-day tokens",
+  topModel: "Top model",
+  ofTokens: (pct: number) => `${pct}% of tokens`,
 };
 
 export type LiquidStrings = typeof en;
@@ -272,6 +286,20 @@ const tr: LiquidStrings = {
   menuBarTemp: "Sıcaklık",
   menuBarHint: "Menü çubuğunun kota kısmı Diğer ayarlar → Menü çubuğu'ndan seçilir. Kota bitmek üzereyken ya da Mac kısma yaparken başa renkli bir nokta gelir.",
   monitorOff: "Bu sürüm yalnız AI kotasını gösteriyor.",
+  designTheme: "Tasarım",
+  design: { liquid: "Liquid Glass", claude: "Claude Editöryal" },
+  fanHelperTitle: "Fan kontrol yardımcısı",
+  fanHelperBody: "Fanları Otomatik moda döndürür ve Giriş Öğeleri'ndeki yetkili yardımcıyı kaldırır.",
+  fanHelperRemove: "Kaldır",
+  fanHelperRemoved: "Kaldırıldı",
+  copyPid: (pid) => `PID ${pid} kopyala`,
+  copied: "Kopyalandı",
+  done: "Tamam",
+  tools: "Araçlar",
+  windowCost: "7 günlük maliyet",
+  windowTokens: "7 günlük token",
+  topModel: "Ana model",
+  ofTokens: (pct) => `tokenların %${pct}'i`,
 };
 
 const de: LiquidStrings = {
@@ -405,6 +433,20 @@ const de: LiquidStrings = {
   menuBarTemp: "Temperatur",
   menuBarHint: "Der Kontingentteil der Menüleiste wird unter Weitere Einstellungen → Menüleiste gewählt. Ein Punkt erscheint, wenn ein Kontingent fast aufgebraucht ist oder der Mac drosselt.",
   monitorOff: "Diese Version zeigt nur das KI-Kontingent.",
+  designTheme: "Design",
+  design: { liquid: "Liquid Glass", claude: "Claude Editorial" },
+  fanHelperTitle: "Lüftersteuerungs-Hilfsprogramm",
+  fanHelperBody: "Setzt die Lüfter auf Automatisch zurück und entfernt das Hilfsprogramm aus den Anmeldeobjekten.",
+  fanHelperRemove: "Entfernen",
+  fanHelperRemoved: "Entfernt",
+  copyPid: (pid) => `PID ${pid} kopieren`,
+  copied: "Kopiert",
+  done: "Fertig",
+  tools: "Werkzeuge",
+  windowCost: "Kosten 7 Tage",
+  windowTokens: "Tokens 7 Tage",
+  topModel: "Top-Modell",
+  ofTokens: (pct) => `${pct} % der Tokens`,
 };
 
 const es: LiquidStrings = {
@@ -538,6 +580,20 @@ const es: LiquidStrings = {
   menuBarTemp: "Temperatura",
   menuBarHint: "La parte de cuota del elemento se elige en Más ajustes → Barra de menús. Aparece un punto cuando una cuota casi se agota o el Mac reduce su rendimiento.",
   monitorOff: "Esta versión solo muestra la cuota de IA.",
+  designTheme: "Diseño",
+  design: { liquid: "Liquid Glass", claude: "Claude Editorial" },
+  fanHelperTitle: "Asistente de control del ventilador",
+  fanHelperBody: "Devuelve los ventiladores a Automático y elimina el asistente de Ítems de inicio.",
+  fanHelperRemove: "Eliminar",
+  fanHelperRemoved: "Eliminado",
+  copyPid: (pid) => `Copiar PID ${pid}`,
+  copied: "Copiado",
+  done: "Listo",
+  tools: "Herramientas",
+  windowCost: "Coste 7 días",
+  windowTokens: "Tokens 7 días",
+  topModel: "Modelo principal",
+  ofTokens: (pct) => `${pct} % de tokens`,
 };
 
 export function useLiquidStrings(): LiquidStrings {

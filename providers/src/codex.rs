@@ -30,8 +30,9 @@ use quotadeck_core::events::{
     UsageEvent,
 };
 use quotadeck_core::paths;
+use quotadeck_core::pricing::{cost_or_recorded, embedded_pricing_revision, PricedUsage};
 use quotadeck_core::provider::{default_snapshot, LineSource, Provider, ProviderConfig};
-use quotadeck_core::types::{Cost, ProviderId, ProviderSnapshot, TokenRollup, UnavailableReason};
+use quotadeck_core::types::{ProviderId, ProviderSnapshot, TokenRollup, UnavailableReason};
 use serde::Deserialize;
 
 /// Cheap pre-filter. Only ~0.5% of log volume is a `token_count` record, so this guard
@@ -73,6 +74,9 @@ struct Payload {
     /// `session_meta` only: the directory the session was started in.
     #[serde(default)]
     cwd: Option<String>,
+    /// Optional model name if a CLI build or custom wrapper attaches it to the payload.
+    #[serde(default)]
+    model: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -83,6 +87,9 @@ struct Info {
     /// This turn's own usage. Present in every one of the 2281 records measured.
     #[serde(default)]
     last_token_usage: Option<TokenUsage>,
+    /// Optional model name if a CLI build includes it inside `info`.
+    #[serde(default)]
+    model: Option<String>,
 }
 
 #[derive(Deserialize, Default)]
@@ -207,10 +214,19 @@ impl Provider for Codex {
                 .unwrap_or_default();
             let turn = info.last_token_usage.unwrap_or_default();
             let tokens = turn.rollup();
+            let model = info.model.or(payload.model);
 
             // A zero turn contributes nothing and would only add an index entry. 2.2% of
             // real records report an all-zero breakdown at session start.
             if !tokens.is_zero() {
+                let priced = PricedUsage {
+                    input: tokens.input,
+                    output: tokens.output,
+                    cache_read: tokens.cache_read,
+                    cache_write_5m: tokens.cache_creation,
+                    cache_write_1h: 0,
+                };
+                let cost = cost_or_recorded(model.as_deref(), record.timestamp, &priced, None);
                 out.push(ParsedEvent::Usage(UsageEvent {
                     at: record.timestamp,
                     session: source.session_key(),
@@ -222,15 +238,15 @@ impl Provider for Codex {
                         format!("{}:{running_total}", source.session_key()),
                         turn.total_tokens.to_string(),
                     )),
-                    model: None,
+                    model,
                     project: None,
                     origin: AgentOrigin::Main,
                     tokens,
                     requests: 0.0,
-                    // A `token_count` record names no model, and the embedded price table
-                    // covers Anthropic models only. Pricing these at zero would make a
-                    // Codex-heavy day look free; they are counted as unpriced instead.
-                    cost: Cost::Unpriced,
+                    // Standard `token_count` records omit `model`, yielding `Cost::Unpriced`.
+                    // When a model is present and matches the price table or `pricing-overrides.json`,
+                    // `cost_or_recorded` computes its equivalent cost automatically.
+                    cost,
                     accounting: Accounting::Incremental,
                 }));
             }
@@ -275,6 +291,10 @@ impl Provider for Codex {
 
     fn supports_measured(&self) -> bool {
         true
+    }
+
+    fn pricing_revision(&self) -> u64 {
+        embedded_pricing_revision()
     }
 }
 
@@ -638,6 +658,20 @@ mod tests {
     #[test]
     fn codex_claims_measured_support() {
         assert!(Codex.supports_measured());
+        assert!(Codex.pricing_revision() > 0);
+    }
+
+    #[test]
+    fn token_count_with_optional_model_prices_when_known_and_stays_unpriced_otherwise() {
+        use quotadeck_core::types::Cost;
+        let unpriced = only_usage(&parse_fixture("token_count_plus.jsonl"));
+        assert_eq!(unpriced.model, None);
+        assert_eq!(unpriced.cost, Cost::Unpriced);
+
+        let priced_line = r#"{"timestamp":"2026-07-25T14:46:05.733Z","type":"event_msg","payload":{"type":"token_count","model":"claude-sonnet-4-6","info":{"total_token_usage":{"total_tokens":2000},"last_token_usage":{"total_tokens":2000,"input_tokens":1000,"output_tokens":1000}}}}"#;
+        let priced = only_usage(&parse(priced_line));
+        assert_eq!(priced.model.as_deref(), Some("claude-sonnet-4-6"));
+        assert!(matches!(priced.cost, Cost::Usd(usd) if usd > 0.0));
     }
 
     #[test]

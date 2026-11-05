@@ -1,5 +1,7 @@
 import { Fragment } from "react";
 
+import dockerAsleep from "../assets/illustrations/docker-asleep.png";
+import dockerMissing from "../assets/illustrations/docker-missing.png";
 import { useLiquidStrings } from "./strings";
 import { useSystem, type Container } from "./system";
 import { Chip, size, useNumber, Vessel } from "./ui";
@@ -31,12 +33,12 @@ function Asleep({ installed }: { installed: boolean }) {
     <section className="card empty-card" aria-label={installed ? strings.dockerNotRunningTitle : strings.dockerNotInstalledTitle} style={{ minHeight: 320, alignItems: "flex-start" }}>
       <span className="cap">{strings.docker}</span>
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-        <div className="sleepers" aria-hidden="true">
-          <i />
-          <i />
-          <i />
-          {installed && <span className="z">z z</span>}
-        </div>
+        <img
+          className={`empty-illust${installed ? " breathing" : ""}`}
+          src={installed ? dockerAsleep : dockerMissing}
+          alt=""
+          aria-hidden="true"
+        />
         <Chip dot>{installed ? strings.dockerStopped : strings.notInstalled}</Chip>
         <span style={{ fontSize: 17, fontWeight: 500 }}>{installed ? strings.dockerNotRunningTitle : strings.dockerNotInstalledTitle}</span>
         <span className="t2">{installed ? strings.dockerNotRunningBody : strings.dockerNotInstalledBody}</span>

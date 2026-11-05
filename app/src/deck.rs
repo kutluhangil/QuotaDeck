@@ -265,6 +265,8 @@ pub enum DesignTheme {
     /// Apple's Liquid Glass look.
     #[default]
     Liquid,
+    /// Editorial warm paper and ink look inspired by Claude.
+    Claude,
 }
 
 /// How eagerly the Mac readings refresh while something shows them.

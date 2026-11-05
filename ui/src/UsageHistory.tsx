@@ -120,12 +120,14 @@ function ProviderPanel({
   historyRange,
   heatmapDays,
   nowSeconds,
+  hideWindows = false,
 }: {
   snapshot: ProviderSnapshot;
   health: VisibleProviderHealth | null;
   historyRange: HistoryRange;
   heatmapDays: number;
   nowSeconds: number;
+  hideWindows?: boolean;
 }) {
   const strings = useStrings();
   const locale = useLocale();
@@ -185,7 +187,7 @@ function ProviderPanel({
 
       <ProviderHealthNotice health={health} />
 
-      {snapshot.windows.length > 0 ? (
+      {!hideWindows && (snapshot.windows.length > 0 ? (
         /* The same four columns the panel draws. Two surfaces reading the same limits in two
            different grammars is two things to learn for one fact. */
         <ul className="card__rows" role="list" aria-label={strings.a11y.windows(name)}>
@@ -219,7 +221,7 @@ function ProviderPanel({
         <p className="type-body board__quiet">
           {strings.unavailable[snapshot.unavailable ?? "never-reported"]}
         </p>
-      )}
+      ))}
 
       <dl className="board__totals">
         <div className="board__total">
@@ -308,7 +310,7 @@ function originName(label: string, strings: Catalogue): string {
   return names[label] ?? label;
 }
 
-export function UsageHistory() {
+export function UsageHistory({ filterInstance }: { filterInstance?: string } = {}) {
   const strings = useStrings();
   const deck = useDeckState();
   const start = useDeck((state) => state.start);
@@ -336,7 +338,10 @@ export function UsageHistory() {
   }, []);
 
   const reporting = deck.providers.filter(
-    (snapshot) => snapshot.installed && snapshot.unavailable !== "not-installed",
+    (snapshot) =>
+      snapshot.installed &&
+      snapshot.unavailable !== "not-installed" &&
+      (filterInstance ? snapshot.instance === filterInstance : true),
   );
   const availableRanges = ranges.filter((option) => RANGE_DAYS[option] <= deck.retention.effectiveDays);
   const visibleRange = availableRanges.includes(range) ? range : "month";
@@ -481,6 +486,7 @@ export function UsageHistory() {
                 historyRange={selectedRange}
                 heatmapDays={heatmapDays}
                 nowSeconds={nowSeconds}
+                hideWindows={Boolean(filterInstance)}
               />
             ))}
           </div>

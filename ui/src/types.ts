@@ -447,7 +447,7 @@ export interface SystemAlertRules {
   containerUnhealthy: boolean;
 }
 
-export type DesignTheme = "liquid";
+export type DesignTheme = "liquid" | "claude";
 
 export interface ProviderDescriptor {
   /** The instance key. The panel's identity for this row. */

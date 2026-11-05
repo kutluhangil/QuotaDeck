@@ -1,8 +1,10 @@
+import dockerAsleep from "../assets/illustrations/docker-asleep.png";
+import dockerMissing from "../assets/illustrations/docker-missing.png";
 import { AiRow, useAiTools } from "./AiRows";
 import type { Tab } from "./Board";
 import { useLiquidStrings } from "./strings";
 import { chartPoints, memoryPercent, startupVolume, useSystem, type Snapshot } from "./system";
-import { Chip, HEALTH_COLOR, HeatField, Ring, Spark, gb, gradeTone, rate, size, span, thermalTone, useNow, useNumber, Vessel } from "./ui";
+import { Chip, HEALTH_COLOR, HeatField, Ring, Spark, gb, gib, gradeTone, rate, size, span, thermalTone, useNow, useNumber, Vessel } from "./ui";
 import { ProcessTable } from "./MacTab";
 import { composeGroups } from "./DockerTab";
 
@@ -24,7 +26,7 @@ function HealthCard({ snapshot }: { snapshot: Snapshot }) {
           <div className="t2" style={{ fontSize: 14, marginTop: 8 }}>{strings.healthSummary(worst ? strings.penalty[worst[0]] : null)}</div>
         </div>
         <div className="lbl">
-          {[strings.mac, snapshot.machine.chip, snapshot.memory ? `${Math.round(snapshot.memory.totalBytes / 1024 ** 3)} GB` : null, snapshot.cpu ? strings.up(span(snapshot.cpu.uptimeSecs)) : null]
+          {[strings.mac, snapshot.machine.chip, snapshot.memory ? `${Math.round(gib(snapshot.memory.totalBytes))} GB` : null, snapshot.cpu ? strings.up(span(snapshot.cpu.uptimeSecs)) : null]
             .filter(Boolean)
             .join(" · ")}
         </div>
@@ -89,7 +91,7 @@ export function OverviewTab({ onOpen, query }: { onOpen: (tab: Tab) => void; que
             </div>
             {snapshot.memory && (
               <span className="lbl">
-                {num(snapshot.memory.usedBytes / 1024 ** 3, 1)} {strings.of(`${Math.round(snapshot.memory.totalBytes / 1024 ** 3)} GB`)}
+                {num(gib(snapshot.memory.usedBytes), 1)} {strings.of(`${Math.round(gib(snapshot.memory.totalBytes))} GB`)}
               </span>
             )}
           </div>
@@ -188,7 +190,12 @@ export function OverviewTab({ onOpen, query }: { onOpen: (tab: Tab) => void; que
           </>
         ) : (
           <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-            <div className="sleepers" aria-hidden="true"><i /><i /><i /><span className="z">z</span></div>
+            <img
+              className={`empty-illust sm${docker?.status === "notRunning" ? " breathing" : ""}`}
+              src={docker?.status === "notInstalled" ? dockerMissing : dockerAsleep}
+              alt=""
+              aria-hidden="true"
+            />
             <span className="t2">{docker?.status === "notInstalled" ? strings.dockerNotInstalledBody : strings.dockerNotRunningBody}</span>
           </div>
         )}

@@ -166,11 +166,23 @@
   .mark.sm::after{inset:16%}
   /* the desktop-like backdrop the popover's glass refracts */
   .backdrop{position:absolute;inset:0;z-index:-1;pointer-events:none}
-  .qd.dark .backdrop{background:radial-gradient(70% 60% at 18% 24%,#2f6cc0 0%,rgba(47,108,192,0) 60%),radial-gradient(60% 55% at 84% 16%,#7b4fc9 0%,rgba(123,79,201,0) 62%),radial-gradient(80% 70% at 72% 98%,#d9784e 0%,rgba(217,120,78,0) 58%),radial-gradient(60% 60% at 8% 92%,#1aa3a0 0%,rgba(26,163,160,0) 60%),linear-gradient(160deg,#0a1630,#18234d 50%,#241640)}
-  .qd.light .backdrop{background:radial-gradient(70% 60% at 18% 24%,#8fc1ff 0%,rgba(143,193,255,0) 60%),radial-gradient(60% 55% at 84% 16%,#c6b2ff 0%,rgba(198,178,255,0) 62%),radial-gradient(80% 70% at 72% 98%,#ffc29a 0%,rgba(255,194,154,0) 58%),radial-gradient(60% 60% at 8% 92%,#8fe0d6 0%,rgba(143,224,214,0) 60%),linear-gradient(160deg,#d6e5fb,#eceffb 50%,#f6e7ee)}
+  .qd.dark .backdrop{background:url("../../assets/illustrations/backdrop-dark.png") center/cover no-repeat,radial-gradient(70% 60% at 18% 24%,#2f6cc0 0%,rgba(47,108,192,0) 60%),radial-gradient(60% 55% at 84% 16%,#7b4fc9 0%,rgba(123,79,201,0) 62%),radial-gradient(80% 70% at 72% 98%,#d9784e 0%,rgba(217,120,78,0) 58%),radial-gradient(60% 60% at 8% 92%,#1aa3a0 0%,rgba(26,163,160,0) 60%),linear-gradient(160deg,#0a1630,#18234d 50%,#241640)}
+  .qd.light .backdrop{background:url("../../assets/illustrations/backdrop-light.png") center/cover no-repeat,radial-gradient(70% 60% at 18% 24%,#8fc1ff 0%,rgba(143,193,255,0) 60%),radial-gradient(60% 55% at 84% 16%,#c6b2ff 0%,rgba(198,178,255,0) 62%),radial-gradient(80% 70% at 72% 98%,#ffc29a 0%,rgba(255,194,154,0) 58%),radial-gradient(60% 60% at 8% 92%,#8fe0d6 0%,rgba(143,224,214,0) 60%),linear-gradient(160deg,#d6e5fb,#eceffb 50%,#f6e7ee)}
   .qd.rt .backdrop{background:var(--bg)}
   &[data-vibrancy="on"] body,&[data-vibrancy="on"] .qd.pop{background:transparent}
   &[data-vibrancy="on"] .backdrop{display:none}
+  /* dashboard subtle ambient depth from the generated backdrop */
+  .dash{position:relative;isolation:isolate}
+  .dash::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;opacity:.22;background-position:center;background-size:cover;background-repeat:no-repeat}
+  .qd.dark.dash::before{background-image:url("../../assets/illustrations/backdrop-dark.png")}
+  .qd.light.dash::before{background-image:url("../../assets/illustrations/backdrop-light.png")}
+  .qd.rt.dash::before{display:none}
+  /* empty state illustrations */
+  .empty-illust{display:block;width:136px;height:102px;object-fit:contain;user-select:none;-webkit-user-drag:none}
+  .empty-illust.sm{width:76px;height:57px}
+  .empty-illust.xs{width:44px;height:33px}
+  .empty-illust.breathing{animation:qd-sleep 3.6s ease-in-out infinite}
+  @media (prefers-reduced-motion:reduce){.empty-illust.breathing{animation:none}}
   /* popover */
   .pop{position:relative;isolation:isolate;max-width:360px;margin:0 auto;padding:10px;display:flex;flex-direction:column;gap:10px;overflow:hidden}
   .pop .mod{border-radius:22px;padding:12px 12px 12px 14px;min-width:0}

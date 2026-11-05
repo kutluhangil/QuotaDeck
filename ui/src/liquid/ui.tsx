@@ -57,6 +57,10 @@ export function gb(bytes: number): number {
   return bytes / 1e9;
 }
 
+export function gib(bytes: number): number {
+  return bytes / 1024 ** 3;
+}
+
 /** "2.4 MB/s", "180 KB/s". */
 export function rate(bytesPerSec: number, num: (v: number, d?: number) => string): [string, string] {
   if (bytesPerSec >= 1e9) return [num(bytesPerSec / 1e9, 1), "GB/s"];
