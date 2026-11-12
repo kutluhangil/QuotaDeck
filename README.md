@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/media/hero.svg" alt="Quota Deck — coding-agent quota windows in your menu bar" width="100%">
+<img src="docs/media/hero.svg" alt="Quota Deck — a Mac menu bar reading 48° · 76% with the Liquid Glass popover showing each tool's quota windows, then the Mac sensors" width="100%">
 
 <p>
   <a href="https://github.com/kutluhangil/QuotaDeck/releases"><img alt="Download" src="https://img.shields.io/badge/download-signed%20DMG-e07a5a?style=for-the-badge&labelColor=0a0d14"></a>
@@ -67,6 +67,32 @@ A Cargo workspace: `core` (windows, pace, pricing), `providers` (log parsers), `
 
 <img src="docs/media/divider.svg" width="100%" alt="">
 
+## Honest numbers
+
+| Rule | What it means on screen |
+|---|---|
+| Every window says how it was obtained. | A **measured** badge when the tool reported its own limit, **derived** when Quota Deck computed it from tokens or request counts, **stale** or **idle** otherwise. |
+| A missing sensor is shown as missing. | What the Mac does not expose (memory temperature, CPU / Neural Engine / DRAM power on M-series) is never estimated. |
+| An unknown price is "—", not "$0". | Codex writes no model on its usage records, so its cost is shown with a note. |
+| Provider health is explicit. | *Not installed*, *no logs found*, *permission denied*, *read error* or *never reported*, each with its own notice. |
+| Pace is a forecast, not a guess. | *Healthy*, *at risk* or *over*, from your current burn against the time left in the window. |
+
+<img src="docs/media/divider.svg" width="100%" alt="">
+
+## The Mac and Docker side
+
+| Piece | Detail |
+|---|---|
+| **Menu bar** | `48° · 76%` before the quota, each part optional, with an orange or red dot when a quota is nearly gone or macOS is throttling hard. |
+| **Mac monitor** | CPU per cluster and per core, memory as Activity Monitor counts it, volumes, disk and network throughput, processes with energy, temperatures, fans, power and a health score. |
+| **Docker** | Read through the Docker CLI only (`info`, `ps`, `stats --no-stream`, `system df`); containers grouped by Compose project with health and usage. |
+| **Alerts** | CPU temperature, free disk, memory pressure and unhealthy containers, at most once every 30 minutes. Keep Awake is one switch. |
+| **Fan control** | A small signed Swift helper for Auto / Cool / Max that returns fans to Auto on quit and sleep. |
+| **History** | Usage history with a 30-day heatmap, and one-minute system summaries kept for seven days. |
+| **Languages** | English, Turkish, German and Spanish. |
+
+<img src="docs/media/divider.svg" width="100%" alt="">
+
 ## Türkçe özet
 
 **Quota Deck**, kodlama ajanlarının (Claude Code, Codex, Antigravity, Copilot CLI ve diğerleri) 5 saatlik ve haftalık kullanım limitlerini menü çubuğunda gösteren bir uygulama. Araçların diske zaten yazdığı oturum kayıtlarını okuyor; giriş yapmıyor, hiçbir anahtar okumuyor, ağa tek bir istek atmıyor. Hangi pencerenin ne kadar dolduğunu, ne zaman sıfırlanacağını ve bu hızla limite yetişip yetişmeyeceğini söylüyor. macOS'ta ayrıca Mac'in sıcaklık, fan, bellek ve disk durumunu ve Docker konteynerlerini izliyor.
@@ -88,5 +114,5 @@ cargo test --workspace && npm --prefix ui test
 <div align="center">
 <br>
 <a href="https://github.com/kutluhangil"><img src="docs/media/signature.svg" width="100%" alt="Built by kutluhangil"></a>
-<sub>GPL-3.0 · privacy by construction: it reads files, and that is all it does.</sub>
+<sub>GPL-3.0 · privacy by construction: it reads files, and that is all it does · readings in the banner are examples.</sub>
 </div>
