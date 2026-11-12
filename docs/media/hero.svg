@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 440" width="1200" height="440" role="img" aria-label="Quota Deck — coding-agent quota windows in your menu bar">
+<style>
+.bg{animation:bg 12s linear infinite}
+@keyframes bg{0%,8%{fill:#eef1f6}28%{fill:#34405e}48%,80%{fill:#0a0d14}90%,100%{fill:#eef1f6}}
+.ink{animation:ink 12s linear infinite}
+@keyframes ink{0%,8%{fill:#1b2130}28%{fill:#f1f4fb}48%,80%{fill:#e9eef8}90%,100%{fill:#1b2130}}
+.rule{animation:rule 12s linear infinite}
+@keyframes rule{0%,8%{stroke:#1b213033}28%{stroke:#f1f4fb33}48%,80%{stroke:#e9eef833}90%,100%{stroke:#1b213033}}
+.panel{animation:panel 12s linear infinite}
+@keyframes panel{0%,8%{fill:#1b213012}28%{fill:#f1f4fb12}48%,80%{fill:#e9eef812}90%,100%{fill:#1b213012}}
+.muted{opacity:.72}
+.stars{animation:stars 12s linear infinite}
+@keyframes stars{0%,8%{opacity:0}28%{opacity:.25}48%,80%{opacity:.9}90%,100%{opacity:0}}
+@keyframes tw{0%,100%{opacity:1}50%{opacity:.25}}
+.lit{filter:drop-shadow(0 0 4px currentColor)}
+.pulse{animation:pulse 2.8s ease-in-out infinite;transform-box:fill-box;transform-origin:center}
+@keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.18)}}
+@keyframes spin{0%{transform:scaleX(1)}50%{transform:scaleX(0)}100%{transform:scaleX(-1)}}
+@keyframes ping{0%{transform:scale(.6);opacity:1}100%{transform:scale(3.2);opacity:0}}
+@keyframes dash{to{stroke-dashoffset:-20}}
+@keyframes grow{0%{transform:scaleY(.08)}35%,80%{transform:scaleY(1)}100%{transform:scaleY(.08)}}
+@keyframes draw{0%{stroke-dashoffset:700}45%,80%{stroke-dashoffset:0}100%{stroke-dashoffset:-700}}
+@keyframes blink{50%{opacity:0}}
+@keyframes feed{0%{transform:translateY(150px);opacity:0}15%{opacity:1}85%{opacity:1}100%{transform:translateY(-30px);opacity:0}}
+@keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-10px)}}
+@keyframes slide{to{transform:translateX(100px)}}
+@keyframes eq{from{transform:scaleY(.15)}to{transform:scaleY(1)}}
+@keyframes drop{0%,6%{transform:scaleY(0);opacity:0}16%,88%{transform:scaleY(1);opacity:1}96%,100%{transform:scaleY(0);opacity:0}}
+@keyframes gauge{0%,10%{stroke-dashoffset:390}40%,85%{stroke-dashoffset:110}100%{stroke-dashoffset:390}}
+@keyframes lift{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
+@keyframes sweep{0%{transform:skewX(-18deg) translateX(0)}60%,100%{transform:skewX(-18deg) translateX(788px)}}
+@keyframes fill0{0%,10%{transform:scaleX(.05)}40%,85%{transform:scaleX(0.72)}100%{transform:scaleX(.05)}}@keyframes fill1{0%,10%{transform:scaleX(.05)}40%,85%{transform:scaleX(0.45)}100%{transform:scaleX(.05)}}@keyframes fill2{0%,10%{transform:scaleX(.05)}40%,85%{transform:scaleX(0.9)}100%{transform:scaleX(.05)}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important}}
+</style>
+<rect class="bg" width="1200" height="440" rx="28" fill="#eef1f6"/>
+<g font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="15" letter-spacing="2.4"><text class="ink muted" x="64" y="104">MENU BAR APP · RUST + TAURI 2</text></g>
+<text class="ink" x="60" y="236" font-family="'Iowan Old Style','Palatino Linotype',Palatino,Georgia,serif" font-style="italic" font-size="78" letter-spacing="-1">Quota Deck.</text>
+<text class="ink muted" x="64" y="300" font-family="'Iowan Old Style','Palatino Linotype',Palatino,Georgia,serif" font-size="20">Your coding agents' limits, before they stop you.</text>
+<line class="rule" x1="64" y1="372" x2="1136" y2="372"/>
+<g font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="13" letter-spacing="1.8">
+  <text class="ink muted" x="64" y="404">5-HOUR · WEEKLY · PACE</text>
+  <text class="ink muted" x="600" y="404" text-anchor="middle">READS LOCAL LOGS ONLY</text>
+  <text class="ink muted" x="1136" y="404" text-anchor="end">NO SIGN-IN · NO NETWORK</text>
+</g>
+<rect class="panel rule" x="652" y="92" width="488" height="262" rx="24"/>
+<g class="stars"><circle cx="782.8" cy="150.3" r="1.6" fill="#fff" style="animation:tw 3.5s ease-in-out 0.9s infinite"/><circle cx="766.8" cy="230.3" r="1.8" fill="#fff" style="animation:tw 1.9s ease-in-out 0.9s infinite"/><circle cx="875.4" cy="290.8" r="1.8" fill="#fff" style="animation:tw 3.5s ease-in-out 0.1s infinite"/><circle cx="910.1" cy="319.6" r="1.4" fill="#fff" style="animation:tw 3.8s ease-in-out 0.3s infinite"/><circle cx="966.1" cy="338.1" r="0.7" fill="#fff" style="animation:tw 2.4s ease-in-out 0.8s infinite"/><circle cx="846.3" cy="322.2" r="0.8" fill="#fff" style="animation:tw 1.8s ease-in-out 0.9s infinite"/><circle cx="816.9" cy="249" r="1.4" fill="#fff" style="animation:tw 1.8s ease-in-out 1.8s infinite"/><circle cx="681.7" cy="155.8" r="1.4" fill="#fff" style="animation:tw 3.5s ease-in-out 1.1s infinite"/><circle cx="760.9" cy="226.9" r="1" fill="#fff" style="animation:tw 3.6s ease-in-out 0.7s infinite"/><circle cx="1108.1" cy="230.9" r="0.8" fill="#fff" style="animation:tw 3.3s ease-in-out 1.6s infinite"/><circle cx="835.4" cy="224.9" r="1.3" fill="#fff" style="animation:tw 3.6s ease-in-out 0.2s infinite"/><circle cx="730.8" cy="301.2" r="1.5" fill="#fff" style="animation:tw 3.3s ease-in-out 1.1s infinite"/><circle cx="779.4" cy="139" r="1.4" fill="#fff" style="animation:tw 2.9s ease-in-out 1.7s infinite"/><circle cx="671.9" cy="139" r="1.7" fill="#fff" style="animation:tw 3.8s ease-in-out 1.2s infinite"/><circle cx="1083.1" cy="181.3" r="0.8" fill="#fff" style="animation:tw 2.9s ease-in-out 0.7s infinite"/><circle cx="912.5" cy="334.6" r="1.1" fill="#fff" style="animation:tw 2s ease-in-out 1s infinite"/><circle cx="1036.1" cy="179.1" r="1.7" fill="#fff" style="animation:tw 3.6s ease-in-out 0.8s infinite"/><circle cx="989.5" cy="119.9" r="1.1" fill="#fff" style="animation:tw 3.9s ease-in-out 0s infinite"/><circle cx="1049.8" cy="241.9" r="1.5" fill="#fff" style="animation:tw 2.3s ease-in-out 0.6s infinite"/><circle cx="867.6" cy="266.8" r="1.6" fill="#fff" style="animation:tw 2.4s ease-in-out 0.6s infinite"/><circle cx="1118.8" cy="244.6" r="0.7" fill="#fff" style="animation:tw 4s ease-in-out 1.4s infinite"/><circle cx="839.5" cy="114.1" r="1.4" fill="#fff" style="animation:tw 3.2s ease-in-out 1.4s infinite"/><circle cx="1060.7" cy="287.4" r="1.8" fill="#fff" style="animation:tw 3s ease-in-out 1.1s infinite"/><circle cx="688.5" cy="283.8" r="0.9" fill="#fff" style="animation:tw 3.3s ease-in-out 0.7s infinite"/><circle cx="1024" cy="106.3" r="1.2" fill="#fff" style="animation:tw 3.7s ease-in-out 1.9s infinite"/><circle cx="755" cy="158.1" r="0.9" fill="#fff" style="animation:tw 2.8s ease-in-out 2s infinite"/></g>
+<rect x="672" y="108" width="448" height="26" rx="8" fill="#000" fill-opacity=".35"/>
+<circle cx="690" cy="121" r="5" fill="#fff" fill-opacity=".8"/><rect x="706" y="117" width="34" height="8" rx="4" fill="#fff" fill-opacity=".45"/><rect x="752" y="117" width="34" height="8" rx="4" fill="#fff" fill-opacity=".45"/><rect x="798" y="117" width="34" height="8" rx="4" fill="#fff" fill-opacity=".45"/>
+<rect x="1000" y="114" width="22" height="14" rx="4" fill="#e07a5a" class="pulse"/><rect x="1032" y="117" width="16" height="8" rx="4" fill="#fff" fill-opacity=".45"/><rect x="1058" y="117" width="16" height="8" rx="4" fill="#fff" fill-opacity=".45"/><rect x="1084" y="117" width="16" height="8" rx="4" fill="#fff" fill-opacity=".45"/>
+<g style="animation:drop 12s cubic-bezier(.45,.05,.3,1) infinite;transform-origin:1010px 134px">
+<rect x="850" y="148" width="250" height="190" rx="16" fill="#15121f" fill-opacity=".92" stroke="#fff" stroke-opacity=".18"/>
+<path d="M 1004 148 l 7 -8 l 7 8 z" fill="#15121f"/><text x="870" y="190" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="11" letter-spacing="1.5" fill="#fff" fill-opacity=".7">5H WINDOW</text>
+<rect x="870" y="198" width="210" height="10" rx="5" fill="#fff" fill-opacity=".12"/>
+<rect x="870" y="198" width="210" height="10" rx="5" fill="#e07a5a" style="animation:fill0 12s cubic-bezier(.45,.05,.3,1) infinite;transform-origin:870px 0"/><text x="870" y="242" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="11" letter-spacing="1.5" fill="#fff" fill-opacity=".7">WEEKLY</text>
+<rect x="870" y="250" width="210" height="10" rx="5" fill="#fff" fill-opacity=".12"/>
+<rect x="870" y="250" width="210" height="10" rx="5" fill="#5ac8fa" style="animation:fill1 12s cubic-bezier(.45,.05,.3,1) infinite;transform-origin:870px 0"/><text x="870" y="294" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="11" letter-spacing="1.5" fill="#fff" fill-opacity=".7">TODAY</text>
+<rect x="870" y="302" width="210" height="10" rx="5" fill="#fff" fill-opacity=".12"/>
+<rect x="870" y="302" width="210" height="10" rx="5" fill="#a3e635" style="animation:fill2 12s cubic-bezier(.45,.05,.3,1) infinite;transform-origin:870px 0"/></g>
+<g transform="translate(692 168)"><circle cx="70" cy="80" r="62" fill="none" stroke="#fff" stroke-opacity=".12" stroke-width="12"/><circle cx="70" cy="80" r="62" fill="none" stroke="#e07a5a" stroke-width="12" stroke-linecap="round" stroke-dasharray="390" transform="rotate(-90 70 80)" style="animation:gauge 12s ease-in-out infinite"/><text x="70" y="88" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="22" font-weight="700" fill="#fff">72%</text></g>
+</svg>
